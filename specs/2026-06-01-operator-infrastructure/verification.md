@@ -8,12 +8,9 @@
 - [ ] Short names work: `cos`, `cosr`, `cosl`
 - [ ] Manager registers the v1alpha1 scheme
 - [ ] Metrics server binds to `:8443` with `SecureServing: true` and `FilterProvider` set
-- [ ] `deploy/operator.jsonnet` renders valid JSON containing all five resource kinds
+- [ ] `deploy/operator.jsonnet` renders valid JSON containing 8 resources (3 CRDs + NS, SA, CRB, Deployment, Service)
 - [ ] Jsonnet external variables `image` and `namespace` control the output
-- [ ] `make image` produces a container image via goreleaser snapshot
-- [ ] `make kind-cluster image kind-load deploy` results in a running pod
-- [ ] `kubectl get cos,cosr,cosl` returns empty lists
-- [ ] `make undeploy kind-cluster-delete` cleans up without errors
+- [ ] `make run` results in a running pod with CRDs registered (`kubectl get cos,cosr,cosl`)
 
 ## Project Conventions
 

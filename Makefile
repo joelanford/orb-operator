@@ -1,8 +1,9 @@
 IMAGE ?= ghcr.io/joelanford/orb-operator:dev
 NAMESPACE ?= orb-operator-system
+KIND_CLUSTER ?= orb-operator
 
 .PHONY: lint lint-fix test-unit test-integration test-e2e test-all build tidy generate verify
-.PHONY: image kind-cluster kind-cluster-delete kind-load deploy undeploy
+.PHONY: run
 
 lint:
 	go tool golangci-lint run ./...
@@ -16,7 +17,8 @@ test-unit:
 test-integration:
 	go test ./test/integration/...
 
-test-e2e:
+test-e2e: KIND_CLUSTER = orb-operator-e2e
+test-e2e: run
 	go test ./test/e2e/...
 
 test-all: test-unit test-integration test-e2e
@@ -35,22 +37,9 @@ verify: lint
 	go tool goreleaser check
 	go build ./...
 
-image:
+run:
 	go tool goreleaser release --snapshot --clean
-
-kind-cluster:
-	go tool kind create cluster
-
-kind-cluster-delete:
-	go tool kind delete cluster
-
-kind-load:
-	go tool kind load docker-image $(IMAGE)
-
-deploy:
-	kubectl apply -f deploy/crds/
-	go tool jsonnet --ext-str image=$(IMAGE) --ext-str namespace=$(NAMESPACE) deploy/operator.jsonnet | kubectl apply -f -
-
-undeploy:
-	go tool jsonnet --ext-str image=$(IMAGE) --ext-str namespace=$(NAMESPACE) deploy/operator.jsonnet | kubectl delete --ignore-not-found -f -
-	kubectl delete --ignore-not-found -f deploy/crds/
+	go tool kind delete cluster --name $(KIND_CLUSTER) || true
+	go tool kind create cluster --name $(KIND_CLUSTER)
+	go tool kind load docker-image $(IMAGE)-$$(go env GOARCH) --name $(KIND_CLUSTER)
+	go tool jsonnet --ext-str image=$(IMAGE)-$$(go env GOARCH) --ext-str namespace=$(NAMESPACE) deploy/operator.jsonnet | kubectl apply -f -

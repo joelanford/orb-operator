@@ -31,7 +31,5 @@
 6. **Makefile targets**
    - Add `IMAGE` variable defaulting to `ghcr.io/joelanford/orb-operator:dev`
    - Add `NAMESPACE` variable defaulting to `orb-operator-system`
-   - Add targets: `image`, `kind-cluster`, `kind-cluster-delete`, `kind-load`, `deploy`, `undeploy`
-   - `deploy` target: `kubectl apply -f deploy/crds/` then `go tool jsonnet --ext-str image=$(IMAGE) --ext-str namespace=$(NAMESPACE) deploy/operator.jsonnet | kubectl apply -f -`
-   - `undeploy` target: reverse of deploy (delete jsonnet output, then delete CRDs)
+   - Add `run` target: builds image, creates kind cluster (if needed), loads image, applies manifests
    - Confirm `make verify` still passes
