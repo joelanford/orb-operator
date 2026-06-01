@@ -15,7 +15,7 @@ dockers_v2:
   - images:
       - ghcr.io/joelanford/orb-operator
     tags:
-      - "{{ .Tag }}"
+      - "{{ .Version }}"
     platforms:
       - linux/amd64
       - linux/arm64

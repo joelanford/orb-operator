@@ -256,6 +256,7 @@ require (
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-containerregistry v0.21.6 // indirect
 	github.com/google/go-github/v88 v88.0.0 // indirect
+	github.com/google/go-jsonnet v0.22.0 // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/google/ko v0.18.2-0.20260407063826-ae9c7272d7de // indirect
 	github.com/google/rpmpack v0.7.1 // indirect
@@ -528,7 +529,9 @@ require (
 
 tool (
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+	github.com/google/go-jsonnet/cmd/jsonnet
 	github.com/goreleaser/goreleaser/v2
 	mvdan.cc/gofumpt
 	sigs.k8s.io/controller-tools/cmd/controller-gen
+	sigs.k8s.io/kind
 )
