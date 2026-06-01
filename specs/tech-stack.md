@@ -2,7 +2,7 @@
 
 ## Language and Runtime
 
-- **Go** (latest stable, currently 1.24)
+- **Go 1.26**
 - Module path: `github.com/joelanford/orb-operator`
 
 ## Core Dependencies
@@ -18,16 +18,19 @@
 | `k8s.io/klog/v2` | Logging implementation |
 | `github.com/google/go-jsonnet` | Manifest generation |
 
-## Dev Dependencies
+## Dev / Tool Dependencies
+
+All build-time Go tools are declared as `tool` directives in go.mod and invoked via `go tool <name>`.
 
 | Dependency | Purpose |
 |---|---|
 | `github.com/stretchr/testify` | Unit test assertions (assert/require) |
 | `github.com/cucumber/godog` | BDD-style e2e tests |
 | `sigs.k8s.io/controller-runtime/pkg/envtest` | Integration test environment (API server + etcd) |
-| `github.com/golangci/golangci-lint` | Linting (installed via Makefile) |
-| `mvdan.cc/gofumpt` | Formatting (stricter than gofmt) |
-| `sigs.k8s.io/controller-tools` | CRD/RBAC manifest generation (controller-gen) |
+| `github.com/golangci/golangci-lint` | Linting (`go tool golangci-lint`) |
+| `mvdan.cc/gofumpt` | Formatting (`go tool gofumpt`) |
+| `sigs.k8s.io/controller-tools` | CRD/RBAC/deepcopy generation (`go tool controller-gen`) |
+| `github.com/goreleaser/goreleaser` | Binary + Docker image builds (`go tool goreleaser`) |
 
 ## Project Structure
 
@@ -41,13 +44,24 @@ orb-operator/
 │   ├── controller/         # reconcilers (COS, COSR)
 │   ├── handler/            # object management (boxcutter integration)
 │   └── assertions/         # assertion evaluation logic
-├── config/
-│   ├── crd/                # generated CRD manifests
-│   ├── rbac/               # RBAC manifests
-│   └── manager/            # Deployment manifest
+├── deploy/
+│   ├── lib/                # shared jsonnet libraries
+│   ├── operator.jsonnet    # main deployment manifest (Deployment, RBAC, etc.)
+│   └── crds/               # controller-gen CRD output
 ├── test/
 │   ├── integration/        # envtest-based tests
 │   └── e2e/                # godog BDD tests
+├── hack/
+│   └── diff.sh             # verify script (jj-aware)
+├── .github/
+│   └── workflows/
+│       ├── unit.yml
+│       ├── integration.yml
+│       ├── e2e.yml
+│       ├── verify.yml
+│       └── image.yml
+├── .golangci.yml
+├── .goreleaser.yml
 ├── Dockerfile
 ├── Makefile
 └── go.mod
@@ -57,22 +71,30 @@ orb-operator/
 
 | Command | Purpose |
 |---|---|
-| `make build` | Build the operator binary |
-| `make test` | Run unit and integration tests (envtest) |
-| `make test-e2e` | Run godog BDD e2e tests |
-| `make lint` | Run golangci-lint |
-| `make fmt` | Run gofumpt |
-| `make generate` | Run controller-gen (CRDs, RBAC, deepcopy) |
-| `make manifests` | Generate CRD and RBAC manifests |
-| `make docker-build` | Build the container image |
-| `make check` | Run fmt, lint, test, and build (full CI check) |
+| `make lint` | `go tool golangci-lint run ./...` |
+| `make lint-fix` | `go tool golangci-lint run --fix ./...` |
+| `make test-unit` | Run unit tests (all packages except `./test/...`) |
+| `make test-integration` | Run envtest integration tests (`./test/integration/...`) |
+| `make test-e2e` | Run godog BDD e2e tests (`./test/e2e/...`) |
+| `make test-all` | Run test-unit, test-integration, test-e2e |
+| `make build` | `go build ./...` (also called by `make verify`) |
+| `make tidy` | `go mod tidy` |
+| `make generate` | `go generate ./...` (controller-gen: CRDs, deepcopy) |
+| `make verify` | lint + `./hack/diff.sh generate` + `go tool goreleaser check` + `go build ./...` (all non-test validation) |
 
 ## Containerization
 
-- Multi-stage Dockerfile: build stage (Go builder) + runtime stage (distroless/static)
-- Image: `orb-operator:latest` (configurable via `IMG` variable)
+- goreleaser builds the binary and Docker image (`ghcr.io/joelanford/orb-operator`)
+- Dockerfile: single-stage (`gcr.io/distroless/static:nonroot`), binary copied from goreleaser build context
 
 ## CI/CD
 
-- GitHub Actions workflow for PRs: `make check` (fmt, lint, test, build)
-- GitHub Actions workflow for pushes to main: build + push container image
+Separate GitHub Actions workflows per concern:
+
+| Workflow | Triggers | Runs |
+|---|---|---|
+| `unit.yml` | PR, push to main | `make test-unit` |
+| `integration.yml` | PR, push to main | `make test-integration` |
+| `e2e.yml` | PR, push to main | `make test-e2e` |
+| `verify.yml` | PR, push to main | `make verify` |
+| `image.yml` | push to main | `go tool goreleaser release --snapshot` |
