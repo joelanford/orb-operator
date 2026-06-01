@@ -16,7 +16,6 @@
 | `github.com/spf13/cobra` | CLI framework for the operator binary |
 | `github.com/spf13/pflag` | Flag parsing |
 | `k8s.io/klog/v2` | Logging implementation |
-| `github.com/google/go-jsonnet` | Manifest generation |
 
 ## Dev / Tool Dependencies
 
@@ -31,6 +30,8 @@ All build-time Go tools are declared as `tool` directives in go.mod and invoked 
 | `mvdan.cc/gofumpt` | Formatting (`go tool gofumpt`) |
 | `sigs.k8s.io/controller-tools` | CRD/RBAC/deepcopy generation (`go tool controller-gen`) |
 | `github.com/goreleaser/goreleaser` | Binary + Docker image builds (`go tool goreleaser`) |
+| `github.com/google/go-jsonnet` | Jsonnet rendering (`go tool jsonnet`) |
+| `sigs.k8s.io/kind` | Local Kubernetes clusters (`go tool kind`) |
 
 ## Project Structure
 
@@ -81,6 +82,7 @@ orb-operator/
 | `make tidy` | `go mod tidy` |
 | `make generate` | `go generate ./...` (controller-gen: CRDs, deepcopy) |
 | `make verify` | lint + `./hack/diff.sh generate` + `go tool goreleaser check` + `go build ./...` (all non-test validation) |
+| `make run` | Build image, create kind cluster (if needed), load image, apply manifests |
 
 ## Containerization
 
