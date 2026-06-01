@@ -1,6 +1,12 @@
 local image = std.extVar('image');
 local namespace = if std.extVar('namespace') != '' then std.extVar('namespace') else 'orb-operator-system';
 
+local crds = [
+  std.parseYaml(importstr 'crds/orb.operatorframework.io_clusterobjectsets.yaml')[0],
+  std.parseYaml(importstr 'crds/orb.operatorframework.io_clusterobjectsetrevisions.yaml')[0],
+  std.parseYaml(importstr 'crds/orb.operatorframework.io_clusterobjectslices.yaml')[0],
+];
+
 local ns = {
   apiVersion: 'v1',
   kind: 'Namespace',
@@ -90,5 +96,5 @@ local svc = {
 {
   apiVersion: 'v1',
   kind: 'List',
-  items: [ns, sa, crb, deploy, svc],
+  items: crds + [ns, sa, crb, deploy, svc],
 }
