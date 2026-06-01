@@ -25,7 +25,7 @@ release:
   disable: true
 
 snapshot:
-  version_template: "{{ .ShortCommit }}"
+  version_template: dev
 
 changelog:
   disable: true
