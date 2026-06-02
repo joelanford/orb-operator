@@ -10,6 +10,7 @@ import (
 // +kubebuilder:resource:scope=Cluster,shortName=cosr
 // +kubebuilder:printcolumn:name="Group",type=string,JSONPath=`.spec.group`
 // +kubebuilder:printcolumn:name="Revision",type=integer,JSONPath=`.spec.revision`
+// +kubebuilder:printcolumn:name="Available",type=string,JSONPath=`.status.conditions[?(@.type=="Available")].status`
 // +kubebuilder:printcolumn:name="Lifecycle",type=string,JSONPath=`.spec.lifecycleState`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 type ClusterObjectSetRevision struct {
@@ -27,12 +28,19 @@ type ClusterObjectSetRevisionList struct {
 	Items           []ClusterObjectSetRevision `json:"items"`
 }
 
+// +kubebuilder:validation:XValidation:rule="self.group == oldSelf.group",message="group is immutable"
+// +kubebuilder:validation:XValidation:rule="self.revision == oldSelf.revision",message="revision is immutable"
+// +kubebuilder:validation:XValidation:rule="self.phases == oldSelf.phases",message="phases is immutable"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.collisionProtection) && !has(self.collisionProtection) || has(oldSelf.collisionProtection) && has(self.collisionProtection) && self.collisionProtection == oldSelf.collisionProtection",message="collisionProtection is immutable"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.lifecycleState) || oldSelf.lifecycleState != 'Archived' || self.lifecycleState == 'Archived'",message="lifecycleState cannot transition from Archived"
 type ClusterObjectSetRevisionSpec struct {
+	// +kubebuilder:validation:MaxLength=253
 	Group               string               `json:"group"`
 	Revision            int32                `json:"revision"`
 	LifecycleState      LifecycleState       `json:"lifecycleState,omitempty"`
 	CollisionProtection *CollisionProtection `json:"collisionProtection,omitempty"`
-	Phases              []Phase              `json:"phases"`
+	// +kubebuilder:validation:MaxItems=20
+	Phases []Phase `json:"phases"`
 }
 
 type ClusterObjectSetRevisionStatus struct {
@@ -59,13 +67,15 @@ const (
 type Phase struct {
 	Name                string               `json:"name"`
 	CollisionProtection *CollisionProtection `json:"collisionProtection,omitempty"`
-	Objects             []PhaseObject        `json:"objects"`
+	// +kubebuilder:validation:MaxItems=50
+	Objects []PhaseObject `json:"objects"`
 }
 
 type PhaseObject struct {
 	Object              runtime.RawExtension `json:"object"`
 	CollisionProtection *CollisionProtection `json:"collisionProtection,omitempty"`
-	Assertions          []Assertion          `json:"assertions,omitempty"`
+	// +kubebuilder:validation:MaxItems=16
+	Assertions []Assertion `json:"assertions,omitempty"`
 }
 
 type Assertion struct {

@@ -12,9 +12,9 @@ Feature: COSRs in separate groups are independent
     # Both groups are independently Available
     Then the COSR in group "alpha" revision 1 should have condition "Available" with status "True"
     And the COSR in group "beta" revision 1 should have condition "Available" with status "True"
-    # Delete alpha's object — only alpha is affected
+    # Delete alpha's object — beta is unaffected, alpha recovers
     When the ConfigMap "cm-alpha" is deleted
-    Then the COSR in group "alpha" revision 1 should have condition "Available" with status "False"
+    Then the ConfigMap "cm-alpha" should be recreated
     And the COSR in group "beta" revision 1 should have condition "Available" with status "True"
     And the ConfigMap "cm-beta" should exist
 

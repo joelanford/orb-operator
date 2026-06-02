@@ -75,6 +75,73 @@ local deploy = {
   },
 };
 
+local vapCOSRName = {
+  apiVersion: 'admissionregistration.k8s.io/v1',
+  kind: 'ValidatingAdmissionPolicy',
+  metadata: { name: 'cosr-name-must-match-group-revision' },
+  spec: {
+    matchConstraints: {
+      resourceRules: [{
+        apiGroups: ['orb.operatorframework.io'],
+        apiVersions: ['v1alpha1'],
+        resources: ['clusterobjectsetrevisions'],
+        operations: ['CREATE'],
+      }],
+    },
+    validations: [{
+      expression: "object.metadata.name == object.spec.group + '-' + string(object.spec.revision)",
+      message: 'name must be {group}-{revision}',
+    }],
+  },
+};
+
+local vapCOSRNameBinding = {
+  apiVersion: 'admissionregistration.k8s.io/v1',
+  kind: 'ValidatingAdmissionPolicyBinding',
+  metadata: { name: 'cosr-name-must-match-group-revision' },
+  spec: {
+    policyName: vapCOSRName.metadata.name,
+    validationActions: ['Deny'],
+  },
+};
+
+local vapCOSROrphanFinalizer = {
+  apiVersion: 'admissionregistration.k8s.io/v1',
+  kind: 'ValidatingAdmissionPolicy',
+  metadata: { name: 'cosr-orphan-finalizer-ordering' },
+  spec: {
+    failurePolicy: 'Fail',
+    matchConstraints: {
+      resourceRules: [{
+        apiGroups: ['orb.operatorframework.io'],
+        apiVersions: ['v1alpha1'],
+        resources: ['clusterobjectsetrevisions'],
+        operations: ['UPDATE'],
+      }],
+    },
+    validations: [{
+      expression: |||
+        !(
+          oldObject.metadata.?finalizers.orValue([]).exists(f, f == 'orphan') &&
+          !object.metadata.?finalizers.orValue([]).exists(f, f == 'orphan') &&
+          object.metadata.?finalizers.orValue([]).exists(f, f == 'orb.operatorframework.io/cosr-finalizer')
+        )
+      |||,
+      message: 'cannot remove orphan finalizer while cosr-finalizer is still present',
+    }],
+  },
+};
+
+local vapCOSROrphanFinalizerBinding = {
+  apiVersion: 'admissionregistration.k8s.io/v1',
+  kind: 'ValidatingAdmissionPolicyBinding',
+  metadata: { name: 'cosr-orphan-finalizer-ordering' },
+  spec: {
+    policyName: vapCOSROrphanFinalizer.metadata.name,
+    validationActions: ['Deny'],
+  },
+};
+
 local svc = {
   apiVersion: 'v1',
   kind: 'Service',
@@ -96,5 +163,5 @@ local svc = {
 {
   apiVersion: 'v1',
   kind: 'List',
-  items: crds + [ns, sa, crb, deploy, svc],
+  items: crds + [vapCOSRName, vapCOSRNameBinding, vapCOSROrphanFinalizer, vapCOSROrphanFinalizerBinding, ns, sa, crb, deploy, svc],
 }

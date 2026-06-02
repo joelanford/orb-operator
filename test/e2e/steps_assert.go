@@ -24,6 +24,9 @@ func registerAssertSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the ConfigMap "([^"]*)" should not have data key "([^"]*)"$`, tc.theConfigMapShouldNotHaveDataKey)
 	sc.Step(`^the CRD "([^"]*)" should exist$`, tc.theCRDShouldExist)
 	sc.Step(`^the "([^"]*)" named "([^"]*)" should exist$`, tc.theCRShouldExist)
+	sc.Step(`^the ConfigMap "([^"]*)" should have an owner reference$`, tc.theConfigMapShouldHaveOwnerRef)
+	sc.Step(`^the ConfigMap "([^"]*)" should not have an owner reference$`, tc.theConfigMapShouldNotHaveOwnerRef)
+	sc.Step(`^the COSR should not exist$`, tc.theCOSRShouldNotExist)
 	sc.Step(`^the COSR should have condition "([^"]*)" with status "([^"]*)"$`, tc.theCOSRShouldHaveCondition)
 	sc.Step(`^the COSR should have condition "([^"]*)" with status "([^"]*)" and reason "([^"]*)"$`, tc.theCOSRShouldHaveConditionWithReason)
 	sc.Step(`^the COSR in group "([^"]*)" revision (\d+) should have condition "([^"]*)" with status "([^"]*)"$`, tc.theCOSRInGroupShouldHaveCondition)
@@ -96,6 +99,34 @@ func crGVK(crdName string) schema.GroupVersionKind {
 		Version: "v1alpha1",
 		Kind:    string(kind[0]-32) + kind[1:],
 	}
+}
+
+func (tc *testContext) theConfigMapShouldHaveOwnerRef(name string) error {
+	cm := &corev1.ConfigMap{}
+	if err := tc.pollForObject(context.Background(), types.NamespacedName{Namespace: tc.namespace, Name: name}, cm); err != nil {
+		return err
+	}
+	if len(cm.OwnerReferences) == 0 {
+		return fmt.Errorf("ConfigMap %q has no owner references", name)
+	}
+	return nil
+}
+
+func (tc *testContext) theConfigMapShouldNotHaveOwnerRef(name string) error {
+	cm := &corev1.ConfigMap{}
+	if err := tc.pollForObject(context.Background(), types.NamespacedName{Namespace: tc.namespace, Name: name}, cm); err != nil {
+		return err
+	}
+	if len(cm.OwnerReferences) > 0 {
+		return fmt.Errorf("ConfigMap %q still has owner references: %v", name, cm.OwnerReferences)
+	}
+	return nil
+}
+
+func (tc *testContext) theCOSRShouldNotExist() error {
+	name := tc.lastCreatedCOSRName()
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	return tc.pollForObjectAbsence(context.Background(), types.NamespacedName{Name: name}, cosr)
 }
 
 func (tc *testContext) theCOSRShouldHaveCondition(condType, status string) error {

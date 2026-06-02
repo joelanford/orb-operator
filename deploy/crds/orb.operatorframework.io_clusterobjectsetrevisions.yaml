@@ -23,6 +23,9 @@ spec:
     - jsonPath: .spec.revision
       name: Revision
       type: integer
+    - jsonPath: .status.conditions[?(@.type=="Available")].status
+      name: Available
+      type: string
     - jsonPath: .spec.lifecycleState
       name: Lifecycle
       type: string
@@ -59,6 +62,7 @@ spec:
                 - None
                 type: string
               group:
+                maxLength: 253
                 type: string
               lifecycleState:
                 enum:
@@ -122,6 +126,7 @@ spec:
                                   - fieldB
                                   type: object
                               type: object
+                            maxItems: 16
                             type: array
                           collisionProtection:
                             enum:
@@ -135,11 +140,13 @@ spec:
                         required:
                         - object
                         type: object
+                      maxItems: 50
                       type: array
                   required:
                   - name
                   - objects
                   type: object
+                maxItems: 20
                 type: array
               revision:
                 format: int32
@@ -149,6 +156,20 @@ spec:
             - phases
             - revision
             type: object
+            x-kubernetes-validations:
+            - message: group is immutable
+              rule: self.group == oldSelf.group
+            - message: revision is immutable
+              rule: self.revision == oldSelf.revision
+            - message: phases is immutable
+              rule: self.phases == oldSelf.phases
+            - message: collisionProtection is immutable
+              rule: '!has(oldSelf.collisionProtection) && !has(self.collisionProtection)
+                || has(oldSelf.collisionProtection) && has(self.collisionProtection)
+                && self.collisionProtection == oldSelf.collisionProtection'
+            - message: lifecycleState cannot transition from Archived
+              rule: '!has(oldSelf.lifecycleState) || oldSelf.lifecycleState != ''Archived''
+                || self.lifecycleState == ''Archived'''
           status:
             properties:
               conditions:

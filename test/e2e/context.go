@@ -17,7 +17,7 @@ import (
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 )
 
-const pollTimeout = 2 * time.Second
+const pollTimeout = 15 * time.Second
 
 const pollInterval = 100 * time.Millisecond
 

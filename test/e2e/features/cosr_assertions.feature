@@ -25,7 +25,7 @@ Feature: COSR assertion type evaluation
 
   Scenario: CEL expression assertion passes
     Given a COSR with group "test" and revision 1
-    And a phase "install" with a ConfigMap "cm-cel" with assertion celExpression "object.metadata.name == 'cm-cel'"
+    And a phase "install" with a ConfigMap "cm-cel" with assertion celExpression "self.metadata.name == 'cm-cel'"
     When the COSR is created
     Then the COSR should have condition "Available" with status "True"
 
@@ -54,6 +54,12 @@ Feature: COSR assertion type evaluation
 
   Scenario: CEL expression assertion fails with custom message
     Given a COSR with group "test" and revision 1
-    And a phase "install" with a ConfigMap "cm-cel-fail" with assertion celExpression "object.metadata.name == 'wrong'" message "name must be wrong"
+    And a phase "install" with a ConfigMap "cm-cel-fail" with assertion celExpression "self.metadata.name == 'wrong'" message "name must be wrong"
+    When the COSR is created
+    Then the COSR should have condition "Available" with status "False"
+
+  Scenario: Invalid CEL expression keeps COSR unavailable
+    Given a COSR with group "test" and revision 1
+    And a phase "install" with a ConfigMap "cm-bad-cel" with assertion celExpression "this is not valid CEL %%%" message "bad"
     When the COSR is created
     Then the COSR should have condition "Available" with status "False"

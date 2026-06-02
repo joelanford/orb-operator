@@ -37,7 +37,7 @@ verify: lint
 	go tool goreleaser check
 	go build ./...
 
-run:
+run: generate
 	go tool goreleaser release --snapshot --clean
 	go tool kind delete cluster --name $(KIND_CLUSTER) || true
 	go tool kind create cluster --name $(KIND_CLUSTER)

@@ -7,8 +7,10 @@ import (
 
 	"github.com/cucumber/godog"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 )
@@ -29,6 +31,8 @@ func registerActionSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^updating the COSR revision should fail$`, tc.updatingCOSRRevisionShouldFail)
 	sc.Step(`^updating the COSR phases should fail$`, tc.updatingCOSRPhasesShouldFail)
 	sc.Step(`^updating the COSR collisionProtection should fail$`, tc.updatingCOSRCollisionProtectionShouldFail)
+	sc.Step(`^the COSR is deleted with cascade orphan$`, tc.theCOSRIsDeletedWithCascadeOrphan)
+	sc.Step(`^the CRD "([^"]*)" is deleted$`, tc.theCRDIsDeleted)
 	sc.Step(`^the ConfigMap "([^"]*)" field "([^"]*)" is set to "([^"]*)"$`, tc.theConfigMapFieldIsSetTo)
 	sc.Step(`^the ConfigMap "([^"]*)" is recreated by the controller$`, tc.theConfigMapIsRecreatedByController)
 }
@@ -51,6 +55,27 @@ func (tc *testContext) theConfigMapIsDeleted(name string) error {
 		return fmt.Errorf("getting ConfigMap %q: %w", name, err)
 	}
 	return tc.client.Delete(context.Background(), cm)
+}
+
+func (tc *testContext) theCOSRIsDeletedWithCascadeOrphan() error {
+	name := tc.lastCreatedCOSRName()
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	if err := tc.client.Get(context.Background(), types.NamespacedName{Name: name}, cosr); err != nil {
+		return err
+	}
+	orphan := metav1.DeletePropagationOrphan
+	return tc.client.Delete(context.Background(), cosr, &client.DeleteOptions{
+		PropagationPolicy: &orphan,
+	})
+}
+
+func (tc *testContext) theCRDIsDeleted(name string) error {
+	crd := &apiextensionsv1.CustomResourceDefinition{}
+	key := types.NamespacedName{Name: name + ".e2e.orb.dev"}
+	if err := tc.client.Get(context.Background(), key, crd); err != nil {
+		return fmt.Errorf("getting CRD %q: %w", name, err)
+	}
+	return tc.client.Delete(context.Background(), crd)
 }
 
 func (tc *testContext) theCOSRLifecycleStateIsSetTo(state string) error {
