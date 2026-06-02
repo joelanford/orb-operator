@@ -1,0 +1,254 @@
+package e2e
+
+import (
+	"github.com/cucumber/godog"
+	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
+)
+
+func registerSetupSteps(sc *godog.ScenarioContext, tc *testContext) {
+	sc.Step(`^a COSR named "([^"]*)" with group "([^"]*)" and revision (\d+)$`, tc.aCOSRNamedWithGroupAndRevision)
+	sc.Step(`^a COSR with group "([^"]*)" and revision (\d+)$`, tc.aCOSRWithGroupAndRevision)
+	sc.Step(`^a phase "([^"]*)" with a ConfigMap "([^"]*)"$`, tc.aPhaseWithConfigMap)
+	sc.Step(`^the phase "([^"]*)" also has a ConfigMap "([^"]*)"$`, tc.phaseAlsoHasConfigMap)
+	sc.Step(`^a phase "([^"]*)" with a CRD "([^"]*)"$`, tc.aPhaseWithCRD)
+	sc.Step(`^the phase "([^"]*)" also has a CRD "([^"]*)"$`, tc.phaseAlsoHasCRD)
+	sc.Step(`^a phase "([^"]*)" with a CRD "([^"]*)" with assertion conditionEqual type "([^"]*)" status "([^"]*)"$`, tc.aPhaseWithCRDConditionEqual)
+	sc.Step(`^a phase "([^"]*)" with a "([^"]*)" named "([^"]*)"$`, tc.aPhaseWithCR)
+	sc.Step(`^the phase "([^"]*)" also has a "([^"]*)" named "([^"]*)"$`, tc.phaseAlsoHasCR)
+	sc.Step(`^a phase "([^"]*)" with a ConfigMap "([^"]*)" with assertion fieldValue path "([^"]*)" value "([^"]*)"$`, tc.aPhaseWithConfigMapFieldValue)
+	sc.Step(`^a phase "([^"]*)" with a ConfigMap "([^"]*)" with assertion celExpression "([^"]*)"$`, tc.aPhaseWithConfigMapCEL)
+	sc.Step(`^a phase "([^"]*)" with a ConfigMap "([^"]*)" with assertion celExpression "([^"]*)" message "([^"]*)"$`, tc.aPhaseWithConfigMapCELMessage)
+	sc.Step(`^a phase "([^"]*)" with a ConfigMap "([^"]*)" with data:$`, tc.aPhaseWithConfigMapDataTable)
+	sc.Step(`^a phase "([^"]*)" with a ConfigMap "([^"]*)" with data key "([^"]*)" value "([^"]*)"$`, tc.aPhaseWithConfigMapData)
+	sc.Step(`^the phase "([^"]*)" has a ConfigMap "([^"]*)"$`, tc.phaseHasConfigMap)
+	sc.Step(`^the phase "([^"]*)" also has a ConfigMap "([^"]*)" with data:$`, tc.phaseAlsoHasConfigMapDataTable)
+	sc.Step(`^the phase "([^"]*)" has a ConfigMap "([^"]*)" with data:$`, tc.phaseHasConfigMapDataTable)
+	sc.Step(`^the last object has assertion conditionEqual type "([^"]*)" status "([^"]*)"$`, tc.lastObjectHasConditionEqualAssertion)
+	sc.Step(`^the last object has assertion fieldsEqual fieldA "([^"]*)" fieldB "([^"]*)"$`, tc.lastObjectHasFieldsEqualAssertion)
+	sc.Step(`^the last object has assertion fieldValue path "([^"]*)" value "([^"]*)"$`, tc.lastObjectHasFieldValueAssertion)
+}
+
+func (tc *testContext) aCOSRNamedWithGroupAndRevision(name, group string, revision int32) {
+	tc.resetBuilder(group, revision)
+	tc.cosr.nameOverride = name
+}
+
+func (tc *testContext) aCOSRWithGroupAndRevision(group string, revision int32) {
+	tc.resetBuilder(group, revision)
+}
+
+func (tc *testContext) aPhaseWithConfigMap(phaseName, cmName string) {
+	tc.addPhase(phaseName)
+	tc.addObjectToPhase(newConfigMap(cmName, tc.namespace))
+}
+
+func (tc *testContext) phaseAlsoHasConfigMap(_, cmName string) {
+	tc.addObjectToPhase(newConfigMap(cmName, tc.namespace))
+}
+
+func (tc *testContext) aPhaseWithCRDConditionEqual(phaseName, crdName, condType, condStatus string) {
+	tc.addPhase(phaseName)
+	crd := newCRD(crdName)
+	tc.crds = append(tc.crds, crd.Name)
+	tc.addObjectWithAssertions(crd, []orbv1alpha1.Assertion{{
+		ConditionEqual: &orbv1alpha1.ConditionEqualAssertion{
+			Type:   condType,
+			Status: condStatus,
+		},
+	}})
+}
+
+func (tc *testContext) aPhaseWithCRD(phaseName, crdName string) {
+	tc.addPhase(phaseName)
+	crd := newCRD(crdName)
+	tc.crds = append(tc.crds, crd.Name)
+	tc.addObjectToPhase(crd)
+}
+
+func (tc *testContext) phaseAlsoHasCRD(_, crdName string) {
+	crd := newCRD(crdName)
+	tc.crds = append(tc.crds, crd.Name)
+	tc.addObjectToPhase(crd)
+}
+
+func (tc *testContext) aPhaseWithCR(phaseName, crdName, crName string) {
+	tc.addPhase(phaseName)
+	tc.addObjectToPhase(newCR(crdName, crName))
+}
+
+func (tc *testContext) phaseAlsoHasCR(_, crdName, crName string) {
+	tc.addObjectToPhase(newCR(crdName, crName))
+}
+
+func (tc *testContext) aPhaseWithConfigMapFieldValue(phaseName, cmName, path, value string) {
+	tc.addPhase(phaseName)
+	tc.addObjectWithAssertions(newConfigMap(cmName, tc.namespace), []orbv1alpha1.Assertion{{
+		FieldValue: &orbv1alpha1.FieldValueAssertion{
+			FieldPath: path,
+			Value:     value,
+		},
+	}})
+}
+
+func (tc *testContext) aPhaseWithConfigMapCEL(phaseName, cmName, expr string) {
+	tc.addPhase(phaseName)
+	tc.addObjectWithAssertions(newConfigMap(cmName, tc.namespace), []orbv1alpha1.Assertion{{
+		CELExpression: &orbv1alpha1.CELExpressionAssertion{
+			Expression: expr,
+		},
+	}})
+}
+
+func (tc *testContext) aPhaseWithConfigMapCELMessage(phaseName, cmName, expr, message string) {
+	tc.addPhase(phaseName)
+	tc.addObjectWithAssertions(newConfigMap(cmName, tc.namespace), []orbv1alpha1.Assertion{{
+		CELExpression: &orbv1alpha1.CELExpressionAssertion{
+			Expression: expr,
+			Message:    message,
+		},
+	}})
+}
+
+func (tc *testContext) aPhaseWithConfigMapDataTable(phaseName, cmName string, table *godog.Table) {
+	tc.addPhase(phaseName)
+	tc.addObjectToPhase(newConfigMapWithData(cmName, tc.namespace, tableToMap(table)))
+}
+
+func (tc *testContext) aPhaseWithConfigMapData(phaseName, cmName, key, value string) {
+	tc.addPhase(phaseName)
+	tc.addObjectToPhase(newConfigMapWithData(cmName, tc.namespace, map[string]string{key: value}))
+}
+
+func (tc *testContext) phaseHasConfigMap(phaseName, cmName string) {
+	tc.addPhase(phaseName)
+	tc.addObjectToPhase(newConfigMap(cmName, tc.namespace))
+}
+
+func (tc *testContext) phaseAlsoHasConfigMapDataTable(_, cmName string, table *godog.Table) {
+	tc.addObjectToPhase(newConfigMapWithData(cmName, tc.namespace, tableToMap(table)))
+}
+
+func (tc *testContext) phaseHasConfigMapDataTable(phaseName, cmName string, table *godog.Table) {
+	tc.addPhase(phaseName)
+	tc.addObjectToPhase(newConfigMapWithData(cmName, tc.namespace, tableToMap(table)))
+}
+
+func (tc *testContext) lastObjectHasConditionEqualAssertion(condType, condStatus string) {
+	phase := tc.currentPhase()
+	obj := &phase.Objects[len(phase.Objects)-1]
+	obj.Assertions = append(obj.Assertions, orbv1alpha1.Assertion{
+		ConditionEqual: &orbv1alpha1.ConditionEqualAssertion{
+			Type:   condType,
+			Status: condStatus,
+		},
+	})
+}
+
+func (tc *testContext) lastObjectHasFieldsEqualAssertion(fieldA, fieldB string) {
+	phase := tc.currentPhase()
+	obj := &phase.Objects[len(phase.Objects)-1]
+	obj.Assertions = append(obj.Assertions, orbv1alpha1.Assertion{
+		FieldsEqual: &orbv1alpha1.FieldsEqualAssertion{
+			FieldA: fieldA,
+			FieldB: fieldB,
+		},
+	})
+}
+
+func (tc *testContext) lastObjectHasFieldValueAssertion(path, value string) {
+	phase := tc.currentPhase()
+	obj := &phase.Objects[len(phase.Objects)-1]
+	obj.Assertions = append(obj.Assertions, orbv1alpha1.Assertion{
+		FieldValue: &orbv1alpha1.FieldValueAssertion{
+			FieldPath: path,
+			Value:     value,
+		},
+	})
+}
+
+func newConfigMap(name, namespace string) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "ConfigMap",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+	}
+}
+
+func newConfigMapWithData(name, namespace string, data map[string]string) *corev1.ConfigMap {
+	cm := newConfigMap(name, namespace)
+	cm.Data = data
+	return cm
+}
+
+func newCRD(name string) *apiextensionsv1.CustomResourceDefinition {
+	return &apiextensionsv1.CustomResourceDefinition{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apiextensions.k8s.io/v1",
+			Kind:       "CustomResourceDefinition",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name + ".e2e.orb.dev",
+		},
+		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
+			Group: "e2e.orb.dev",
+			Names: apiextensionsv1.CustomResourceDefinitionNames{
+				Plural:   name,
+				Singular: name[:len(name)-1],
+				Kind:     capitalize(name[:len(name)-1]),
+			},
+			Scope: apiextensionsv1.ClusterScoped,
+			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{{
+				Name:    "v1alpha1",
+				Served:  true,
+				Storage: true,
+				Schema: &apiextensionsv1.CustomResourceValidation{
+					OpenAPIV3Schema: &apiextensionsv1.JSONSchemaProps{
+						Type:                   "object",
+						XPreserveUnknownFields: boolPtr(true),
+					},
+				},
+			}},
+		},
+	}
+}
+
+func capitalize(s string) string {
+	if s == "" {
+		return s
+	}
+	return string(s[0]-32) + s[1:]
+}
+
+func boolPtr(b bool) *bool {
+	return &b
+}
+
+func newCR(crdName, crName string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "e2e.orb.dev/v1alpha1",
+			"kind":       capitalize(crdName[:len(crdName)-1]),
+			"metadata": map[string]interface{}{
+				"name": crName,
+			},
+		},
+	}
+}
+
+func tableToMap(table *godog.Table) map[string]string {
+	data := make(map[string]string)
+	for _, row := range table.Rows[1:] {
+		data[row.Cells[0].Value] = row.Cells[1].Value
+	}
+	return data
+}

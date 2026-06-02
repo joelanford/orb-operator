@@ -25,7 +25,8 @@ All build-time Go tools are declared as `tool` directives in go.mod and invoked 
 |---|---|
 | `github.com/stretchr/testify` | Unit test assertions (assert/require) |
 | `github.com/cucumber/godog` | BDD-style e2e tests |
-| `sigs.k8s.io/controller-runtime/pkg/envtest` | Integration test environment (API server + etcd) |
+| `sigs.k8s.io/controller-runtime/pkg/envtest` | Integration and e2e test environment (API server + etcd) |
+| `sigs.k8s.io/controller-runtime/tools/setup-envtest` | Downloads envtest binaries matching k8s.io/api version (`go tool setup-envtest`) |
 | `github.com/golangci/golangci-lint` | Linting (`go tool golangci-lint`) |
 | `mvdan.cc/gofumpt` | Formatting (`go tool gofumpt`) |
 | `sigs.k8s.io/controller-tools` | CRD/RBAC/deepcopy generation (`go tool controller-gen`) |

@@ -10,7 +10,7 @@
 - Generate deepcopy methods via controller-gen
 - Register types with the runtime scheme in `api/v1alpha1/groupversion_info.go`
 - Generate CRD manifest to `deploy/crds/` via controller-gen
-- Group/version: `orb.io/v1alpha1`
+- Group/version: `orb.operatorframework.io/v1alpha1`
 
 ## E2E Test Infrastructure
 
@@ -50,7 +50,7 @@ Feature files must cover these COSR single-revision behaviors:
 - `make generate` produces deepcopy and CRD manifest with no diff
 - `make test-e2e` runs and all tests fail with timeout/assertion errors (not compile or setup errors)
 - `make lint` passes
-- CRD manifest in `deploy/crds/` has correct group (`orb.io`), version (`v1alpha1`), kind (`ClusterObjectSetRevision`)
+- CRD manifest in `deploy/crds/` has correct group (`orb.operatorframework.io`), version (`v1alpha1`), kind (`ClusterObjectSetRevision`)
 - Feature files are valid Gherkin (godog parses them without error)
 - All step definitions are implemented (no undefined steps, no godog.ErrPending)
 - Every scenario fails with a timeout or assertion error, not a compilation or infrastructure error

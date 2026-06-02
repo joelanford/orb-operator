@@ -3,9 +3,9 @@
 ## Implementation Correctness
 
 - [ ] `api/v1alpha1/types.go` defines ClusterObjectSetRevision with spec fields matching ADR-0001: group, revision, lifecycleState, phases
-- [ ] `api/v1alpha1/groupversion_info.go` registers the scheme with group `orb.io` and version `v1alpha1`
+- [ ] `api/v1alpha1/groupversion_info.go` registers the scheme with group `orb.operatorframework.io` and version `v1alpha1`
 - [ ] `zz_generated.deepcopy.go` is generated and up-to-date
-- [ ] CRD manifest exists in `deploy/crds/` with group `orb.io`, version `v1alpha1`, kind `ClusterObjectSetRevision`, scope `Cluster`
+- [ ] CRD manifest exists in `deploy/crds/` with group `orb.operatorframework.io`, version `v1alpha1`, kind `ClusterObjectSetRevision`, scope `Cluster`
 - [ ] CRD has subresource status enabled
 - [ ] CRD has print columns for group, revision, lifecycleState, age
 - [ ] godog is a dependency in go.mod

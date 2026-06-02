@@ -1,7 +1,7 @@
 # Implementation Plan
 
 1. **Define COSR API types**
-   - Create `api/v1alpha1/groupversion_info.go` with `SchemeBuilder`, `GroupVersion` (`orb.io/v1alpha1`), and `AddToScheme`
+   - Create `api/v1alpha1/groupversion_info.go` with `SchemeBuilder`, `GroupVersion` (`orb.operatorframework.io/v1alpha1`), and `AddToScheme`
    - Create `api/v1alpha1/types.go` with all COSR type definitions: `ClusterObjectSetRevision`, `ClusterObjectSetRevisionList`, `ClusterObjectSetRevisionSpec`, `ClusterObjectSetRevisionStatus` (conditions only), `Phase`, `PhaseObject`, `Assertion`, `ConditionEqualAssertion`, `FieldsEqualAssertion`, `FieldValueAssertion`, `CELExpressionAssertion`, `LifecycleState`
    - Add controller-gen markers: `+kubebuilder:object:root=true`, `+kubebuilder:subresource:status`, `+kubebuilder:resource:scope=Cluster`, print columns for group/revision/lifecycleState/age
 

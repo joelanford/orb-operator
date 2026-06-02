@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 ---
 # COSR API Types & E2E Test Definitions
 
@@ -15,7 +15,7 @@ Scope: COSR only, inline objects only. No COS, no ClusterObjectSlice, no collisi
 
 The ClusterObjectSetRevision is a cluster-scoped resource following the ADR-0001 design. For this iteration, objects are embedded inline in phases (ClusterObjectSlice references come later).
 
-Group/version: `orb.io/v1alpha1`
+Group/version: `orb.operatorframework.io/v1alpha1`
 
 Type hierarchy:
 
