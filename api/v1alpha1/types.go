@@ -68,6 +68,7 @@ const (
 
 	ReasonAvailable   = "Available"
 	ReasonUnavailable = "Unavailable"
+	ReasonProgressing = "Progressing"
 	ReasonArchived    = "Archived"
 	ReasonSuperseded  = "Superseded"
 )
