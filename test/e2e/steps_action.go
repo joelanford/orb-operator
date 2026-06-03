@@ -218,7 +218,7 @@ func (tc *testContext) theConfigMapIsRecreatedByController(_ string) error {
 	return nil
 }
 
-func (tc *testContext) aNewCOSRIsCreated(group string, revision int32) {
+func (tc *testContext) aNewCOSRIsCreated(group string, revision uint32) {
 	tc.resetBuilder(group, revision)
 }
 
@@ -233,7 +233,7 @@ func (tc *testContext) theNewCOSRIsCreatedAndBecomesAvailable() error {
 	return tc.pollForCondition(context.Background(), tc.lastCreatedCOSRName(), "Available", metav1.ConditionTrue)
 }
 
-func (tc *testContext) revisionIsArchived(revision int32) error {
+func (tc *testContext) revisionIsArchived(revision uint32) error {
 	for name, cosr := range tc.cosrs {
 		if cosr.Spec.Revision == revision {
 			latest := &orbv1alpha1.ClusterObjectSetRevision{}

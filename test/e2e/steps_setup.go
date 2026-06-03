@@ -39,12 +39,12 @@ func registerSetupSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^a standalone ConfigMap "([^"]*)" exists$`, tc.aStandaloneConfigMapExists)
 }
 
-func (tc *testContext) aCOSRNamedWithGroupAndRevision(name, group string, revision int32) {
+func (tc *testContext) aCOSRNamedWithGroupAndRevision(name, group string, revision uint32) {
 	tc.resetBuilder(group, revision)
 	tc.cosr.nameOverride = name
 }
 
-func (tc *testContext) aCOSRWithGroupAndRevision(group string, revision int32) {
+func (tc *testContext) aCOSRWithGroupAndRevision(group string, revision uint32) {
 	tc.resetBuilder(group, revision)
 }
 

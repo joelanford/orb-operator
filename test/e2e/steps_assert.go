@@ -145,7 +145,7 @@ func (tc *testContext) theCOSRShouldHaveCondition(condType, status string) error
 	return tc.pollForCondition(context.Background(), name, condType, metav1.ConditionStatus(status))
 }
 
-func (tc *testContext) theCOSRInGroupShouldHaveCondition(group string, revision int32, condType, status string) error {
+func (tc *testContext) theCOSRInGroupShouldHaveCondition(group string, revision uint32, condType, status string) error {
 	name := fmt.Sprintf("%s-%s-%d", tc.namespace, group, revision)
 	return tc.pollForCondition(context.Background(), name, condType, metav1.ConditionStatus(status))
 }
@@ -155,7 +155,7 @@ func (tc *testContext) theCOSRShouldHaveConditionWithReason(condType, status, re
 	return tc.pollForConditionWithReason(context.Background(), name, condType, metav1.ConditionStatus(status), reason)
 }
 
-func (tc *testContext) revisionShouldHaveConditionWithReason(revision int32, condType, status, reason string) error {
+func (tc *testContext) revisionShouldHaveConditionWithReason(revision uint32, condType, status, reason string) error {
 	for name, cosr := range tc.cosrs {
 		if cosr.Spec.Revision == revision {
 			return tc.pollForConditionWithReason(context.Background(), name, condType, metav1.ConditionStatus(status), reason)

@@ -152,6 +152,7 @@ spec:
                 type: array
               revision:
                 format: int32
+                minimum: 1
                 type: integer
             required:
             - group

@@ -35,8 +35,9 @@ type ClusterObjectSetRevisionList struct {
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.lifecycleState) || oldSelf.lifecycleState != 'Archived' || self.lifecycleState == 'Archived'",message="lifecycleState cannot transition from Archived"
 type ClusterObjectSetRevisionSpec struct {
 	// +kubebuilder:validation:MaxLength=253
-	Group               string               `json:"group"`
-	Revision            int32                `json:"revision"`
+	Group string `json:"group"`
+	// +kubebuilder:validation:Minimum=1
+	Revision            uint32               `json:"revision"`
 	LifecycleState      LifecycleState       `json:"lifecycleState,omitempty"`
 	CollisionProtection *CollisionProtection `json:"collisionProtection,omitempty"`
 	// +kubebuilder:validation:MinItems=1
@@ -68,10 +69,10 @@ const (
 const (
 	ConditionTypeAvailable = "Available"
 
-	ReasonAvailable  = "Available"
+	ReasonAvailable   = "Available"
 	ReasonUnavailable = "Unavailable"
-	ReasonArchived   = "Archived"
-	ReasonSuperseded = "Superseded"
+	ReasonArchived    = "Archived"
+	ReasonSuperseded  = "Superseded"
 )
 
 type Phase struct {

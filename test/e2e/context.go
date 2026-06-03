@@ -35,7 +35,7 @@ type testContext struct {
 type cosrBuilder struct {
 	nameOverride        string
 	group               string
-	revision            int32
+	revision            uint32
 	collisionProtection *orbv1alpha1.CollisionProtection
 	phases              []orbv1alpha1.Phase
 }
@@ -71,7 +71,7 @@ func (tc *testContext) teardown(ctx context.Context) error {
 	return tc.client.Delete(ctx, ns)
 }
 
-func (tc *testContext) resetBuilder(group string, revision int32) {
+func (tc *testContext) resetBuilder(group string, revision uint32) {
 	tc.cosr = &cosrBuilder{
 		group:    tc.namespace + "-" + group,
 		revision: revision,
