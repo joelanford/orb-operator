@@ -5,8 +5,10 @@ import (
 	"fmt"
 
 	"github.com/cucumber/godog"
+	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -32,6 +34,20 @@ func registerAssertSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the COSR should have condition "([^"]*)" with status "([^"]*)" and reason "([^"]*)"$`, tc.theCOSRShouldHaveConditionWithReason)
 	sc.Step(`^the COSR in group "([^"]*)" revision (\d+) should have condition "([^"]*)" with status "([^"]*)"$`, tc.theCOSRInGroupShouldHaveCondition)
 	sc.Step(`^revision (\d+) should have condition "([^"]*)" with status "([^"]*)" and reason "([^"]*)"$`, tc.revisionShouldHaveConditionWithReason)
+
+	// COS assert steps
+	sc.Step(`^a COSR should exist with group "([^"]*)" and revision (\d+)$`, tc.aCOSRShouldExistWithGroupAndRevision)
+	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should have lifecycleState "([^"]*)"$`, tc.cosrShouldHaveLifecycleState)
+	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should have collisionProtection "([^"]*)"$`, tc.cosrShouldHaveCollisionProtection)
+	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should have (\d+) phases$`, tc.cosrShouldHavePhaseCount)
+	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should have label "([^"]*)" with value "([^"]*)"$`, tc.cosrShouldHaveLabel)
+	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should have annotation "([^"]*)" with value "([^"]*)"$`, tc.cosrShouldHaveAnnotation)
+	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should have a controller owner reference to COS "([^"]*)"$`, tc.cosrShouldHaveControllerOwnerRef)
+	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should not exist$`, tc.cosrShouldNotExist)
+	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should not have an owner reference$`, tc.cosrShouldNotHaveOwnerRef)
+	sc.Step(`^the COSR count for COS "([^"]*)" should be (\d+)$`, tc.cosrCountForCOSShouldBe)
+	sc.Step(`^the COS "([^"]*)" should have condition "([^"]*)" with status "([^"]*)" and reason "([^"]*)"$`, tc.theCOSShouldHaveConditionWithReason)
+	sc.Step(`^the stamped COSR spec for "([^"]*)" revision (\d+) should match the COS template spec$`, tc.stampedCOSRSpecShouldMatchTemplate)
 }
 
 func (tc *testContext) theConfigMapShouldExist(name string) error {
@@ -172,4 +188,155 @@ func (tc *testContext) revisionShouldHaveConditionWithReason(revision uint32, co
 		}
 	}
 	return fmt.Errorf("revision %d not found", revision)
+}
+
+func (tc *testContext) cosrName(group string, revision uint32) string {
+	return fmt.Sprintf("%s-%s-%d", tc.namespace, group, revision)
+}
+
+func (tc *testContext) getCOSR(ctx context.Context, group string, revision uint32) (*orbv1alpha1.ClusterObjectSetRevision, error) {
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	if err := tc.pollForObject(ctx, types.NamespacedName{Name: tc.cosrName(group, revision)}, cosr); err != nil {
+		return nil, fmt.Errorf("COSR %s-%d not found: %w", group, revision, err)
+	}
+	return cosr, nil
+}
+
+func (tc *testContext) aCOSRShouldExistWithGroupAndRevision(group string, revision uint32) error {
+	_, err := tc.getCOSR(context.Background(), group, revision)
+	return err
+}
+
+func (tc *testContext) cosrShouldHaveLifecycleState(group string, revision uint32, state string) error {
+	cosr, err := tc.getCOSR(context.Background(), group, revision)
+	if err != nil {
+		return err
+	}
+	actual := string(cosr.Spec.LifecycleState)
+	if actual == "" {
+		actual = "Active"
+	}
+	if actual != state {
+		return fmt.Errorf("COSR %s-%d lifecycleState: got %q, want %q", group, revision, actual, state)
+	}
+	return nil
+}
+
+func (tc *testContext) cosrShouldHaveCollisionProtection(group string, revision uint32, cp string) error {
+	cosr, err := tc.getCOSR(context.Background(), group, revision)
+	if err != nil {
+		return err
+	}
+	if cosr.Spec.CollisionProtection == nil {
+		return fmt.Errorf("COSR %s-%d collisionProtection is nil, want %q", group, revision, cp)
+	}
+	if string(*cosr.Spec.CollisionProtection) != cp {
+		return fmt.Errorf("COSR %s-%d collisionProtection: got %q, want %q", group, revision, *cosr.Spec.CollisionProtection, cp)
+	}
+	return nil
+}
+
+func (tc *testContext) cosrShouldHavePhaseCount(group string, revision uint32, count int) error {
+	cosr, err := tc.getCOSR(context.Background(), group, revision)
+	if err != nil {
+		return err
+	}
+	if len(cosr.Spec.Phases) != count {
+		return fmt.Errorf("COSR %s-%d phases: got %d, want %d", group, revision, len(cosr.Spec.Phases), count)
+	}
+	return nil
+}
+
+func (tc *testContext) cosrShouldHaveLabel(group string, revision uint32, key, value string) error {
+	cosr, err := tc.getCOSR(context.Background(), group, revision)
+	if err != nil {
+		return err
+	}
+	if got := cosr.Labels[key]; got != value {
+		return fmt.Errorf("COSR %s-%d label %q: got %q, want %q", group, revision, key, got, value)
+	}
+	return nil
+}
+
+func (tc *testContext) cosrShouldHaveAnnotation(group string, revision uint32, key, value string) error {
+	cosr, err := tc.getCOSR(context.Background(), group, revision)
+	if err != nil {
+		return err
+	}
+	if got := cosr.Annotations[key]; got != value {
+		return fmt.Errorf("COSR %s-%d annotation %q: got %q, want %q", group, revision, key, got, value)
+	}
+	return nil
+}
+
+func (tc *testContext) cosrShouldHaveControllerOwnerRef(group string, revision uint32, cosName string) error {
+	cosr, err := tc.getCOSR(context.Background(), group, revision)
+	if err != nil {
+		return err
+	}
+	fullCOSName := tc.namespace + "-" + cosName
+	for _, ref := range cosr.OwnerReferences {
+		if ref.Kind == "ClusterObjectSet" && ref.Name == fullCOSName && ref.Controller != nil && *ref.Controller {
+			return nil
+		}
+	}
+	return fmt.Errorf("COSR %s-%d has no controller owner reference to COS %q", group, revision, fullCOSName)
+}
+
+func (tc *testContext) cosrShouldNotExist(group string, revision uint32) error {
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	return tc.pollForObjectAbsence(context.Background(), types.NamespacedName{Name: tc.cosrName(group, revision)}, cosr)
+}
+
+func (tc *testContext) cosrShouldNotHaveOwnerRef(group string, revision uint32) error {
+	cosr, err := tc.getCOSR(context.Background(), group, revision)
+	if err != nil {
+		return err
+	}
+	if len(cosr.OwnerReferences) > 0 {
+		return fmt.Errorf("COSR %s-%d still has owner references: %v", group, revision, cosr.OwnerReferences)
+	}
+	return nil
+}
+
+func (tc *testContext) cosrCountForCOSShouldBe(cosName string, count int) error {
+	fullCOSName := tc.namespace + "-" + cosName
+	var list orbv1alpha1.ClusterObjectSetRevisionList
+	if err := tc.client.List(context.Background(), &list); err != nil {
+		return err
+	}
+	actual := 0
+	for _, cosr := range list.Items {
+		if cosr.Spec.Group == fullCOSName {
+			actual++
+		}
+	}
+	if actual != count {
+		return fmt.Errorf("COSR count for COS %q: got %d, want %d", cosName, actual, count)
+	}
+	return nil
+}
+
+func (tc *testContext) stampedCOSRSpecShouldMatchTemplate(group string, revision uint32) error {
+	cosr, err := tc.getCOSR(context.Background(), group, revision)
+	if err != nil {
+		return err
+	}
+	expected := tc.tmpl.build()
+	actual := cosr.Spec.ClusterObjectSetTemplateSpec
+
+	if !equality.Semantic.DeepEqual(expected, actual) {
+		return fmt.Errorf("COSR spec does not match COS template spec:\n%s", cmp.Diff(expected, actual))
+	}
+	return nil
+}
+
+func (tc *testContext) theCOSShouldHaveConditionWithReason(cosName, condType, status, reason string) error {
+	fullCOSName := tc.namespace + "-" + cosName
+	return tc.pollForConditionWithReasonOn(
+		context.Background(),
+		&orbv1alpha1.ClusterObjectSet{},
+		types.NamespacedName{Name: fullCOSName},
+		cosConditions, condType, metav1.ConditionStatus(status), reason,
+	)
 }

@@ -61,15 +61,6 @@ Feature: COSR multi-revision ownership handoffs within a group
     And the new COSR is created and becomes Available
     Then revision 1 should have condition "Available" with status "False" and reason "Archived"
 
-  Scenario: Two revisions created simultaneously resolve correctly
-    Given a COSR with group "test" and revision 1
-    And a phase "install" with a ConfigMap "cm-race"
-    And the COSR is created
-    When a COSR with group "test" and revision 2 is created
-    And the phase "install" has a ConfigMap "cm-race"
-    And the new COSR is created and becomes Available
-    Then revision 1 should have condition "Available" with status "False" and reason "Archived"
-
   Scenario: Old revision is archived after new revision succeeds
     Given a COSR with group "test" and revision 1
     And a phase "install" with a ConfigMap "cm-archive-test"

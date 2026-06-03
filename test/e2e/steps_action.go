@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -33,12 +34,26 @@ func registerActionSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^updating the COSR revision should fail$`, tc.updatingCOSRRevisionShouldFail)
 	sc.Step(`^updating the COSR phases should fail$`, tc.updatingCOSRPhasesShouldFail)
 	sc.Step(`^updating the COSR collisionProtection should fail$`, tc.updatingCOSRCollisionProtectionShouldFail)
+	sc.Step(`^creating a COSR with revision 0 should fail$`, tc.creatingCOSRWithRevisionZeroShouldFail)
+	sc.Step(`^creating a COSR with a group name of exactly 52 characters should succeed$`, tc.creatingCOSRWithExact52CharGroupShouldSucceed)
+	sc.Step(`^creating a COSR with a group name longer than 52 characters should fail$`, tc.creatingCOSRWithLongGroupShouldFail)
 	sc.Step(`^the COSR is deleted with cascade foreground$`, tc.theCOSRIsDeletedWithCascadeForeground)
 	sc.Step(`^the COSR is deleted with cascade background$`, tc.theCOSRIsDeletedWithCascadeBackground)
 	sc.Step(`^the COSR is deleted with cascade orphan$`, tc.theCOSRIsDeletedWithCascadeOrphan)
 	sc.Step(`^the CRD "([^"]*)" is deleted$`, tc.theCRDIsDeleted)
 	sc.Step(`^the ConfigMap "([^"]*)" field "([^"]*)" is set to "([^"]*)"$`, tc.theConfigMapFieldIsSetTo)
 	sc.Step(`^the ConfigMap "([^"]*)" is recreated by the controller$`, tc.theConfigMapIsRecreatedByController)
+
+	// COS action steps
+	sc.Step(`^the COS is created$`, tc.theCOSIsCreated)
+	sc.Step(`^the COS template spec is updated with a ConfigMap "([^"]*)" in phase "([^"]*)"$`, tc.theCOSTemplateSpecIsUpdated)
+	sc.Step(`^the COS template label "([^"]*)" is updated to "([^"]*)"$`, tc.theCOSTemplateLabelIsUpdated)
+	sc.Step(`^the COS "([^"]*)" is deleted$`, tc.theCOSIsDeleted)
+	sc.Step(`^the COS "([^"]*)" is deleted with cascade orphan$`, tc.theCOSIsDeletedWithCascadeOrphan)
+	sc.Step(`^the COS "([^"]*)" label "([^"]*)" is set to "([^"]*)"$`, tc.theCOSLabelIsSetTo)
+	sc.Step(`^the COS "([^"]*)" revisionHistoryLimit is set to (\d+)$`, tc.theCOSRevisionHistoryLimitIsSetTo)
+	sc.Step(`^creating a COS with a name of exactly 52 characters should succeed$`, tc.creatingCOSWithExact52CharNameShouldSucceed)
+	sc.Step(`^creating a COS with a name longer than 52 characters should fail$`, tc.creatingCOSWithLongNameShouldFail)
 }
 
 func (tc *testContext) theCOSRIsCreated() error {
@@ -180,6 +195,46 @@ func (tc *testContext) updatingCOSRPhasesShouldFail() error {
 	return nil
 }
 
+func (tc *testContext) creatingCOSRWithRevisionZeroShouldFail() error {
+	tc.resetCOSRBuilder("rev-zero", 0)
+	tc.addPhase("install")
+	tc.addObjectToPhase(newConfigMap("cm-rev-zero", tc.namespace))
+	err := tc.createCOSR(context.Background())
+	if err == nil {
+		return fmt.Errorf("expected COSR with revision 0 to fail, but it succeeded")
+	}
+	return nil
+}
+
+func (tc *testContext) cosrGroupOfLength(n int) string {
+	prefix := tc.namespace + "-"
+	pad := n - len(prefix)
+	if pad < 0 {
+		pad = 0
+	}
+	return prefix + strings.Repeat("a", pad)
+}
+
+func (tc *testContext) creatingCOSRWithExact52CharGroupShouldSucceed() error {
+	tc.resetCOSRBuilder("x", 1)
+	tc.cosr.group = tc.cosrGroupOfLength(52)
+	tc.addPhase("install")
+	tc.addObjectToPhase(newConfigMap("cm-exact-group", tc.namespace))
+	return tc.createCOSR(context.Background())
+}
+
+func (tc *testContext) creatingCOSRWithLongGroupShouldFail() error {
+	tc.resetCOSRBuilder("x", 1)
+	tc.cosr.group = tc.cosrGroupOfLength(53)
+	tc.addPhase("install")
+	tc.addObjectToPhase(newConfigMap("cm-long-group", tc.namespace))
+	err := tc.createCOSR(context.Background())
+	if err == nil {
+		return fmt.Errorf("expected COSR with group longer than 52 characters to fail, but it succeeded")
+	}
+	return nil
+}
+
 func (tc *testContext) updatingCOSRCollisionProtectionShouldFail() error {
 	name := tc.lastCreatedCOSRName()
 	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
@@ -245,4 +300,115 @@ func (tc *testContext) revisionIsArchived(revision uint32) error {
 		}
 	}
 	return fmt.Errorf("revision %d not found", revision)
+}
+
+func (tc *testContext) theCOSIsCreated() error {
+	return tc.createCOS(context.Background())
+}
+
+func (tc *testContext) theCOSTemplateSpecIsUpdated(cmName, phaseName string) error {
+	ctx := context.Background()
+	name := tc.lastCreatedCOSName()
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	if err := tc.client.Get(ctx, types.NamespacedName{Name: name}, cos); err != nil {
+		return err
+	}
+	cos.Spec.Template.Spec = orbv1alpha1.ClusterObjectSetTemplateSpec{
+		Phases: []orbv1alpha1.Phase{{
+			Name: phaseName,
+			Objects: []orbv1alpha1.PhaseObject{{
+				Object: runtime.RawExtension{Object: newConfigMap(cmName, tc.namespace)},
+			}},
+		}},
+	}
+	return tc.client.Update(ctx, cos)
+}
+
+func (tc *testContext) theCOSTemplateLabelIsUpdated(key, value string) error {
+	ctx := context.Background()
+	name := tc.lastCreatedCOSName()
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	if err := tc.client.Get(ctx, types.NamespacedName{Name: name}, cos); err != nil {
+		return err
+	}
+	if cos.Spec.Template.Metadata.Labels == nil {
+		cos.Spec.Template.Metadata.Labels = make(map[string]string)
+	}
+	cos.Spec.Template.Metadata.Labels[key] = value
+	return tc.client.Update(ctx, cos)
+}
+
+func (tc *testContext) theCOSLabelIsSetTo(cosName, key, value string) error {
+	ctx := context.Background()
+	fullName := tc.namespace + "-" + cosName
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	if err := tc.client.Get(ctx, types.NamespacedName{Name: fullName}, cos); err != nil {
+		return err
+	}
+	if cos.Labels == nil {
+		cos.Labels = make(map[string]string)
+	}
+	cos.Labels[key] = value
+	return tc.client.Update(ctx, cos)
+}
+
+func (tc *testContext) theCOSRevisionHistoryLimitIsSetTo(cosName string, limit int32) error {
+	ctx := context.Background()
+	fullName := tc.namespace + "-" + cosName
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	if err := tc.client.Get(ctx, types.NamespacedName{Name: fullName}, cos); err != nil {
+		return err
+	}
+	cos.Spec.RevisionHistoryLimit = &limit
+	return tc.client.Update(ctx, cos)
+}
+
+func (tc *testContext) cosNameOfLength(n int) string {
+	prefix := tc.namespace + "-"
+	pad := n - len(prefix)
+	if pad < 0 {
+		pad = 0
+	}
+	return prefix + strings.Repeat("b", pad)
+}
+
+func (tc *testContext) creatingCOSWithExact52CharNameShouldSucceed() error {
+	tc.resetCOSBuilder("x")
+	tc.cos.name = tc.cosNameOfLength(52)
+	tc.addPhase("install")
+	tc.addObjectToPhase(newConfigMap("cm-exact-name", tc.namespace))
+	return tc.createCOS(context.Background())
+}
+
+func (tc *testContext) creatingCOSWithLongNameShouldFail() error {
+	tc.resetCOSBuilder("x")
+	tc.cos.name = tc.cosNameOfLength(53)
+	tc.addPhase("install")
+	tc.addObjectToPhase(newConfigMap("cm-long-name", tc.namespace))
+	err := tc.createCOS(context.Background())
+	if err == nil {
+		return fmt.Errorf("expected COS with name longer than 52 characters to fail, but it succeeded")
+	}
+	return nil
+}
+
+func (tc *testContext) theCOSIsDeleted(name string) error {
+	cosName := tc.namespace + "-" + name
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	if err := tc.client.Get(context.Background(), types.NamespacedName{Name: cosName}, cos); err != nil {
+		return err
+	}
+	return tc.client.Delete(context.Background(), cos)
+}
+
+func (tc *testContext) theCOSIsDeletedWithCascadeOrphan(name string) error {
+	cosName := tc.namespace + "-" + name
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	if err := tc.client.Get(context.Background(), types.NamespacedName{Name: cosName}, cos); err != nil {
+		return err
+	}
+	orphan := metav1.DeletePropagationOrphan
+	return tc.client.Delete(context.Background(), cos, &client.DeleteOptions{
+		PropagationPolicy: &orphan,
+	})
 }

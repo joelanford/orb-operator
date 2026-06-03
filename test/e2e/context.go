@@ -120,10 +120,6 @@ func (tc *testContext) resetCOSBuilder(name string) {
 	tc.cosr = nil
 }
 
-func (tc *testContext) activeTemplateBuilder() *templateSpecBuilder {
-	return tc.tmpl
-}
-
 func (tc *testContext) buildCOSR() *orbv1alpha1.ClusterObjectSetRevision {
 	name := tc.cosr.nameOverride
 	if name == "" {
@@ -231,10 +227,6 @@ func (tc *testContext) pollForConditionOn(ctx context.Context, obj client.Object
 
 func (tc *testContext) pollForCOSRCondition(ctx context.Context, name string, condType string, status metav1.ConditionStatus) error {
 	return tc.pollForConditionOn(ctx, &orbv1alpha1.ClusterObjectSetRevision{}, types.NamespacedName{Name: name}, cosrConditions, condType, status)
-}
-
-func (tc *testContext) pollForCOSCondition(ctx context.Context, name string, condType string, status metav1.ConditionStatus) error {
-	return tc.pollForConditionOn(ctx, &orbv1alpha1.ClusterObjectSet{}, types.NamespacedName{Name: name}, cosConditions, condType, status)
 }
 
 func (tc *testContext) pollForConditionWithReasonOn(ctx context.Context, obj client.Object, key types.NamespacedName, accessor conditionAccessor, condType string, status metav1.ConditionStatus, reason string) error {

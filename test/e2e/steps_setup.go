@@ -37,6 +37,12 @@ func registerSetupSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the phase "([^"]*)" collisionProtection is "([^"]*)"$`, tc.thePhaseCollisionProtectionIs)
 	sc.Step(`^the last object collisionProtection is "([^"]*)"$`, tc.theLastObjectCollisionProtectionIs)
 	sc.Step(`^a standalone ConfigMap "([^"]*)" exists$`, tc.aStandaloneConfigMapExists)
+
+	// COS setup steps
+	sc.Step(`^a COS named "([^"]*)"$`, tc.aCOSNamed)
+	sc.Step(`^a COS named "([^"]*)" with revisionHistoryLimit (\d+)$`, tc.aCOSNamedWithRevisionHistoryLimit)
+	sc.Step(`^the COS template has label "([^"]*)" with value "([^"]*)"$`, tc.theCOSTemplateHasLabel)
+	sc.Step(`^the COS template has annotation "([^"]*)" with value "([^"]*)"$`, tc.theCOSTemplateHasAnnotation)
 }
 
 func (tc *testContext) aCOSRNamedWithGroupAndRevision(name, group string, revision uint32) {
@@ -200,6 +206,29 @@ func (tc *testContext) theLastObjectCollisionProtectionIs(cp string) {
 
 func (tc *testContext) aStandaloneConfigMapExists(name string) error {
 	return tc.client.Create(context.Background(), newConfigMap(name, tc.namespace))
+}
+
+func (tc *testContext) aCOSNamed(name string) {
+	tc.resetCOSBuilder(name)
+}
+
+func (tc *testContext) aCOSNamedWithRevisionHistoryLimit(name string, limit int32) {
+	tc.resetCOSBuilder(name)
+	tc.cos.revisionHistoryLimit = &limit
+}
+
+func (tc *testContext) theCOSTemplateHasLabel(key, value string) {
+	if tc.cos.labels == nil {
+		tc.cos.labels = make(map[string]string)
+	}
+	tc.cos.labels[key] = value
+}
+
+func (tc *testContext) theCOSTemplateHasAnnotation(key, value string) {
+	if tc.cos.annotations == nil {
+		tc.cos.annotations = make(map[string]string)
+	}
+	tc.cos.annotations[key] = value
 }
 
 func newConfigMap(name, namespace string) *corev1.ConfigMap {
