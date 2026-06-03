@@ -29,19 +29,22 @@ type testContext struct {
 	lastCreatedCOSR string
 	cosr            *cosrBuilder
 	crds            []string
+	trackedUIDs     map[string]types.UID
 }
 
 type cosrBuilder struct {
-	nameOverride string
-	group        string
-	revision     int32
-	phases       []orbv1alpha1.Phase
+	nameOverride        string
+	group               string
+	revision            int32
+	collisionProtection *orbv1alpha1.CollisionProtection
+	phases              []orbv1alpha1.Phase
 }
 
 func newTestContext(c client.Client) *testContext {
 	return &testContext{
-		client: c,
-		cosrs:  make(map[string]*orbv1alpha1.ClusterObjectSetRevision),
+		client:      c,
+		cosrs:       make(map[string]*orbv1alpha1.ClusterObjectSetRevision),
+		trackedUIDs: make(map[string]types.UID),
 	}
 }
 
@@ -85,9 +88,10 @@ func (tc *testContext) buildCOSR() *orbv1alpha1.ClusterObjectSetRevision {
 			Name: name,
 		},
 		Spec: orbv1alpha1.ClusterObjectSetRevisionSpec{
-			Group:    tc.cosr.group,
-			Revision: tc.cosr.revision,
-			Phases:   tc.cosr.phases,
+			Group:               tc.cosr.group,
+			Revision:            tc.cosr.revision,
+			CollisionProtection: tc.cosr.collisionProtection,
+			Phases:              tc.cosr.phases,
 		},
 	}
 }

@@ -67,6 +67,22 @@ Feature: COSR Active and Archived lifecycle behavior
     And the ConfigMap "cm-orphan" should exist
     And the ConfigMap "cm-orphan" should not have an owner reference
 
+  Scenario: Foreground deletion tears down managed objects
+    Given a COSR with group "test" and revision 1
+    And a phase "install" with a ConfigMap "cm-fg-delete"
+    And the COSR is created and becomes Available
+    When the COSR is deleted with cascade foreground
+    Then the COSR should not exist
+    And the ConfigMap "cm-fg-delete" should not exist
+
+  Scenario: Background deletion tears down managed objects
+    Given a COSR with group "test" and revision 1
+    And a phase "install" with a ConfigMap "cm-bg-delete"
+    And the COSR is created and becomes Available
+    When the COSR is deleted with cascade background
+    Then the COSR should not exist
+    And the ConfigMap "cm-bg-delete" should not exist
+
   Scenario: Archiving a single-revision COSR deletes managed objects
     Given a COSR with group "test" and revision 1
     And a phase "install" with a ConfigMap "cm-archive"

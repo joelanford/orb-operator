@@ -19,6 +19,7 @@ func registerAssertSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the ConfigMap "([^"]*)" should exist$`, tc.theConfigMapShouldExist)
 	sc.Step(`^the ConfigMap "([^"]*)" should not exist$`, tc.theConfigMapShouldNotExist)
 	sc.Step(`^the ConfigMap "([^"]*)" should be recreated$`, tc.theConfigMapShouldBeRecreated)
+	sc.Step(`^the ConfigMap "([^"]*)" UID is tracked$`, tc.theConfigMapUIDisTracked)
 	sc.Step(`^the ConfigMap "([^"]*)" should not have been deleted and recreated$`, tc.theConfigMapShouldNotHaveBeenRecreated)
 	sc.Step(`^the ConfigMap "([^"]*)" should have data key "([^"]*)" with value "([^"]*)"$`, tc.theConfigMapShouldHaveDataKeyValue)
 	sc.Step(`^the ConfigMap "([^"]*)" should not have data key "([^"]*)"$`, tc.theConfigMapShouldNotHaveDataKey)
@@ -47,14 +48,24 @@ func (tc *testContext) theConfigMapShouldBeRecreated(name string) error {
 	return tc.pollForObject(context.Background(), types.NamespacedName{Namespace: tc.namespace, Name: name}, &corev1.ConfigMap{})
 }
 
+func (tc *testContext) theConfigMapUIDisTracked(name string) error {
+	cm := &corev1.ConfigMap{}
+	key := types.NamespacedName{Namespace: tc.namespace, Name: name}
+	if err := tc.client.Get(context.Background(), key, cm); err != nil {
+		return fmt.Errorf("ConfigMap %q should exist: %w", name, err)
+	}
+	tc.trackedUIDs[name] = cm.UID
+	return nil
+}
+
 func (tc *testContext) theConfigMapShouldNotHaveBeenRecreated(name string) error {
 	cm := &corev1.ConfigMap{}
 	key := types.NamespacedName{Namespace: tc.namespace, Name: name}
 	if err := tc.client.Get(context.Background(), key, cm); err != nil {
 		return fmt.Errorf("ConfigMap %q should exist: %w", name, err)
 	}
-	if cm.DeletionTimestamp != nil {
-		return fmt.Errorf("ConfigMap %q is being deleted", name)
+	if tracked, ok := tc.trackedUIDs[name]; ok && cm.UID != tracked {
+		return fmt.Errorf("ConfigMap %q was recreated: UID changed from %s to %s", name, tracked, cm.UID)
 	}
 	return nil
 }

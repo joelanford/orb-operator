@@ -27,10 +27,14 @@ func registerActionSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the new COSR is created and becomes Available$`, tc.theNewCOSRIsCreatedAndBecomesAvailable)
 	sc.Step(`^revision (\d+) is archived$`, tc.revisionIsArchived)
 	sc.Step(`^creating the COSR should fail$`, tc.creatingTheCOSRShouldFail)
+	sc.Step(`^creating a COSR with zero phases should fail$`, tc.creatingCOSRWithZeroPhasesShouldFail)
+	sc.Step(`^creating a COSR with a phase with zero objects should fail$`, tc.creatingCOSRWithZeroObjectsShouldFail)
 	sc.Step(`^updating the COSR group should fail$`, tc.updatingCOSRGroupShouldFail)
 	sc.Step(`^updating the COSR revision should fail$`, tc.updatingCOSRRevisionShouldFail)
 	sc.Step(`^updating the COSR phases should fail$`, tc.updatingCOSRPhasesShouldFail)
 	sc.Step(`^updating the COSR collisionProtection should fail$`, tc.updatingCOSRCollisionProtectionShouldFail)
+	sc.Step(`^the COSR is deleted with cascade foreground$`, tc.theCOSRIsDeletedWithCascadeForeground)
+	sc.Step(`^the COSR is deleted with cascade background$`, tc.theCOSRIsDeletedWithCascadeBackground)
 	sc.Step(`^the COSR is deleted with cascade orphan$`, tc.theCOSRIsDeletedWithCascadeOrphan)
 	sc.Step(`^the CRD "([^"]*)" is deleted$`, tc.theCRDIsDeleted)
 	sc.Step(`^the ConfigMap "([^"]*)" field "([^"]*)" is set to "([^"]*)"$`, tc.theConfigMapFieldIsSetTo)
@@ -57,16 +61,27 @@ func (tc *testContext) theConfigMapIsDeleted(name string) error {
 	return tc.client.Delete(context.Background(), cm)
 }
 
-func (tc *testContext) theCOSRIsDeletedWithCascadeOrphan() error {
+func (tc *testContext) theCOSRIsDeletedWithCascadeForeground() error {
+	return tc.deleteCOSRWithPropagation(metav1.DeletePropagationForeground)
+}
+
+func (tc *testContext) theCOSRIsDeletedWithCascadeBackground() error {
+	return tc.deleteCOSRWithPropagation(metav1.DeletePropagationBackground)
+}
+
+func (tc *testContext) deleteCOSRWithPropagation(policy metav1.DeletionPropagation) error {
 	name := tc.lastCreatedCOSRName()
 	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
 	if err := tc.client.Get(context.Background(), types.NamespacedName{Name: name}, cosr); err != nil {
 		return err
 	}
-	orphan := metav1.DeletePropagationOrphan
 	return tc.client.Delete(context.Background(), cosr, &client.DeleteOptions{
-		PropagationPolicy: &orphan,
+		PropagationPolicy: &policy,
 	})
+}
+
+func (tc *testContext) theCOSRIsDeletedWithCascadeOrphan() error {
+	return tc.deleteCOSRWithPropagation(metav1.DeletePropagationOrphan)
 }
 
 func (tc *testContext) theCRDIsDeleted(name string) error {
@@ -100,6 +115,25 @@ func (tc *testContext) creatingTheCOSRShouldFail() error {
 	err := tc.createCOSR(context.Background())
 	if err == nil {
 		return fmt.Errorf("expected COSR creation to fail, but it succeeded")
+	}
+	return nil
+}
+
+func (tc *testContext) creatingCOSRWithZeroPhasesShouldFail() error {
+	tc.resetBuilder("zero-phases", 1)
+	err := tc.createCOSR(context.Background())
+	if err == nil {
+		return fmt.Errorf("expected COSR with zero phases to fail, but it succeeded")
+	}
+	return nil
+}
+
+func (tc *testContext) creatingCOSRWithZeroObjectsShouldFail() error {
+	tc.resetBuilder("zero-objects", 1)
+	tc.addPhase("empty")
+	err := tc.createCOSR(context.Background())
+	if err == nil {
+		return fmt.Errorf("expected COSR with zero objects in phase to fail, but it succeeded")
 	}
 	return nil
 }

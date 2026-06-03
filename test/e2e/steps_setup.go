@@ -1,6 +1,8 @@
 package e2e
 
 import (
+	"context"
+
 	"github.com/cucumber/godog"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -31,6 +33,10 @@ func registerSetupSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the last object has assertion conditionEqual type "([^"]*)" status "([^"]*)"$`, tc.lastObjectHasConditionEqualAssertion)
 	sc.Step(`^the last object has assertion fieldsEqual fieldA "([^"]*)" fieldB "([^"]*)"$`, tc.lastObjectHasFieldsEqualAssertion)
 	sc.Step(`^the last object has assertion fieldValue path "([^"]*)" value "([^"]*)"$`, tc.lastObjectHasFieldValueAssertion)
+	sc.Step(`^the COSR collisionProtection is "([^"]*)"$`, tc.theCOSRCollisionProtectionIs)
+	sc.Step(`^the phase "([^"]*)" collisionProtection is "([^"]*)"$`, tc.thePhaseCollisionProtectionIs)
+	sc.Step(`^the last object collisionProtection is "([^"]*)"$`, tc.theLastObjectCollisionProtectionIs)
+	sc.Step(`^a standalone ConfigMap "([^"]*)" exists$`, tc.aStandaloneConfigMapExists)
 }
 
 func (tc *testContext) aCOSRNamedWithGroupAndRevision(name, group string, revision int32) {
@@ -169,6 +175,31 @@ func (tc *testContext) lastObjectHasFieldValueAssertion(path, value string) {
 			Value:     value,
 		},
 	})
+}
+
+func (tc *testContext) theCOSRCollisionProtectionIs(cp string) {
+	v := orbv1alpha1.CollisionProtection(cp)
+	tc.cosr.collisionProtection = &v
+}
+
+func (tc *testContext) thePhaseCollisionProtectionIs(phaseName, cp string) {
+	v := orbv1alpha1.CollisionProtection(cp)
+	for i := range tc.cosr.phases {
+		if tc.cosr.phases[i].Name == phaseName {
+			tc.cosr.phases[i].CollisionProtection = &v
+			return
+		}
+	}
+}
+
+func (tc *testContext) theLastObjectCollisionProtectionIs(cp string) {
+	v := orbv1alpha1.CollisionProtection(cp)
+	phase := tc.currentPhase()
+	phase.Objects[len(phase.Objects)-1].CollisionProtection = &v
+}
+
+func (tc *testContext) aStandaloneConfigMapExists(name string) error {
+	return tc.client.Create(context.Background(), newConfigMap(name, tc.namespace))
 }
 
 func newConfigMap(name, namespace string) *corev1.ConfigMap {

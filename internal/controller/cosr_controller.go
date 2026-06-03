@@ -2,9 +2,10 @@ package controller
 
 import (
 	"context"
+	"cmp"
 	"encoding/json"
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -164,7 +165,10 @@ func (r *COSRReconciler) handleDeletion(ctx context.Context, log logr.Logger, co
 			return ctrl.Result{}, err
 		}
 
-		rev := r.buildRevision(cosr)
+		rev, err := r.buildRevision(cosr)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("building revision: %w", err)
+		}
 		result, err := engine.Teardown(ctx, rev)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("teardown: %w", err)
@@ -192,13 +196,16 @@ func (r *COSRReconciler) reconcileArchived(ctx context.Context, log logr.Logger,
 		return ctrl.Result{}, err
 	}
 
-	rev := r.buildRevision(cosr)
+	rev, err := r.buildRevision(cosr)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("building revision: %w", err)
+	}
 	result, err := engine.Teardown(ctx, rev)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("teardown: %w", err)
 	}
 
-	setCondition(cosr, metav1.ConditionFalse, "Archived", "COSR is archived")
+	setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, "COSR is archived")
 	if err := r.client.Status().Update(ctx, cosr); err != nil {
 		return ctrl.Result{}, fmt.Errorf("updating status: %w", err)
 	}
@@ -217,7 +224,7 @@ func (r *COSRReconciler) reconcileSuperseded(
 ) (ctrl.Result, error) {
 	log.Info("COSR superseded by newer revision", "latest", latestActive.Name)
 
-	setCondition(cosr, metav1.ConditionFalse, "Superseded", "a newer revision exists in this group")
+	setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, "a newer revision exists in this group")
 	if err := r.client.Status().Update(ctx, cosr); err != nil {
 		return ctrl.Result{}, fmt.Errorf("updating status: %w", err)
 	}
@@ -226,7 +233,10 @@ func (r *COSRReconciler) reconcileSuperseded(
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	latestRev := r.buildRevisionWithPreviousOwners(latestActive, []*orbv1alpha1.ClusterObjectSetRevision{cosr})
+	latestRev, err := r.buildRevisionWithPreviousOwners(latestActive, []*orbv1alpha1.ClusterObjectSetRevision{cosr})
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("building revision: %w", err)
+	}
 	latestResult, err := engine.Reconcile(ctx, latestRev)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("reconciling latest: %w", err)
@@ -261,16 +271,19 @@ func (r *COSRReconciler) reconcileActive(
 		return ctrl.Result{}, err
 	}
 
-	rev := r.buildRevisionWithPreviousOwners(cosr, previousOwners)
+	rev, err := r.buildRevisionWithPreviousOwners(cosr, previousOwners)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("building revision: %w", err)
+	}
 	result, err := engine.Reconcile(ctx, rev)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("reconciling: %w", err)
 	}
 
 	if result.IsComplete() {
-		setCondition(cosr, metav1.ConditionTrue, "Available", "all phases complete")
+		setCondition(cosr, metav1.ConditionTrue, orbv1alpha1.ReasonAvailable, "all phases complete")
 	} else {
-		setCondition(cosr, metav1.ConditionFalse, "Unavailable", "phases not yet complete")
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, "phases not yet complete")
 	}
 
 	if err := r.client.Status().Update(ctx, cosr); err != nil {
@@ -280,7 +293,10 @@ func (r *COSRReconciler) reconcileActive(
 }
 
 func (r *COSRReconciler) engineForCOSR(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) (*boxcutter.RevisionEngine, error) {
-	usedFor := r.managedObjectsForCOSR(cosr)
+	usedFor, err := r.managedObjectsForCOSR(cosr)
+	if err != nil {
+		return nil, fmt.Errorf("listing managed objects: %w", err)
+	}
 	accessor, err := r.accessManager.GetWithUser(ctx, cosr, cosr, usedFor)
 	if err != nil {
 		return nil, fmt.Errorf("getting accessor: %w", err)
@@ -301,12 +317,15 @@ func (r *COSRReconciler) engineForCOSR(ctx context.Context, cosr *orbv1alpha1.Cl
 	return engine, nil
 }
 
-func (r *COSRReconciler) managedObjectsForCOSR(cosr *orbv1alpha1.ClusterObjectSetRevision) []client.Object {
+func (r *COSRReconciler) managedObjectsForCOSR(cosr *orbv1alpha1.ClusterObjectSetRevision) ([]client.Object, error) {
 	seen := map[schema.GroupVersionKind]struct{}{}
 	var objects []client.Object
 	for _, p := range cosr.Spec.Phases {
 		for _, o := range p.Objects {
-			obj := objectFromRawExtension(o.Object)
+			obj, err := objectFromRawExtension(o.Object)
+			if err != nil {
+				return nil, fmt.Errorf("phase %q: %w", p.Name, err)
+			}
 			gvk := obj.GetObjectKind().GroupVersionKind()
 			if _, ok := seen[gvk]; ok {
 				continue
@@ -315,26 +334,35 @@ func (r *COSRReconciler) managedObjectsForCOSR(cosr *orbv1alpha1.ClusterObjectSe
 			objects = append(objects, obj)
 		}
 	}
-	return objects
+	return objects, nil
 }
 
-func (r *COSRReconciler) buildRevision(cosr *orbv1alpha1.ClusterObjectSetRevision) boxcutter.Revision {
+func (r *COSRReconciler) buildRevision(cosr *orbv1alpha1.ClusterObjectSetRevision) (boxcutter.Revision, error) {
 	return r.buildRevisionWithPreviousOwners(cosr, nil)
 }
 
 func (r *COSRReconciler) buildRevisionWithPreviousOwners(
 	cosr *orbv1alpha1.ClusterObjectSetRevision,
 	previousOwners []*orbv1alpha1.ClusterObjectSetRevision,
-) boxcutter.Revision {
+) (boxcutter.Revision, error) {
 	phases := make([]boxcutter.Phase, 0, len(cosr.Spec.Phases))
 
 	for _, p := range cosr.Spec.Phases {
 		objects := make([]client.Object, 0, len(p.Objects))
 		var phaseReconcileOpts []boxcutter.PhaseReconcileOption
 
+		if p.CollisionProtection != nil {
+			phaseReconcileOpts = append(phaseReconcileOpts, mapCollisionProtection(*p.CollisionProtection))
+		}
+
 		for _, o := range p.Objects {
-			obj := objectFromRawExtension(o.Object)
+			obj, err := objectFromRawExtension(o.Object)
+			if err != nil {
+				return nil, fmt.Errorf("phase %q: %w", p.Name, err)
+			}
 			objects = append(objects, obj)
+
+			var objOpts []boxcutter.ObjectReconcileOption
 
 			probe, err := assertions.ProbeForAssertions(o.Assertions)
 			if err != nil {
@@ -343,10 +371,16 @@ func (r *COSRReconciler) buildRevisionWithPreviousOwners(
 				})
 			}
 			if probe != nil {
+				objOpts = append(objOpts, boxcutter.WithProbe(boxcutter.ProgressProbeType, probe))
+			}
+
+			if o.CollisionProtection != nil {
+				objOpts = append(objOpts, mapCollisionProtection(*o.CollisionProtection))
+			}
+
+			if len(objOpts) > 0 {
 				phaseReconcileOpts = append(phaseReconcileOpts,
-					boxcutter.WithObjectReconcileOptions(obj,
-						boxcutter.WithProbe(boxcutter.ProgressProbeType, probe),
-					),
+					boxcutter.WithObjectReconcileOptions(obj, objOpts...),
 				)
 			}
 		}
@@ -360,16 +394,11 @@ func (r *COSRReconciler) buildRevisionWithPreviousOwners(
 
 	var reconcileOpts []boxcutter.RevisionReconcileOption
 
-	cp := boxcutter.CollisionProtectionPrevent
 	if cosr.Spec.CollisionProtection != nil {
-		switch *cosr.Spec.CollisionProtection {
-		case orbv1alpha1.CollisionProtectionIfNoController:
-			cp = boxcutter.CollisionProtectionIfNoController
-		case orbv1alpha1.CollisionProtectionNone:
-			cp = boxcutter.CollisionProtectionNone
-		}
+		reconcileOpts = append(reconcileOpts, mapCollisionProtection(*cosr.Spec.CollisionProtection))
+	} else {
+		reconcileOpts = append(reconcileOpts, mapCollisionProtection(orbv1alpha1.CollisionProtectionPrevent))
 	}
-	reconcileOpts = append(reconcileOpts, boxcutter.WithCollisionProtection(cp))
 
 	if len(previousOwners) > 0 {
 		prevOwners := make(boxcutter.WithPreviousOwners, 0, len(previousOwners))
@@ -389,7 +418,7 @@ func (r *COSRReconciler) buildRevisionWithPreviousOwners(
 	if len(reconcileOpts) > 0 {
 		rev.WithReconcileOptions(reconcileOpts...)
 	}
-	return rev
+	return rev, nil
 }
 
 func (r *COSRReconciler) listGroupMembers(ctx context.Context, group string) ([]orbv1alpha1.ClusterObjectSetRevision, error) {
@@ -397,8 +426,8 @@ func (r *COSRReconciler) listGroupMembers(ctx context.Context, group string) ([]
 	if err := r.client.List(ctx, &list, client.MatchingFields{groupIndex: group}); err != nil {
 		return nil, fmt.Errorf("listing group members: %w", err)
 	}
-	sort.Slice(list.Items, func(i, j int) bool {
-		return list.Items[i].Spec.Revision < list.Items[j].Spec.Revision
+	slices.SortFunc(list.Items, func(a, b orbv1alpha1.ClusterObjectSetRevision) int {
+		return cmp.Compare(a.Spec.Revision, b.Spec.Revision)
 	})
 	return list.Items, nil
 }
@@ -417,21 +446,26 @@ func findLatestActive(members []orbv1alpha1.ClusterObjectSetRevision) *orbv1alph
 	return latest
 }
 
-func objectFromRawExtension(raw runtime.RawExtension) *unstructured.Unstructured {
+func objectFromRawExtension(raw runtime.RawExtension) (*unstructured.Unstructured, error) {
 	if raw.Object != nil {
 		u := &unstructured.Unstructured{}
-		data, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(raw.Object)
+		data, err := runtime.DefaultUnstructuredConverter.ToUnstructured(raw.Object)
+		if err != nil {
+			return nil, fmt.Errorf("converting to unstructured: %w", err)
+		}
 		u.Object = data
-		return u
+		return u, nil
 	}
 	u := &unstructured.Unstructured{}
-	_ = u.UnmarshalJSON(raw.Raw)
-	return u
+	if err := u.UnmarshalJSON(raw.Raw); err != nil {
+		return nil, fmt.Errorf("unmarshalling raw extension: %w", err)
+	}
+	return u, nil
 }
 
 func setCondition(cosr *orbv1alpha1.ClusterObjectSetRevision, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
-		Type:               "Available",
+		Type:               orbv1alpha1.ConditionTypeAvailable,
 		Status:             status,
 		Reason:             reason,
 		Message:            message,
@@ -468,4 +502,15 @@ func removeFinalizer(ctx context.Context, c client.Client, obj client.Object, fi
 		return fmt.Errorf("removing finalizer: %w", err)
 	}
 	return nil
+}
+
+func mapCollisionProtection(cp orbv1alpha1.CollisionProtection) boxcutter.WithCollisionProtection {
+	switch cp {
+	case orbv1alpha1.CollisionProtectionIfNoController:
+		return boxcutter.WithCollisionProtection(boxcutter.CollisionProtectionIfNoController)
+	case orbv1alpha1.CollisionProtectionNone:
+		return boxcutter.WithCollisionProtection(boxcutter.CollisionProtectionNone)
+	default:
+		return boxcutter.WithCollisionProtection(boxcutter.CollisionProtectionPrevent)
+	}
 }

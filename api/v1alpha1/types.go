@@ -39,6 +39,7 @@ type ClusterObjectSetRevisionSpec struct {
 	Revision            int32                `json:"revision"`
 	LifecycleState      LifecycleState       `json:"lifecycleState,omitempty"`
 	CollisionProtection *CollisionProtection `json:"collisionProtection,omitempty"`
+	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=20
 	Phases []Phase `json:"phases"`
 }
@@ -64,9 +65,19 @@ const (
 	CollisionProtectionNone           CollisionProtection = "None"
 )
 
+const (
+	ConditionTypeAvailable = "Available"
+
+	ReasonAvailable  = "Available"
+	ReasonUnavailable = "Unavailable"
+	ReasonArchived   = "Archived"
+	ReasonSuperseded = "Superseded"
+)
+
 type Phase struct {
 	Name                string               `json:"name"`
 	CollisionProtection *CollisionProtection `json:"collisionProtection,omitempty"`
+	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=50
 	Objects []PhaseObject `json:"objects"`
 }

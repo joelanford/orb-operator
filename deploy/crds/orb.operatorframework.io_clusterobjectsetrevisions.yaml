@@ -141,12 +141,14 @@ spec:
                         - object
                         type: object
                       maxItems: 50
+                      minItems: 1
                       type: array
                   required:
                   - name
                   - objects
                   type: object
                 maxItems: 20
+                minItems: 1
                 type: array
               revision:
                 format: int32
