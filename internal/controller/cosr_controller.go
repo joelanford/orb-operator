@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/go-logr/logr"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -62,8 +63,8 @@ func NewCOSRReconciler(
 	}
 }
 
-func (r *COSRReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	if err := mgr.GetFieldIndexer().IndexField(
+func SetupIndexes(mgr ctrl.Manager) error {
+	return mgr.GetFieldIndexer().IndexField(
 		context.Background(),
 		&orbv1alpha1.ClusterObjectSetRevision{},
 		groupIndex,
@@ -71,10 +72,10 @@ func (r *COSRReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			cosr := obj.(*orbv1alpha1.ClusterObjectSetRevision)
 			return []string{cosr.Spec.Group}
 		},
-	); err != nil {
-		return fmt.Errorf("indexing %s: %w", groupIndex, err)
-	}
+	)
+}
 
+func (r *COSRReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&orbv1alpha1.ClusterObjectSetRevision{}).
 		WatchesRawSource(
@@ -114,23 +115,36 @@ func (r *COSRReconciler) mapToGroupMembers(ctx context.Context, obj client.Objec
 func (r *COSRReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
 
-	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
-	if err := r.client.Get(ctx, req.NamespacedName, cosr); err != nil {
+	existing := &orbv1alpha1.ClusterObjectSetRevision{}
+	if err := r.client.Get(ctx, req.NamespacedName, existing); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	if !cosr.DeletionTimestamp.IsZero() {
-		return r.handleDeletion(ctx, log, cosr)
+	if !existing.DeletionTimestamp.IsZero() {
+		return r.handleDeletion(ctx, log, existing)
 	}
 
-	if !controllerutil.ContainsFinalizer(cosr, finalizerKey) {
-		controllerutil.AddFinalizer(cosr, finalizerKey)
-		if err := r.client.Update(ctx, cosr); err != nil {
+	if !controllerutil.ContainsFinalizer(existing, finalizerKey) {
+		controllerutil.AddFinalizer(existing, finalizerKey)
+		if err := r.client.Update(ctx, existing); err != nil {
 			return ctrl.Result{}, fmt.Errorf("adding finalizer: %w", err)
 		}
 		return ctrl.Result{}, nil
 	}
 
+	cosr := existing.DeepCopy()
+	res, reconcileErr := r.reconcile(ctx, log, cosr)
+
+	if !equality.Semantic.DeepEqual(existing.Status, cosr.Status) {
+		if err := r.client.Status().Update(ctx, cosr); err != nil {
+			return res, fmt.Errorf("updating status: %w", err)
+		}
+	}
+
+	return res, reconcileErr
+}
+
+func (r *COSRReconciler) reconcile(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (ctrl.Result, error) {
 	groupMembers, err := r.listGroupMembers(ctx, cosr.Spec.Group)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -206,9 +220,6 @@ func (r *COSRReconciler) reconcileArchived(ctx context.Context, log logr.Logger,
 	}
 
 	setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, "COSR is archived")
-	if err := r.client.Status().Update(ctx, cosr); err != nil {
-		return ctrl.Result{}, fmt.Errorf("updating status: %w", err)
-	}
 
 	if !result.IsComplete() {
 		return ctrl.Result{Requeue: true}, nil
@@ -224,11 +235,6 @@ func (r *COSRReconciler) reconcileSuperseded(
 ) (ctrl.Result, error) {
 	log.Info("COSR superseded by newer revision", "latest", latestActive.Name)
 
-	setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, "a newer revision exists in this group")
-	if err := r.client.Status().Update(ctx, cosr); err != nil {
-		return ctrl.Result{}, fmt.Errorf("updating status: %w", err)
-	}
-
 	engine, err := r.engineForCOSR(ctx, latestActive)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -237,17 +243,21 @@ func (r *COSRReconciler) reconcileSuperseded(
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("building revision: %w", err)
 	}
-	latestResult, err := engine.Reconcile(ctx, latestRev)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("reconciling latest: %w", err)
+	_, engineErr := engine.Reconcile(ctx, latestRev)
+
+	setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, "a newer revision exists in this group")
+
+	if engineErr != nil {
+		return ctrl.Result{}, fmt.Errorf("reconciling latest: %w", engineErr)
 	}
 
-	if latestResult.IsComplete() {
+	if meta.IsStatusConditionTrue(latestActive.Status.Conditions, orbv1alpha1.ConditionTypeAvailable) {
 		cosr.Spec.LifecycleState = orbv1alpha1.LifecycleStateArchived
 		if err := r.client.Update(ctx, cosr); err != nil {
 			return ctrl.Result{}, fmt.Errorf("archiving superseded COSR: %w", err)
 		}
 	}
+
 	return ctrl.Result{}, nil
 }
 
@@ -277,6 +287,7 @@ func (r *COSRReconciler) reconcileActive(
 	}
 	result, err := engine.Reconcile(ctx, rev)
 	if err != nil {
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, fmt.Sprintf("reconcile failed: %v", err))
 		return ctrl.Result{}, fmt.Errorf("reconciling: %w", err)
 	}
 
@@ -284,10 +295,6 @@ func (r *COSRReconciler) reconcileActive(
 		setCondition(cosr, metav1.ConditionTrue, orbv1alpha1.ReasonAvailable, "all phases complete")
 	} else {
 		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, "phases not yet complete")
-	}
-
-	if err := r.client.Status().Update(ctx, cosr); err != nil {
-		return ctrl.Result{}, fmt.Errorf("updating status: %w", err)
 	}
 	return ctrl.Result{}, nil
 }
@@ -464,24 +471,13 @@ func objectFromRawExtension(raw runtime.RawExtension) (*unstructured.Unstructure
 }
 
 func setCondition(cosr *orbv1alpha1.ClusterObjectSetRevision, status metav1.ConditionStatus, reason, message string) {
-	condition := metav1.Condition{
+	meta.SetStatusCondition(&cosr.Status.Conditions, metav1.Condition{
 		Type:               orbv1alpha1.ConditionTypeAvailable,
 		Status:             status,
 		Reason:             reason,
 		Message:            message,
 		ObservedGeneration: cosr.Generation,
-		LastTransitionTime: metav1.Now(),
-	}
-	for i, c := range cosr.Status.Conditions {
-		if c.Type == condition.Type {
-			if c.Status == condition.Status && c.Reason == condition.Reason {
-				return
-			}
-			cosr.Status.Conditions[i] = condition
-			return
-		}
-	}
-	cosr.Status.Conditions = append(cosr.Status.Conditions, condition)
+	})
 }
 
 func removeFinalizer(ctx context.Context, c client.Client, obj client.Object, finalizer string) error {

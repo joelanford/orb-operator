@@ -38,7 +38,8 @@ type ClusterObjectSetRevisionSpec struct {
 	Group string `json:"group"`
 	// +kubebuilder:validation:Minimum=1
 	Revision                     uint32         `json:"revision"`
-	LifecycleState               LifecycleState `json:"lifecycleState,omitempty"`
+	// +kubebuilder:validation:Required
+	LifecycleState               LifecycleState `json:"lifecycleState"`
 	ClusterObjectSetTemplateSpec `json:",inline"`
 }
 

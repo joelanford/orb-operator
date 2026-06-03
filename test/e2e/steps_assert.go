@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/cucumber/godog"
@@ -13,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 )
@@ -47,6 +49,8 @@ func registerAssertSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should not have an owner reference$`, tc.cosrShouldNotHaveOwnerRef)
 	sc.Step(`^the COSR count for COS "([^"]*)" should be (\d+)$`, tc.cosrCountForCOSShouldBe)
 	sc.Step(`^the COS "([^"]*)" should have condition "([^"]*)" with status "([^"]*)" and reason "([^"]*)"$`, tc.theCOSShouldHaveConditionWithReason)
+	sc.Step(`^the COS "([^"]*)" should become available without becoming unavailable$`, tc.theCOSShouldBecomeAvailableWithoutBecomingUnavailable)
+	sc.Step(`^the COS "([^"]*)" should have active revision (\d+)$`, tc.theCOSShouldHaveActiveRevision)
 	sc.Step(`^the stamped COSR spec for "([^"]*)" revision (\d+) should match the COS template spec$`, tc.stampedCOSRSpecShouldMatchTemplate)
 }
 
@@ -208,18 +212,18 @@ func (tc *testContext) aCOSRShouldExistWithGroupAndRevision(group string, revisi
 }
 
 func (tc *testContext) cosrShouldHaveLifecycleState(group string, revision uint32, state string) error {
-	cosr, err := tc.getCOSR(context.Background(), group, revision)
-	if err != nil {
-		return err
-	}
-	actual := string(cosr.Spec.LifecycleState)
-	if actual == "" {
-		actual = "Active"
-	}
-	if actual != state {
-		return fmt.Errorf("COSR %s-%d lifecycleState: got %q, want %q", group, revision, actual, state)
-	}
-	return nil
+	name := tc.cosrName(group, revision)
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	return wait.PollUntilContextTimeout(context.Background(), pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		if err := tc.client.Get(ctx, types.NamespacedName{Name: name}, cosr); err != nil {
+			return false, nil
+		}
+		actual := string(cosr.Spec.LifecycleState)
+		if actual == "" {
+			actual = "Active"
+		}
+		return actual == state, nil
+	})
 }
 
 func (tc *testContext) cosrShouldHaveCollisionProtection(group string, revision uint32, cp string) error {
@@ -289,14 +293,15 @@ func (tc *testContext) cosrShouldNotExist(group string, revision uint32) error {
 }
 
 func (tc *testContext) cosrShouldNotHaveOwnerRef(group string, revision uint32) error {
-	cosr, err := tc.getCOSR(context.Background(), group, revision)
-	if err != nil {
-		return err
-	}
-	if len(cosr.OwnerReferences) > 0 {
-		return fmt.Errorf("COSR %s-%d still has owner references: %v", group, revision, cosr.OwnerReferences)
-	}
-	return nil
+	ctx := context.Background()
+	name := tc.cosrName(group, revision)
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		if err := tc.client.Get(ctx, types.NamespacedName{Name: name}, cosr); err != nil {
+			return false, nil
+		}
+		return len(cosr.OwnerReferences) == 0, nil
+	})
 }
 
 func (tc *testContext) cosrCountForCOSShouldBe(cosName string, count int) error {
@@ -317,6 +322,18 @@ func (tc *testContext) cosrCountForCOSShouldBe(cosName string, count int) error 
 	return nil
 }
 
+func normalizeViaJSON(v any) (any, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var out any
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (tc *testContext) stampedCOSRSpecShouldMatchTemplate(group string, revision uint32) error {
 	cosr, err := tc.getCOSR(context.Background(), group, revision)
 	if err != nil {
@@ -325,18 +342,72 @@ func (tc *testContext) stampedCOSRSpecShouldMatchTemplate(group string, revision
 	expected := tc.tmpl.build()
 	actual := cosr.Spec.ClusterObjectSetTemplateSpec
 
-	if !equality.Semantic.DeepEqual(expected, actual) {
-		return fmt.Errorf("COSR spec does not match COS template spec:\n%s", cmp.Diff(expected, actual))
+	// Normalize both through JSON so that runtime.RawExtension.Object vs .Raw differences are eliminated.
+	expectedNorm, err := normalizeViaJSON(expected)
+	if err != nil {
+		return fmt.Errorf("normalizing expected: %w", err)
+	}
+	actualNorm, err := normalizeViaJSON(actual)
+	if err != nil {
+		return fmt.Errorf("normalizing actual: %w", err)
+	}
+
+	if !equality.Semantic.DeepEqual(expectedNorm, actualNorm) {
+		return fmt.Errorf("COSR spec does not match COS template spec:\n%s", cmp.Diff(expectedNorm, actualNorm))
 	}
 	return nil
 }
 
+func (tc *testContext) theCOSShouldBecomeAvailableWithoutBecomingUnavailable(cosName string) error {
+	fullCOSName := tc.namespace + "-" + cosName
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	key := types.NamespacedName{Name: fullCOSName}
+	var sawUnavailable bool
+	err := wait.PollUntilContextTimeout(context.Background(), pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		if err := tc.client.Get(ctx, key, cos); err != nil {
+			return false, nil
+		}
+		for _, c := range cos.Status.Conditions {
+			if c.Type != orbv1alpha1.ConditionTypeAvailable || c.ObservedGeneration != cos.Generation {
+				continue
+			}
+			if c.Status == metav1.ConditionFalse {
+				sawUnavailable = true
+			}
+			if c.Status == metav1.ConditionTrue && c.Reason == orbv1alpha1.ReasonAvailable {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+	if sawUnavailable {
+		return fmt.Errorf("COS %q became unavailable during rollout", cosName)
+	}
+	return nil
+}
+
+func (tc *testContext) theCOSShouldHaveActiveRevision(cosName string, revision uint32) error {
+	fullCOSName := tc.namespace + "-" + cosName
+	expectedCOSRName := fmt.Sprintf("%s-%d", fullCOSName, revision)
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	key := types.NamespacedName{Name: fullCOSName}
+	return wait.PollUntilContextTimeout(context.Background(), pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		if err := tc.client.Get(ctx, key, cos); err != nil {
+			return false, nil
+		}
+		for _, rs := range cos.Status.ActiveRevisions {
+			if rs.Name == expectedCOSRName {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+}
+
 func (tc *testContext) theCOSShouldHaveConditionWithReason(cosName, condType, status, reason string) error {
 	fullCOSName := tc.namespace + "-" + cosName
-	return tc.pollForConditionWithReasonOn(
-		context.Background(),
-		&orbv1alpha1.ClusterObjectSet{},
-		types.NamespacedName{Name: fullCOSName},
-		cosConditions, condType, metav1.ConditionStatus(status), reason,
-	)
+	return tc.pollForCOSConditionWithReason(context.Background(), fullCOSName, condType, metav1.ConditionStatus(status), reason)
 }

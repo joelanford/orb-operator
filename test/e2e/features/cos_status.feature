@@ -31,3 +31,12 @@ Feature: COS status is derived from its COSRs
     Then the COS "status-progress" should have condition "Available" with status "True" and reason "Available"
     When the COS template spec is updated with a ConfigMap "cm-progress-2" in phase "install"
     Then the COS "status-progress" should have condition "Available" with status "Unknown" and reason "Progressing"
+
+  Scenario: COS never becomes Unavailable during a rollout
+    Given a COS named "status-rollout"
+    And a phase "install" with a ConfigMap "cm-rollout-1"
+    When the COS is created
+    Then the COS "status-rollout" should have condition "Available" with status "True" and reason "Available"
+    When the COS template spec is updated with a ConfigMap "cm-rollout-2" in phase "install"
+    Then the COS "status-rollout" should have active revision 2
+    And the COS "status-rollout" should become available without becoming unavailable

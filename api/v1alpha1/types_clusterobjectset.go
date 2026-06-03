@@ -32,6 +32,27 @@ type ClusterObjectSetTemplateMetadata struct {
 }
 
 type ClusterObjectSetStatus struct {
+	// +listType=map
+	// +listMapKey=type
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	// activeRevisions holds the currently active (non-archived) COSRs, including
+	// any revision just created but not yet visible in the informer cache.
+	// +listType=map
+	// +listMapKey=name
+	// +optional
+	ActiveRevisions []ClusterObjectSetRevisionStatusSummary `json:"activeRevisions,omitempty"`
+}
+
+// ClusterObjectSetRevisionStatusSummary summarizes the state of a single active COSR.
+type ClusterObjectSetRevisionStatusSummary struct {
+	// name of the ClusterObjectSetRevision resource.
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+	// conditions reflects the Available condition of the revision.
+	// +listType=map
+	// +listMapKey=type
+	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 

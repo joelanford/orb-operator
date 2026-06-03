@@ -35,6 +35,8 @@ func registerActionSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^updating the COSR phases should fail$`, tc.updatingCOSRPhasesShouldFail)
 	sc.Step(`^updating the COSR collisionProtection should fail$`, tc.updatingCOSRCollisionProtectionShouldFail)
 	sc.Step(`^creating a COSR with revision 0 should fail$`, tc.creatingCOSRWithRevisionZeroShouldFail)
+	sc.Step(`^creating a COSR with unset lifecycleState should fail$`, tc.creatingCOSRWithUnsetLifecycleStateShouldFail)
+	sc.Step(`^creating a COSR with unknown lifecycleState should fail$`, tc.creatingCOSRWithUnknownLifecycleStateShouldFail)
 	sc.Step(`^creating a COSR with a group name of exactly 52 characters should succeed$`, tc.creatingCOSRWithExact52CharGroupShouldSucceed)
 	sc.Step(`^creating a COSR with a group name longer than 52 characters should fail$`, tc.creatingCOSRWithLongGroupShouldFail)
 	sc.Step(`^the COSR is deleted with cascade foreground$`, tc.theCOSRIsDeletedWithCascadeForeground)
@@ -47,6 +49,7 @@ func registerActionSteps(sc *godog.ScenarioContext, tc *testContext) {
 	// COS action steps
 	sc.Step(`^the COS is created$`, tc.theCOSIsCreated)
 	sc.Step(`^the COS template spec is updated with a ConfigMap "([^"]*)" in phase "([^"]*)"$`, tc.theCOSTemplateSpecIsUpdated)
+	sc.Step(`^the COS template spec is updated with a gated ConfigMap "([^"]*)" in phase "([^"]*)"$`, tc.theCOSTemplateSpecIsUpdatedWithGatedConfigMap)
 	sc.Step(`^the COS template label "([^"]*)" is updated to "([^"]*)"$`, tc.theCOSTemplateLabelIsUpdated)
 	sc.Step(`^the COS "([^"]*)" is deleted$`, tc.theCOSIsDeleted)
 	sc.Step(`^the COS "([^"]*)" is deleted with cascade orphan$`, tc.theCOSIsDeletedWithCascadeOrphan)
@@ -206,6 +209,30 @@ func (tc *testContext) creatingCOSRWithRevisionZeroShouldFail() error {
 	return nil
 }
 
+func (tc *testContext) creatingCOSRWithUnsetLifecycleStateShouldFail() error {
+	tc.resetCOSRBuilder("lcs-unset", 1)
+	tc.addPhase("install")
+	tc.addObjectToPhase(newConfigMap("cm-lcs-unset", tc.namespace))
+	cosr := tc.buildCOSR()
+	cosr.Spec.LifecycleState = ""
+	if err := tc.client.Create(context.Background(), cosr); err == nil {
+		return fmt.Errorf("expected COSR with unset lifecycleState to fail, but it succeeded")
+	}
+	return nil
+}
+
+func (tc *testContext) creatingCOSRWithUnknownLifecycleStateShouldFail() error {
+	tc.resetCOSRBuilder("lcs-unknown", 1)
+	tc.addPhase("install")
+	tc.addObjectToPhase(newConfigMap("cm-lcs-unknown", tc.namespace))
+	cosr := tc.buildCOSR()
+	cosr.Spec.LifecycleState = "Unknown"
+	if err := tc.client.Create(context.Background(), cosr); err == nil {
+		return fmt.Errorf("expected COSR with unknown lifecycleState to fail, but it succeeded")
+	}
+	return nil
+}
+
 func (tc *testContext) cosrGroupOfLength(n int) string {
 	prefix := tc.namespace + "-"
 	pad := n - len(prefix)
@@ -318,6 +345,30 @@ func (tc *testContext) theCOSTemplateSpecIsUpdated(cmName, phaseName string) err
 			Name: phaseName,
 			Objects: []orbv1alpha1.PhaseObject{{
 				Object: runtime.RawExtension{Object: newConfigMap(cmName, tc.namespace)},
+			}},
+		}},
+	}
+	return tc.client.Update(ctx, cos)
+}
+
+func (tc *testContext) theCOSTemplateSpecIsUpdatedWithGatedConfigMap(cmName, phaseName string) error {
+	ctx := context.Background()
+	name := tc.lastCreatedCOSName()
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	if err := tc.client.Get(ctx, types.NamespacedName{Name: name}, cos); err != nil {
+		return err
+	}
+	cos.Spec.Template.Spec = orbv1alpha1.ClusterObjectSetTemplateSpec{
+		Phases: []orbv1alpha1.Phase{{
+			Name: phaseName,
+			Objects: []orbv1alpha1.PhaseObject{{
+				Object: runtime.RawExtension{Object: newConfigMap(cmName, tc.namespace)},
+				Assertions: []orbv1alpha1.Assertion{{
+					FieldValue: &orbv1alpha1.FieldValueAssertion{
+						FieldPath: ".data.ready",
+						Value:     "true",
+					},
+				}},
 			}},
 		}},
 	}

@@ -156,6 +156,7 @@ spec:
                 type: integer
             required:
             - group
+            - lifecycleState
             - phases
             - revision
             type: object

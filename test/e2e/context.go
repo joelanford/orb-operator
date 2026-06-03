@@ -132,6 +132,7 @@ func (tc *testContext) buildCOSR() *orbv1alpha1.ClusterObjectSetRevision {
 		Spec: orbv1alpha1.ClusterObjectSetRevisionSpec{
 			Group:                        tc.cosr.group,
 			Revision:                     tc.cosr.revision,
+			LifecycleState:               orbv1alpha1.LifecycleStateActive,
 			ClusterObjectSetTemplateSpec: tc.cosr.tmpl.build(),
 		},
 	}
@@ -230,15 +231,33 @@ func (tc *testContext) pollForCOSRCondition(ctx context.Context, name string, co
 }
 
 func (tc *testContext) pollForConditionWithReasonOn(ctx context.Context, obj client.Object, key types.NamespacedName, accessor conditionAccessor, condType string, status metav1.ConditionStatus, reason string) error {
-	if err := tc.pollForConditionOn(ctx, obj, key, accessor, condType, status); err != nil {
-		return err
-	}
-	for _, c := range accessor(obj) {
-		if c.Type == condType && c.Status == status && c.Reason == reason {
-			return nil
+	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		if err := tc.client.Get(ctx, key, obj); err != nil {
+			return false, nil
 		}
-	}
-	return fmt.Errorf("%T %q: condition %q with status %q and reason %q not found", obj, key.Name, condType, status, reason)
+		for _, c := range accessor(obj) {
+			if c.Type == condType && c.Status == status && c.Reason == reason {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+}
+
+func (tc *testContext) pollForCOSConditionWithReason(ctx context.Context, name string, condType string, status metav1.ConditionStatus, reason string) error {
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	key := types.NamespacedName{Name: name}
+	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		if err := tc.client.Get(ctx, key, cos); err != nil {
+			return false, nil
+		}
+		for _, c := range cos.Status.Conditions {
+			if c.Type == condType && c.Status == status && c.Reason == reason && c.ObservedGeneration == cos.Generation {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
 }
 
 func (tc *testContext) pollForObject(ctx context.Context, key types.NamespacedName, obj client.Object) error {

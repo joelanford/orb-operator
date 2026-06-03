@@ -142,6 +142,36 @@ local vapCOSROrphanFinalizerBinding = {
   },
 };
 
+local vapCOSNameLength = {
+  apiVersion: 'admissionregistration.k8s.io/v1',
+  kind: 'ValidatingAdmissionPolicy',
+  metadata: { name: 'cos-name-max-length' },
+  spec: {
+    matchConstraints: {
+      resourceRules: [{
+        apiGroups: ['orb.operatorframework.io'],
+        apiVersions: ['v1alpha1'],
+        resources: ['clusterobjectsets'],
+        operations: ['CREATE'],
+      }],
+    },
+    validations: [{
+      expression: "size(object.metadata.name) <= 52",
+      message: 'name must be at most 52 characters',
+    }],
+  },
+};
+
+local vapCOSNameLengthBinding = {
+  apiVersion: 'admissionregistration.k8s.io/v1',
+  kind: 'ValidatingAdmissionPolicyBinding',
+  metadata: { name: 'cos-name-max-length' },
+  spec: {
+    policyName: vapCOSNameLength.metadata.name,
+    validationActions: ['Deny'],
+  },
+};
+
 local svc = {
   apiVersion: 'v1',
   kind: 'Service',
@@ -163,5 +193,5 @@ local svc = {
 {
   apiVersion: 'v1',
   kind: 'List',
-  items: crds + [vapCOSRName, vapCOSRNameBinding, vapCOSROrphanFinalizer, vapCOSROrphanFinalizerBinding, ns, sa, crb, deploy, svc],
+  items: crds + [vapCOSRName, vapCOSRNameBinding, vapCOSROrphanFinalizer, vapCOSROrphanFinalizerBinding, vapCOSNameLength, vapCOSNameLengthBinding, ns, sa, crb, deploy, svc],
 }

@@ -12,3 +12,9 @@ Feature: COSR status conditions reflect rollout state
     And a phase "deploy" with a ConfigMap "cm-blocked" with assertion fieldValue path ".data.ready" value "true"
     When the COSR is created
     Then the COSR should have condition "Available" with status "False" and reason "Unavailable"
+
+  Scenario: COSR reports Unavailable when reconcile fails with an error
+    Given a COSR with group "test" and revision 1
+    And a phase "install" with an unregistered resource type
+    When the COSR is created
+    Then the COSR should have condition "Available" with status "False" and reason "Unavailable"

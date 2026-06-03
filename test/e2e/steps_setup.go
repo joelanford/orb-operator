@@ -33,10 +33,13 @@ func registerSetupSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the last object has assertion conditionEqual type "([^"]*)" status "([^"]*)"$`, tc.lastObjectHasConditionEqualAssertion)
 	sc.Step(`^the last object has assertion fieldsEqual fieldA "([^"]*)" fieldB "([^"]*)"$`, tc.lastObjectHasFieldsEqualAssertion)
 	sc.Step(`^the last object has assertion fieldValue path "([^"]*)" value "([^"]*)"$`, tc.lastObjectHasFieldValueAssertion)
+	sc.Step(`^the last object has assertion celExpression "([^"]*)"$`, tc.lastObjectHasCELAssertion)
 	sc.Step(`^the COSR collisionProtection is "([^"]*)"$`, tc.theCOSRCollisionProtectionIs)
 	sc.Step(`^the phase "([^"]*)" collisionProtection is "([^"]*)"$`, tc.thePhaseCollisionProtectionIs)
 	sc.Step(`^the last object collisionProtection is "([^"]*)"$`, tc.theLastObjectCollisionProtectionIs)
 	sc.Step(`^a standalone ConfigMap "([^"]*)" exists$`, tc.aStandaloneConfigMapExists)
+
+	sc.Step(`^a phase "([^"]*)" with an unregistered resource type$`, tc.aPhaseWithUnregisteredResourceType)
 
 	// COS setup steps
 	sc.Step(`^a COS named "([^"]*)"$`, tc.aCOSNamed)
@@ -183,6 +186,16 @@ func (tc *testContext) lastObjectHasFieldValueAssertion(path, value string) {
 	})
 }
 
+func (tc *testContext) lastObjectHasCELAssertion(expr string) {
+	phase := tc.currentPhase()
+	obj := &phase.Objects[len(phase.Objects)-1]
+	obj.Assertions = append(obj.Assertions, orbv1alpha1.Assertion{
+		CELExpression: &orbv1alpha1.CELExpressionAssertion{
+			Expression: expr,
+		},
+	})
+}
+
 func (tc *testContext) theCOSRCollisionProtectionIs(cp string) {
 	v := orbv1alpha1.CollisionProtection(cp)
 	tc.tmpl.collisionProtection = &v
@@ -303,6 +316,19 @@ func newCR(crdName, crName string) *unstructured.Unstructured {
 			},
 		},
 	}
+}
+
+func (tc *testContext) aPhaseWithUnregisteredResourceType(phaseName string) {
+	tc.addPhase(phaseName)
+	tc.addObjectToPhase(&unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "totally.fake.example.com/v1",
+			"kind":       "Nonexistent",
+			"metadata": map[string]interface{}{
+				"name": "fake-resource",
+			},
+		},
+	})
 }
 
 func tableToMap(table *godog.Table) map[string]string {

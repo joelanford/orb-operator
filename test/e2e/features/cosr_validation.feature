@@ -14,3 +14,9 @@ Feature: COSR structural validation
 
   Scenario: COSR with a group name longer than 52 characters is rejected
     Then creating a COSR with a group name longer than 52 characters should fail
+
+  Scenario: COSR with unset lifecycleState is rejected
+    Then creating a COSR with unset lifecycleState should fail
+
+  Scenario: COSR with unknown lifecycleState is rejected
+    Then creating a COSR with unknown lifecycleState should fail
