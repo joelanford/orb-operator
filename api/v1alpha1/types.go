@@ -34,15 +34,12 @@ type ClusterObjectSetRevisionList struct {
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.collisionProtection) && !has(self.collisionProtection) || has(oldSelf.collisionProtection) && has(self.collisionProtection) && self.collisionProtection == oldSelf.collisionProtection",message="collisionProtection is immutable"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.lifecycleState) || oldSelf.lifecycleState != 'Archived' || self.lifecycleState == 'Archived'",message="lifecycleState cannot transition from Archived"
 type ClusterObjectSetRevisionSpec struct {
-	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:MaxLength=52
 	Group string `json:"group"`
 	// +kubebuilder:validation:Minimum=1
-	Revision            uint32               `json:"revision"`
-	LifecycleState      LifecycleState       `json:"lifecycleState,omitempty"`
-	CollisionProtection *CollisionProtection `json:"collisionProtection,omitempty"`
-	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=20
-	Phases []Phase `json:"phases"`
+	Revision                     uint32         `json:"revision"`
+	LifecycleState               LifecycleState `json:"lifecycleState,omitempty"`
+	ClusterObjectSetTemplateSpec `json:",inline"`
 }
 
 type ClusterObjectSetRevisionStatus struct {

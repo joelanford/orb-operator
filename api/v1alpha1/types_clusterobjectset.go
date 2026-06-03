@@ -17,6 +17,13 @@ type ClusterObjectSetSpec struct{}
 
 type ClusterObjectSetStatus struct{}
 
+type ClusterObjectSetTemplateSpec struct {
+	CollisionProtection *CollisionProtection `json:"collisionProtection,omitempty"`
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=20
+	Phases []Phase `json:"phases"`
+}
+
 // +kubebuilder:object:root=true
 type ClusterObjectSetList struct {
 	metav1.TypeMeta `json:",inline"`

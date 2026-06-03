@@ -88,10 +88,12 @@ func (tc *testContext) buildCOSR() *orbv1alpha1.ClusterObjectSetRevision {
 			Name: name,
 		},
 		Spec: orbv1alpha1.ClusterObjectSetRevisionSpec{
-			Group:               tc.cosr.group,
-			Revision:            tc.cosr.revision,
-			CollisionProtection: tc.cosr.collisionProtection,
-			Phases:              tc.cosr.phases,
+			Group:    tc.cosr.group,
+			Revision: tc.cosr.revision,
+			ClusterObjectSetTemplateSpec: orbv1alpha1.ClusterObjectSetTemplateSpec{
+				CollisionProtection: tc.cosr.collisionProtection,
+				Phases:              tc.cosr.phases,
+			},
 		},
 	}
 }

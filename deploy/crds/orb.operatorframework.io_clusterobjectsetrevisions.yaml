@@ -62,7 +62,7 @@ spec:
                 - None
                 type: string
               group:
-                maxLength: 253
+                maxLength: 52
                 type: string
               lifecycleState:
                 enum:
