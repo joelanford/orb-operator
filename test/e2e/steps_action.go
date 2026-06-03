@@ -49,7 +49,7 @@ func (tc *testContext) theCOSRIsCreatedAndBecomesAvailable() error {
 	if err := tc.createCOSR(context.Background()); err != nil {
 		return err
 	}
-	return tc.pollForCondition(context.Background(), tc.lastCreatedCOSRName(), "Available", metav1.ConditionTrue)
+	return tc.pollForCOSRCondition(context.Background(), tc.lastCreatedCOSRName(), "Available", metav1.ConditionTrue)
 }
 
 func (tc *testContext) theConfigMapIsDeleted(name string) error {
@@ -120,7 +120,7 @@ func (tc *testContext) creatingTheCOSRShouldFail() error {
 }
 
 func (tc *testContext) creatingCOSRWithZeroPhasesShouldFail() error {
-	tc.resetBuilder("zero-phases", 1)
+	tc.resetCOSRBuilder("zero-phases", 1)
 	err := tc.createCOSR(context.Background())
 	if err == nil {
 		return fmt.Errorf("expected COSR with zero phases to fail, but it succeeded")
@@ -129,7 +129,7 @@ func (tc *testContext) creatingCOSRWithZeroPhasesShouldFail() error {
 }
 
 func (tc *testContext) creatingCOSRWithZeroObjectsShouldFail() error {
-	tc.resetBuilder("zero-objects", 1)
+	tc.resetCOSRBuilder("zero-objects", 1)
 	tc.addPhase("empty")
 	err := tc.createCOSR(context.Background())
 	if err == nil {
@@ -219,7 +219,7 @@ func (tc *testContext) theConfigMapIsRecreatedByController(_ string) error {
 }
 
 func (tc *testContext) aNewCOSRIsCreated(group string, revision uint32) {
-	tc.resetBuilder(group, revision)
+	tc.resetCOSRBuilder(group, revision)
 }
 
 func (tc *testContext) theNewCOSRIsCreated() error {
@@ -230,7 +230,7 @@ func (tc *testContext) theNewCOSRIsCreatedAndBecomesAvailable() error {
 	if err := tc.createCOSR(context.Background()); err != nil {
 		return err
 	}
-	return tc.pollForCondition(context.Background(), tc.lastCreatedCOSRName(), "Available", metav1.ConditionTrue)
+	return tc.pollForCOSRCondition(context.Background(), tc.lastCreatedCOSRName(), "Available", metav1.ConditionTrue)
 }
 
 func (tc *testContext) revisionIsArchived(revision uint32) error {

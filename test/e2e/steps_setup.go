@@ -40,12 +40,12 @@ func registerSetupSteps(sc *godog.ScenarioContext, tc *testContext) {
 }
 
 func (tc *testContext) aCOSRNamedWithGroupAndRevision(name, group string, revision uint32) {
-	tc.resetBuilder(group, revision)
+	tc.resetCOSRBuilder(group, revision)
 	tc.cosr.nameOverride = name
 }
 
 func (tc *testContext) aCOSRWithGroupAndRevision(group string, revision uint32) {
-	tc.resetBuilder(group, revision)
+	tc.resetCOSRBuilder(group, revision)
 }
 
 func (tc *testContext) aPhaseWithConfigMap(phaseName, cmName string) {
@@ -179,14 +179,14 @@ func (tc *testContext) lastObjectHasFieldValueAssertion(path, value string) {
 
 func (tc *testContext) theCOSRCollisionProtectionIs(cp string) {
 	v := orbv1alpha1.CollisionProtection(cp)
-	tc.cosr.collisionProtection = &v
+	tc.tmpl.collisionProtection = &v
 }
 
 func (tc *testContext) thePhaseCollisionProtectionIs(phaseName, cp string) {
 	v := orbv1alpha1.CollisionProtection(cp)
-	for i := range tc.cosr.phases {
-		if tc.cosr.phases[i].Name == phaseName {
-			tc.cosr.phases[i].CollisionProtection = &v
+	for i := range tc.tmpl.phases {
+		if tc.tmpl.phases[i].Name == phaseName {
+			tc.tmpl.phases[i].CollisionProtection = &v
 			return
 		}
 	}

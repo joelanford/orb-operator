@@ -142,40 +142,34 @@ func (tc *testContext) theCOSRShouldNotExist() error {
 
 func (tc *testContext) theCOSRShouldHaveCondition(condType, status string) error {
 	name := tc.lastCreatedCOSRName()
-	return tc.pollForCondition(context.Background(), name, condType, metav1.ConditionStatus(status))
+	return tc.pollForCOSRCondition(context.Background(), name, condType, metav1.ConditionStatus(status))
 }
 
 func (tc *testContext) theCOSRInGroupShouldHaveCondition(group string, revision uint32, condType, status string) error {
 	name := fmt.Sprintf("%s-%s-%d", tc.namespace, group, revision)
-	return tc.pollForCondition(context.Background(), name, condType, metav1.ConditionStatus(status))
+	return tc.pollForCOSRCondition(context.Background(), name, condType, metav1.ConditionStatus(status))
 }
 
 func (tc *testContext) theCOSRShouldHaveConditionWithReason(condType, status, reason string) error {
 	name := tc.lastCreatedCOSRName()
-	return tc.pollForConditionWithReason(context.Background(), name, condType, metav1.ConditionStatus(status), reason)
+	return tc.pollForConditionWithReasonOn(
+		context.Background(),
+		&orbv1alpha1.ClusterObjectSetRevision{},
+		types.NamespacedName{Name: name},
+		cosrConditions, condType, metav1.ConditionStatus(status), reason,
+	)
 }
 
 func (tc *testContext) revisionShouldHaveConditionWithReason(revision uint32, condType, status, reason string) error {
 	for name, cosr := range tc.cosrs {
 		if cosr.Spec.Revision == revision {
-			return tc.pollForConditionWithReason(context.Background(), name, condType, metav1.ConditionStatus(status), reason)
+			return tc.pollForConditionWithReasonOn(
+				context.Background(),
+				&orbv1alpha1.ClusterObjectSetRevision{},
+				types.NamespacedName{Name: name},
+				cosrConditions, condType, metav1.ConditionStatus(status), reason,
+			)
 		}
 	}
 	return fmt.Errorf("revision %d not found", revision)
-}
-
-func (tc *testContext) pollForConditionWithReason(ctx context.Context, name, condType string, status metav1.ConditionStatus, reason string) error {
-	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
-	if err := tc.pollForCondition(ctx, name, condType, status); err != nil {
-		return err
-	}
-	if err := tc.client.Get(ctx, types.NamespacedName{Name: name}, cosr); err != nil {
-		return err
-	}
-	for _, c := range cosr.Status.Conditions {
-		if c.Type == condType && c.Status == status && c.Reason == reason {
-			return nil
-		}
-	}
-	return fmt.Errorf("COSR %q: condition %q with status %q and reason %q not found", name, condType, status, reason)
 }
