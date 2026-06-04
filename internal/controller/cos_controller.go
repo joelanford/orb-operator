@@ -3,6 +3,7 @@ package controller
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"slices"
@@ -12,14 +13,21 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 )
 
-const defaultRevisionHistoryLimit int32 = 5
+const (
+	defaultRevisionHistoryLimit int32 = 5
+
+	labelTemplateHash = "orb.operatorframework.io/template-hash"
+)
 
 type COSReconciler struct {
 	client client.Client
@@ -34,117 +42,176 @@ func (r *COSReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&orbv1alpha1.ClusterObjectSet{}).
 		Owns(&orbv1alpha1.ClusterObjectSetRevision{}).
+		Watches(&orbv1alpha1.ClusterObjectSetRevision{},
+			handler.EnqueueRequestsFromMapFunc(mapCOSRGroupToCOS),
+		).
 		Complete(r)
 }
 
+func mapCOSRGroupToCOS(_ context.Context, obj client.Object) []reconcile.Request {
+	cosr := obj.(*orbv1alpha1.ClusterObjectSetRevision)
+	return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: cosr.Spec.Group}}}
+}
+
 func (r *COSReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := ctrl.LoggerFrom(ctx)
+
 	existing := &orbv1alpha1.ClusterObjectSet{}
 	if err := r.client.Get(ctx, req.NamespacedName, existing); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	if !existing.DeletionTimestamp.IsZero() {
+		return ctrl.Result{}, nil
+	}
+
 	reconciledCOS := existing.DeepCopy()
-	res, reconcileErr := r.reconcile(ctx, reconciledCOS)
+	reconcileErr := r.reconcile(ctx, reconciledCOS)
 
 	if !equality.Semantic.DeepEqual(existing.Status, reconciledCOS.Status) {
 		if err := r.client.Status().Update(ctx, reconciledCOS); err != nil {
-			return res, fmt.Errorf("updating status: %w", err)
+			return ctrl.Result{}, fmt.Errorf("updating status: %w", err)
 		}
 	}
 
-	return res, reconcileErr
+	if reconcileErr != nil {
+		log.Error(reconcileErr, "reconcile error")
+	}
+	return ctrl.Result{}, reconcileErr
 }
 
-func (r *COSReconciler) reconcile(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet) (ctrl.Result, error) {
+func (r *COSReconciler) reconcile(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet) error {
 	var cosrList orbv1alpha1.ClusterObjectSetRevisionList
 	if err := r.client.List(ctx, &cosrList, client.MatchingFields{groupIndex: cos.Name}); err != nil {
-		return ctrl.Result{}, fmt.Errorf("listing COSRs: %w", err)
+		return fmt.Errorf("listing COSRs: %w", err)
 	}
 
 	slices.SortFunc(cosrList.Items, func(a, b orbv1alpha1.ClusterObjectSetRevision) int {
 		return cmp.Compare(a.Spec.Revision, b.Spec.Revision)
 	})
 
-
-	// REVIEW: What would it mean for a COSR in the COS's group to NOT be owned by the COS
-	// (other than when the COS is deleted with cascade orphan)?
-	ownedCOSRs := filterOwnedCOSRs(cosrList.Items, cos)
-
-	statusBefore := cos.Status.DeepCopy()
-	setStatus(cos, ownedCOSRs)
-	if !equality.Semantic.DeepEqual(*statusBefore, cos.Status) {
-		return ctrl.Result{}, nil
+	ownedCOSRs, err := r.adoptAndFilterOwned(ctx, cos, cosrList.Items)
+	if err != nil {
+		return err
 	}
 
-	var latestCOSR *orbv1alpha1.ClusterObjectSetRevision
+	r.setStatus(cos, ownedCOSRs)
+
+	var latestOwned *orbv1alpha1.ClusterObjectSetRevision
 	if len(ownedCOSRs) > 0 {
-		latestCOSR = &ownedCOSRs[len(ownedCOSRs)-1]
+		latestOwned = &ownedCOSRs[len(ownedCOSRs)-1]
 	}
 
-	if latestCOSR == nil || !templateEqual(cos, latestCOSR) {
-		nextRevision := uint32(1)
-		if latestCOSR != nil {
-			nextRevision = latestCOSR.Spec.Revision + 1
-		}
+	currentHash := templateHash(cos.Spec.Template)
+	if latestOwned == nil || latestOwned.Labels[labelTemplateHash] != currentHash {
+		nextRevision := r.nextRevision(cosrList.Items)
 
-		cosr := buildCOSRFromTemplate(cos, nextRevision)
+		cosr := buildCOSRFromTemplate(cos, nextRevision, currentHash)
 		if err := controllerutil.SetControllerReference(cos, cosr, r.scheme); err != nil {
-			return ctrl.Result{}, fmt.Errorf("setting controller reference: %w", err)
+			return fmt.Errorf("setting controller reference: %w", err)
 		}
 		if err := r.client.Create(ctx, cosr); err != nil && !apierrors.IsAlreadyExists(err) {
-			return ctrl.Result{}, fmt.Errorf("creating COSR: %w", err)
+			return fmt.Errorf("creating COSR: %w", err)
 		}
-		// REVIEW: If a COSR aleady exists with the name we want, that doesn't mean it has the content we want.
-		//  If we return without an error, we might not immediately reconcile to try again.
-		//  I suppose this is actually fine because a retry won't choose a new name until our cache gets
-		//  the event on the conflicting named COSR (presumably we get an IsAlreadyExists error
-		//  when our cache is stale).
-		return ctrl.Result{}, nil
+		return nil
+	}
+
+	if err := r.archiveOlderRevisions(ctx, cos, ownedCOSRs); err != nil {
+		return err
 	}
 
 	r.pruneArchivedCOSRs(ctx, cos, ownedCOSRs)
 
-	return ctrl.Result{}, nil
+	return nil
 }
 
-func filterOwnedCOSRs(cosrs []orbv1alpha1.ClusterObjectSetRevision, cos *orbv1alpha1.ClusterObjectSet) []orbv1alpha1.ClusterObjectSetRevision {
+func (r *COSReconciler) adoptAndFilterOwned(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, cosrs []orbv1alpha1.ClusterObjectSetRevision) ([]orbv1alpha1.ClusterObjectSetRevision, error) {
 	var owned []orbv1alpha1.ClusterObjectSetRevision
-	for _, cosr := range cosrs {
-		for _, ref := range cosr.OwnerReferences {
-			if ref.Kind == "ClusterObjectSet" && ref.Name == cos.Name && ref.Controller != nil && *ref.Controller {
-				owned = append(owned, cosr)
-				// REVIEW: What's happening here? It seems like when we return we'll only ever
-				//   return owned with size 0 or 1?
-				break
+	for i := range cosrs {
+		cosr := &cosrs[i]
+		ref := metav1.GetControllerOf(cosr)
+
+		if ref == nil {
+			if err := r.adoptCOSR(ctx, cos, cosr); err != nil {
+				return nil, err
 			}
+			owned = append(owned, *cosr)
+			continue
+		}
+
+		if ref.UID == cos.UID {
+			owned = append(owned, *cosr)
 		}
 	}
-	return owned
+	return owned, nil
 }
 
-func templateEqual(cos *orbv1alpha1.ClusterObjectSet, cosr *orbv1alpha1.ClusterObjectSetRevision) bool {
-	if !equality.Semantic.DeepEqual(cos.Spec.Template.Spec, cosr.Spec.ClusterObjectSetTemplateSpec) {
-		return false
+func (r *COSReconciler) adoptCOSR(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, cosr *orbv1alpha1.ClusterObjectSetRevision) error {
+	if err := controllerutil.SetControllerReference(cos, cosr, r.scheme); err != nil {
+		return fmt.Errorf("adopting COSR %s: %w", cosr.Name, err)
 	}
-
-	// REVIEW: For labels and annotations, we probably want deep derivative, not deep equal.
-	if !maps.Equal(cos.Spec.Template.Metadata.Labels, cosr.Labels) {
-		return false
+	patch, err := json.Marshal(map[string]any{
+		"metadata": map[string]any{
+			"ownerReferences": cosr.OwnerReferences,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("marshalling adoption patch for %s: %w", cosr.Name, err)
 	}
-	if !maps.Equal(cos.Spec.Template.Metadata.Annotations, cosr.Annotations) {
-		return false
+	if err := r.client.Patch(ctx, cosr, client.RawPatch(types.MergePatchType, patch)); err != nil {
+		return fmt.Errorf("patching adopted COSR %s: %w", cosr.Name, err)
 	}
-	return true
+	return nil
 }
 
-func buildCOSRFromTemplate(cos *orbv1alpha1.ClusterObjectSet, revision uint32) *orbv1alpha1.ClusterObjectSetRevision {
+func (r *COSReconciler) nextRevision(allGroupCOSRs []orbv1alpha1.ClusterObjectSetRevision) uint32 {
+	var maxRevision uint32
+	for _, cosr := range allGroupCOSRs {
+		if cosr.Spec.Revision > maxRevision {
+			maxRevision = cosr.Spec.Revision
+		}
+	}
+	return maxRevision + 1
+}
+
+func (r *COSReconciler) archiveOlderRevisions(ctx context.Context, _ *orbv1alpha1.ClusterObjectSet, ownedCOSRs []orbv1alpha1.ClusterObjectSetRevision) error {
+	if len(ownedCOSRs) < 2 {
+		return nil
+	}
+
+	latest := &ownedCOSRs[len(ownedCOSRs)-1]
+	if !isCOSRAvailable(latest) {
+		return nil
+	}
+
+	for i := range ownedCOSRs[:len(ownedCOSRs)-1] {
+		cosr := &ownedCOSRs[i]
+		if cosr.Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived {
+			continue
+		}
+		cosr.Spec.LifecycleState = orbv1alpha1.LifecycleStateArchived
+		if err := r.client.Update(ctx, cosr); err != nil {
+			return fmt.Errorf("archiving COSR %s: %w", cosr.Name, err)
+		}
+	}
+	return nil
+}
+
+func buildCOSRFromTemplate(cos *orbv1alpha1.ClusterObjectSet, revision uint32, hash string) *orbv1alpha1.ClusterObjectSetRevision {
 	src := cos.Spec.Template.Spec
 	tmplSpec := orbv1alpha1.ClusterObjectSetTemplateSpec{}
 	src.DeepCopyInto(&tmplSpec)
+
+	labels := maps.Clone(cos.Spec.Template.Metadata.Labels)
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[labelTemplateHash] = hash
+
 	return &orbv1alpha1.ClusterObjectSetRevision{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        fmt.Sprintf("%s-%d", cos.Name, revision),
-			Labels:      maps.Clone(cos.Spec.Template.Metadata.Labels),
+			Labels:      labels,
 			Annotations: maps.Clone(cos.Spec.Template.Metadata.Annotations),
 		},
 		Spec: orbv1alpha1.ClusterObjectSetRevisionSpec{
@@ -157,77 +224,70 @@ func buildCOSRFromTemplate(cos *orbv1alpha1.ClusterObjectSet, revision uint32) *
 }
 
 func (r *COSReconciler) pruneArchivedCOSRs(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, cosrs []orbv1alpha1.ClusterObjectSetRevision) {
+	log := ctrl.LoggerFrom(ctx)
+
 	limit := defaultRevisionHistoryLimit
 	if cos.Spec.RevisionHistoryLimit != nil {
 		limit = *cos.Spec.RevisionHistoryLimit
 	}
 
-	var archived []orbv1alpha1.ClusterObjectSetRevision
+	var prunable []orbv1alpha1.ClusterObjectSetRevision
 	for _, cosr := range cosrs {
 		if cosr.Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived {
-			archived = append(archived, cosr)
+			prunable = append(prunable, cosr)
 		}
 	}
 
-	slices.SortFunc(archived, func(a, b orbv1alpha1.ClusterObjectSetRevision) int {
+	slices.SortFunc(prunable, func(a, b orbv1alpha1.ClusterObjectSetRevision) int {
 		return cmp.Compare(a.Spec.Revision, b.Spec.Revision)
 	})
 
-	excess := len(archived) - int(limit)
+	excess := len(prunable) - int(limit)
 	for i := range excess {
-		_ = r.client.Delete(ctx, &archived[i])
+		if err := r.client.Delete(ctx, &prunable[i]); err != nil {
+			log.Error(err, "pruning archived COSR", "cosr", prunable[i].Name)
+		}
 	}
 }
 
-// REVIEW: It seems like this could be simplified down to something like:
-//   1. Get sorted list of active revisions => activeRevisions (loweest to highest)
-//   2. Set status.activeRevisions
-//   3. Latest is activeRevisions[-1]
-//   4. If len(activeRevisions)  > 1 -> Progressing
-//   5. If len(activeRevisions) == 0 -> Unavailable
-//   6. Else, mirror from the single active revision.
-func setStatus(cos *orbv1alpha1.ClusterObjectSet, cosrs []orbv1alpha1.ClusterObjectSetRevision) {
-	var latest *orbv1alpha1.ClusterObjectSetRevision
-	var allActive []orbv1alpha1.ClusterObjectSetRevisionStatusSummary
-	for i := range cosrs {
-		if cosrs[i].Spec.LifecycleState != orbv1alpha1.LifecycleStateArchived {
-			// REVIEW: How is this sorted?
-			allActive = append(allActive, orbv1alpha1.ClusterObjectSetRevisionStatusSummary{
-				Name:       cosrs[i].Name,
-				Conditions: cosrs[i].Status.Conditions,
-			})
+func (r *COSReconciler) setStatus(cos *orbv1alpha1.ClusterObjectSet, ownedCOSRs []orbv1alpha1.ClusterObjectSetRevision) {
+	var active []orbv1alpha1.ClusterObjectSetRevisionStatusSummary
+	for i := range ownedCOSRs {
+		if ownedCOSRs[i].Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived {
+			continue
 		}
-		if latest == nil || cosrs[i].Spec.Revision > latest.Spec.Revision {
-			latest = &cosrs[i]
-		}
+		active = append(active, orbv1alpha1.ClusterObjectSetRevisionStatusSummary{
+			Name:       ownedCOSRs[i].Name,
+			Conditions: ownedCOSRs[i].Status.Conditions,
+		})
 	}
+
+	cos.Status.ActiveRevisions = active
 
 	condition := metav1.Condition{
 		Type:               orbv1alpha1.ConditionTypeAvailable,
 		ObservedGeneration: cos.Generation,
 	}
 
-	switch {
-	case latest != nil && isCOSRAvailable(latest):
-		// Latest revision is available: only report it — superseded revisions are being cleaned up.
-		// This prevents a second status write when they archive, which would race with spec updates.
-		cos.Status.ActiveRevisions = []orbv1alpha1.ClusterObjectSetRevisionStatusSummary{{
-			Name:       latest.Name,
-			Conditions: latest.Status.Conditions,
-		}}
-		condition.Status = metav1.ConditionTrue
-		condition.Reason = orbv1alpha1.ReasonAvailable
-		condition.Message = "active revision is available"
-	case len(allActive) > 1:
-		cos.Status.ActiveRevisions = allActive
+	switch len(active) {
+	case 0:
+		condition.Status = metav1.ConditionFalse
+		condition.Reason = orbv1alpha1.ReasonUnavailable
+		condition.Message = "no active revisions"
+	case 1:
+		if meta.IsStatusConditionTrue(active[0].Conditions, orbv1alpha1.ConditionTypeAvailable) {
+			condition.Status = metav1.ConditionTrue
+			condition.Reason = orbv1alpha1.ReasonAvailable
+			condition.Message = "active revision is available"
+		} else {
+			condition.Status = metav1.ConditionFalse
+			condition.Reason = orbv1alpha1.ReasonUnavailable
+			condition.Message = "active revision is not yet available"
+		}
+	default:
 		condition.Status = metav1.ConditionUnknown
 		condition.Reason = orbv1alpha1.ReasonProgressing
 		condition.Message = "revision transition in progress"
-	default:
-		cos.Status.ActiveRevisions = allActive
-		condition.Status = metav1.ConditionFalse
-		condition.Reason = orbv1alpha1.ReasonUnavailable
-		condition.Message = "active revision is not yet available"
 	}
 
 	meta.SetStatusCondition(&cos.Status.Conditions, condition)
