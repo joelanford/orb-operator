@@ -3,7 +3,6 @@ package controller
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -16,7 +15,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"pkg.package-operator.run/boxcutter"
 	"pkg.package-operator.run/boxcutter/managedcache"
@@ -615,17 +613,9 @@ func removeFinalizer(ctx context.Context, c client.Client, obj client.Object, fi
 	if !controllerutil.ContainsFinalizer(obj, finalizer) {
 		return nil
 	}
+	patch := client.MergeFromWithOptions(obj.DeepCopyObject().(client.Object), client.MergeFromWithOptimisticLock{})
 	controllerutil.RemoveFinalizer(obj, finalizer)
-	patch, err := json.Marshal(map[string]any{
-		"metadata": map[string]any{
-			"resourceVersion": obj.GetResourceVersion(),
-			"finalizers":      obj.GetFinalizers(),
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("marshalling finalizer patch: %w", err)
-	}
-	if err := c.Patch(ctx, obj, client.RawPatch(types.MergePatchType, patch)); err != nil {
+	if err := c.Patch(ctx, obj, patch); err != nil {
 		return fmt.Errorf("removing finalizer: %w", err)
 	}
 	return nil
