@@ -158,18 +158,6 @@ func (r *COSRReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	if !existing.DeletionTimestamp.IsZero() {
-		return r.handleDeletion(ctx, log, existing)
-	}
-
-	if !controllerutil.ContainsFinalizer(existing, finalizerKey) {
-		controllerutil.AddFinalizer(existing, finalizerKey)
-		if err := r.client.Update(ctx, existing); err != nil {
-			return ctrl.Result{}, fmt.Errorf("adding finalizer: %w", err)
-		}
-		return ctrl.Result{}, nil
-	}
-
 	return r.reconcile(ctx, log, existing)
 }
 
@@ -191,6 +179,7 @@ type revisionChain struct {
 	latestActive *orbv1alpha1.ClusterObjectSetRevision
 	predecessors []*orbv1alpha1.ClusterObjectSetRevision
 	archived     []*orbv1alpha1.ClusterObjectSetRevision
+	deleted      []*orbv1alpha1.ClusterObjectSetRevision
 }
 
 func buildChain(members []orbv1alpha1.ClusterObjectSetRevision) revisionChain {
@@ -202,6 +191,8 @@ func buildChain(members []orbv1alpha1.ClusterObjectSetRevision) revisionChain {
 	for i := range members {
 		m := &members[i]
 		switch {
+		case !m.DeletionTimestamp.IsZero():
+			ch.deleted = append(ch.deleted, m)
 		case m.Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived:
 			ch.archived = append(ch.archived, m)
 		case ch.latestActive == nil:
@@ -213,7 +204,40 @@ func buildChain(members []orbv1alpha1.ClusterObjectSetRevision) revisionChain {
 	return ch
 }
 
+func (r *COSRReconciler) ensureFinalizers(ctx context.Context, chain revisionChain) (bool, error) {
+	var members []*orbv1alpha1.ClusterObjectSetRevision
+	if chain.latestActive != nil {
+		members = append(members, chain.latestActive)
+	}
+	members = append(members, chain.predecessors...)
+
+	for _, m := range members {
+		if !controllerutil.ContainsFinalizer(m, finalizerKey) {
+			controllerutil.AddFinalizer(m, finalizerKey)
+			if err := r.client.Update(ctx, m); err != nil {
+				return false, fmt.Errorf("adding finalizer to %s: %w", m.Name, err)
+			}
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (r *COSRReconciler) reconcileChain(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision, chain revisionChain) (ctrl.Result, error) {
+	added, err := r.ensureFinalizers(ctx, chain)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if added {
+		return ctrl.Result{}, nil
+	}
+
+	for _, m := range chain.deleted {
+		if _, err := r.handleDeletion(ctx, log, m); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	if err := r.reconcileActiveMembers(ctx, log, cosr, chain); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -337,51 +361,20 @@ func (r *COSRReconciler) reconcileArchived(ctx context.Context, log logr.Logger,
 }
 
 func (r *COSRReconciler) doReconcileArchived(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) (bool, error) {
-	engine, err := r.engineForCOSR(ctx, cosr)
-	if err != nil {
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, fmt.Sprintf("engine setup: %v", err))
-		return false, err
-	}
-
-	rev, err := r.buildRevision(cosr)
-	if err != nil {
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, fmt.Sprintf("building revision: %v", err))
-		return false, fmt.Errorf("building revision: %w", err)
-	}
-	result, err := engine.Teardown(ctx, rev)
+	needsRequeue, err := r.teardownCOSR(ctx, cosr)
 	if err != nil {
 		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, fmt.Sprintf("teardown failed: %v", err))
-		return false, fmt.Errorf("teardown: %w", err)
+		return false, err
 	}
-
-	if result.IsComplete() {
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, "teardown complete")
-	} else {
+	if needsRequeue {
 		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, "teardown in progress")
+	} else {
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, "teardown complete")
 	}
-	return !result.IsComplete(), nil
+	return needsRequeue, nil
 }
 
 func (r *COSRReconciler) handleDeletion(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (ctrl.Result, error) {
-	if !controllerutil.ContainsFinalizer(cosr, finalizerKey) {
-		return ctrl.Result{}, nil
-	}
-
-	if res, err := r.teardownForDeletion(ctx, log, cosr); res.RequeueAfter > 0 || err != nil {
-		return res, err
-	}
-
-	if err := r.accessManager.FreeWithUser(ctx, cosr, cosr); err != nil {
-		return ctrl.Result{}, fmt.Errorf("freeing access manager: %w", err)
-	}
-
-	if err := removeFinalizer(ctx, r.client, cosr, finalizerKey); err != nil {
-		return ctrl.Result{}, err
-	}
-	return ctrl.Result{}, nil
-}
-
-func (r *COSRReconciler) teardownForDeletion(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (ctrl.Result, error) {
 	// The VAP "cosr-orphan-finalizer-ordering" guarantees the "orphan" finalizer
 	// cannot be removed while our finalizer is still present. So if the "orphan"
 	// finalizer is set, we can safely skip teardown.
@@ -390,25 +383,47 @@ func (r *COSRReconciler) teardownForDeletion(ctx context.Context, log logr.Logge
 		return ctrl.Result{}, nil
 	}
 
-	log.Info("tearing down for deletion")
-	engine, err := r.engineForCOSR(ctx, cosr)
+	needsRequeue, err := r.teardownCOSR(ctx, cosr)
 	if err != nil {
 		return ctrl.Result{}, err
+	}
+	if needsRequeue {
+		return ctrl.Result{RequeueAfter: time.Second}, nil
+	}
+	return ctrl.Result{}, nil
+}
+
+func (r *COSRReconciler) teardownCOSR(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) (bool, error) {
+	if !controllerutil.ContainsFinalizer(cosr, finalizerKey) {
+		return false, nil
+	}
+
+	engine, err := r.engineForCOSR(ctx, cosr)
+	if err != nil {
+		return false, fmt.Errorf("engine setup: %w", err)
 	}
 
 	rev, err := r.buildRevision(cosr)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("building revision: %w", err)
+		return false, fmt.Errorf("building revision: %w", err)
 	}
 	result, err := engine.Teardown(ctx, rev)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("teardown: %w", err)
+		return false, fmt.Errorf("teardown: %w", err)
 	}
 
 	if !result.IsComplete() {
-		return ctrl.Result{RequeueAfter: time.Second}, nil
+		return true, nil
 	}
-	return ctrl.Result{}, nil
+
+	if err := r.accessManager.FreeWithUser(ctx, cosr, cosr); err != nil {
+		return false, fmt.Errorf("freeing access manager: %w", err)
+	}
+
+	if err := removeFinalizer(ctx, r.client, cosr, finalizerKey); err != nil {
+		return false, fmt.Errorf("removing finalizer: %w", err)
+	}
+	return false, nil
 }
 
 func (r *COSRReconciler) engineForCOSR(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) (*boxcutter.RevisionEngine, error) {
