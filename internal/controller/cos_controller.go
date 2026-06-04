@@ -3,7 +3,6 @@ package controller
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"slices"
@@ -147,18 +146,11 @@ func (r *COSReconciler) adoptAndFilterOwned(ctx context.Context, cos *orbv1alpha
 }
 
 func (r *COSReconciler) adoptCOSR(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, cosr *orbv1alpha1.ClusterObjectSetRevision) error {
+	patch := client.MergeFromWithOptions(cosr.DeepCopy(), client.MergeFromWithOptimisticLock{})
 	if err := controllerutil.SetControllerReference(cos, cosr, r.scheme); err != nil {
 		return fmt.Errorf("adopting COSR %s: %w", cosr.Name, err)
 	}
-	patch, err := json.Marshal(map[string]any{
-		"metadata": map[string]any{
-			"ownerReferences": cosr.OwnerReferences,
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("marshalling adoption patch for %s: %w", cosr.Name, err)
-	}
-	if err := r.client.Patch(ctx, cosr, client.RawPatch(types.MergePatchType, patch)); err != nil {
+	if err := r.client.Patch(ctx, cosr, patch); err != nil {
 		return fmt.Errorf("patching adopted COSR %s: %w", cosr.Name, err)
 	}
 	return nil
