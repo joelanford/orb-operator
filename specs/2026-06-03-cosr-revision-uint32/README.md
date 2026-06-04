@@ -1,5 +1,5 @@
 ---
-status: idea
+status: done
 ---
 # COSR Revision Field Cleanup
 

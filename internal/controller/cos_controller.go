@@ -65,6 +65,9 @@ func (r *COSReconciler) reconcile(ctx context.Context, cos *orbv1alpha1.ClusterO
 		return cmp.Compare(a.Spec.Revision, b.Spec.Revision)
 	})
 
+
+	// REVIEW: What would it mean for a COSR in the COS's group to NOT be owned by the COS
+	// (other than when the COS is deleted with cascade orphan)?
 	ownedCOSRs := filterOwnedCOSRs(cosrList.Items, cos)
 
 	statusBefore := cos.Status.DeepCopy()
@@ -91,6 +94,11 @@ func (r *COSReconciler) reconcile(ctx context.Context, cos *orbv1alpha1.ClusterO
 		if err := r.client.Create(ctx, cosr); err != nil && !apierrors.IsAlreadyExists(err) {
 			return ctrl.Result{}, fmt.Errorf("creating COSR: %w", err)
 		}
+		// REVIEW: If a COSR aleady exists with the name we want, that doesn't mean it has the content we want.
+		//  If we return without an error, we might not immediately reconcile to try again.
+		//  I suppose this is actually fine because a retry won't choose a new name until our cache gets
+		//  the event on the conflicting named COSR (presumably we get an IsAlreadyExists error
+		//  when our cache is stale).
 		return ctrl.Result{}, nil
 	}
 
@@ -105,6 +113,8 @@ func filterOwnedCOSRs(cosrs []orbv1alpha1.ClusterObjectSetRevision, cos *orbv1al
 		for _, ref := range cosr.OwnerReferences {
 			if ref.Kind == "ClusterObjectSet" && ref.Name == cos.Name && ref.Controller != nil && *ref.Controller {
 				owned = append(owned, cosr)
+				// REVIEW: What's happening here? It seems like when we return we'll only ever
+				//   return owned with size 0 or 1?
 				break
 			}
 		}
@@ -116,6 +126,8 @@ func templateEqual(cos *orbv1alpha1.ClusterObjectSet, cosr *orbv1alpha1.ClusterO
 	if !equality.Semantic.DeepEqual(cos.Spec.Template.Spec, cosr.Spec.ClusterObjectSetTemplateSpec) {
 		return false
 	}
+
+	// REVIEW: For labels and annotations, we probably want deep derivative, not deep equal.
 	if !maps.Equal(cos.Spec.Template.Metadata.Labels, cosr.Labels) {
 		return false
 	}
@@ -167,11 +179,19 @@ func (r *COSReconciler) pruneArchivedCOSRs(ctx context.Context, cos *orbv1alpha1
 	}
 }
 
+// REVIEW: It seems like this could be simplified down to something like:
+//   1. Get sorted list of active revisions => activeRevisions (loweest to highest)
+//   2. Set status.activeRevisions
+//   3. Latest is activeRevisions[-1]
+//   4. If len(activeRevisions)  > 1 -> Progressing
+//   5. If len(activeRevisions) == 0 -> Unavailable
+//   6. Else, mirror from the single active revision.
 func setStatus(cos *orbv1alpha1.ClusterObjectSet, cosrs []orbv1alpha1.ClusterObjectSetRevision) {
 	var latest *orbv1alpha1.ClusterObjectSetRevision
 	var allActive []orbv1alpha1.ClusterObjectSetRevisionStatusSummary
 	for i := range cosrs {
 		if cosrs[i].Spec.LifecycleState != orbv1alpha1.LifecycleStateArchived {
+			// REVIEW: How is this sorted?
 			allActive = append(allActive, orbv1alpha1.ClusterObjectSetRevisionStatusSummary{
 				Name:       cosrs[i].Name,
 				Conditions: cosrs[i].Status.Conditions,

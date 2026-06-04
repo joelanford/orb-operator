@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 ---
 # COS API Types & E2E Test Definitions
 

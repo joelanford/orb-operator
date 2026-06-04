@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -63,6 +64,9 @@ func NewCOSRReconciler(
 	}
 }
 
+// REVIEW: Is there a reason this is publically separate from SetupWithManager?
+//   If callers always call both, perhaps make these unexported and have a single
+//   method on COSRReconciler.
 func SetupIndexes(mgr ctrl.Manager) error {
 	return mgr.GetFieldIndexer().IndexField(
 		context.Background(),
@@ -89,6 +93,7 @@ func (r *COSRReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		).
 		Watches(
 			&orbv1alpha1.ClusterObjectSetRevision{},
+			// perhaps instead we should always map to the latest revision for the group, then the orchestrate updates for all COSRs in the group in a single reconcile invocaton?
 			handler.EnqueueRequestsFromMapFunc(r.mapToGroupMembers),
 		).
 		Complete(r)
@@ -100,6 +105,8 @@ func (r *COSRReconciler) mapToGroupMembers(ctx context.Context, obj client.Objec
 	if err := r.client.List(ctx, &list, client.MatchingFields{groupIndex: cosr.Spec.Group}); err != nil {
 		return nil
 	}
+
+	// REVIEW: should we sort this list so the reconcile requests are added in an certain order?
 	var reqs []reconcile.Request
 	for i := range list.Items {
 		if list.Items[i].Name == cosr.Name {
@@ -121,6 +128,7 @@ func (r *COSRReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 
 	if !existing.DeletionTimestamp.IsZero() {
+		// REVIEW: if this errors, should we update status to reflect the error?
 		return r.handleDeletion(ctx, log, existing)
 	}
 
@@ -137,7 +145,7 @@ func (r *COSRReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 
 	if !equality.Semantic.DeepEqual(existing.Status, cosr.Status) {
 		if err := r.client.Status().Update(ctx, cosr); err != nil {
-			return res, fmt.Errorf("updating status: %w", err)
+			return res, errors.Join(reconcileErr, fmt.Errorf("updating status: %w", err))
 		}
 	}
 
@@ -151,14 +159,17 @@ func (r *COSRReconciler) reconcile(ctx context.Context, log logr.Logger, cosr *o
 	}
 
 	if cosr.Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived {
+		// REVIEW: if this errors, should we update status to reflect the error?
 		return r.reconcileArchived(ctx, log, cosr)
 	}
 
 	latestActive := findLatestActive(groupMembers)
 	if latestActive != nil && latestActive.Name != cosr.Name {
+		// REVIEW: if this errors, should we update status to reflect the error?
 		return r.reconcileSuperseded(ctx, log, cosr, latestActive)
 	}
 
+	// REVIEW: if this errors, should we update status to reflect the error?
 	return r.reconcileActive(ctx, log, cosr, groupMembers)
 }
 
@@ -218,10 +229,18 @@ func (r *COSRReconciler) reconcileArchived(ctx context.Context, log logr.Logger,
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("teardown: %w", err)
 	}
+	
+	// REVIEW: There are other error paths above that result in returning from Reconcile with an error,
+	// but without setting status. That's a problem.
 
+	// REVIEW: if the result is not complete, then are we really archived yet?
 	setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, "COSR is archived")
 
 	if !result.IsComplete() {
+		// REVIEW: teardown isn't complete, then in theory we keep our cache around,
+		// which means we will see more events from the children, which means we don't
+		// need to force a requeue? Maybe teardown is different because we might not
+		// actually get events from children we didn't delete.
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -239,12 +258,17 @@ func (r *COSRReconciler) reconcileSuperseded(
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+
+	// REVIEW: Should we only actually do this when reconciling the latest revision?
+	//   And in that case, we'd include all of the previous owners?
 	latestRev, err := r.buildRevisionWithPreviousOwners(latestActive, []*orbv1alpha1.ClusterObjectSetRevision{cosr})
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("building revision: %w", err)
 	}
 	_, engineErr := engine.Reconcile(ctx, latestRev)
 
+	// REVIEW: Same question here: there are a couple of error paths above that
+	//   do not result in setting/updating conditions.
 	setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, "a newer revision exists in this group")
 
 	if engineErr != nil {
@@ -253,6 +277,9 @@ func (r *COSRReconciler) reconcileSuperseded(
 
 	if meta.IsStatusConditionTrue(latestActive.Status.Conditions, orbv1alpha1.ConditionTypeAvailable) {
 		cosr.Spec.LifecycleState = orbv1alpha1.LifecycleStateArchived
+		// REVIEW: Should the spec updates also be collected up and handled in big-R Reconcile?
+		//   Thinking even more. Usually it is an anti-pattern for a reconciler to update the spec of
+		//   the object it is reconciling. Should active/archived be a status thing?
 		if err := r.client.Update(ctx, cosr); err != nil {
 			return ctrl.Result{}, fmt.Errorf("archiving superseded COSR: %w", err)
 		}
@@ -290,6 +317,8 @@ func (r *COSRReconciler) reconcileActive(
 		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, fmt.Sprintf("reconcile failed: %v", err))
 		return ctrl.Result{}, fmt.Errorf("reconciling: %w", err)
 	}
+	
+	// REVIEW: Lots of error paths above that do not result in an update to the status. That's a problem.
 
 	if result.IsComplete() {
 		setCondition(cosr, metav1.ConditionTrue, orbv1alpha1.ReasonAvailable, "all phases complete")
