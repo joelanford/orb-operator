@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"time"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -223,16 +222,18 @@ func (r *COSRReconciler) ensureFinalizers(ctx context.Context, chain revisionCha
 
 func (r *COSRReconciler) reconcileChain(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision, chain revisionChain) (ctrl.Result, error) {
 	added, err := r.ensureFinalizers(ctx, chain)
-	if err != nil {
+	if added || err != nil {
 		return ctrl.Result{}, err
 	}
-	if added {
-		return ctrl.Result{}, nil
-	}
 
+	var needsRequeue bool
 	for _, m := range chain.deleted {
-		if _, err := r.handleDeletion(ctx, log, m); err != nil {
+		requeue, err := r.handleDeletion(ctx, log, m)
+		if err != nil {
 			return ctrl.Result{}, err
+		}
+		if requeue {
+			needsRequeue = true
 		}
 	}
 
@@ -240,7 +241,6 @@ func (r *COSRReconciler) reconcileChain(ctx context.Context, log logr.Logger, co
 		return ctrl.Result{}, err
 	}
 
-	var needsRequeue bool
 	for _, m := range chain.archived {
 		requeue, err := r.reconcileArchived(ctx, log, m)
 		if err != nil {
@@ -252,7 +252,7 @@ func (r *COSRReconciler) reconcileChain(ctx context.Context, log logr.Logger, co
 	}
 
 	if needsRequeue {
-		return ctrl.Result{RequeueAfter: time.Second}, nil
+		return ctrl.Result{Requeue: true}, nil
 	}
 	return ctrl.Result{}, nil
 }
@@ -372,9 +372,9 @@ func (r *COSRReconciler) doReconcileArchived(ctx context.Context, cosr *orbv1alp
 	return needsRequeue, nil
 }
 
-func (r *COSRReconciler) handleDeletion(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (ctrl.Result, error) {
+func (r *COSRReconciler) handleDeletion(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (bool, error) {
 	if !controllerutil.ContainsFinalizer(cosr, finalizerKey) {
-		return ctrl.Result{}, nil
+		return false, nil
 	}
 
 	// The VAP "cosr-orphan-finalizer-ordering" guarantees the "orphan" finalizer
@@ -382,21 +382,14 @@ func (r *COSRReconciler) handleDeletion(ctx context.Context, log logr.Logger, co
 	// finalizer is set, skip teardown but still release the finalizer so the
 	// deletion can proceed.
 	if !controllerutil.ContainsFinalizer(cosr, "orphan") {
-		needsRequeue, err := r.teardownCOSR(ctx, cosr)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		if needsRequeue {
-			return ctrl.Result{RequeueAfter: time.Second}, nil
-		}
-		return ctrl.Result{}, nil
+		return r.teardownCOSR(ctx, cosr)
 	}
 
 	log.Info("orphan finalizer present, skipping teardown")
 	if err := r.releaseCOSR(ctx, cosr); err != nil {
-		return ctrl.Result{}, err
+		return false, err
 	}
-	return ctrl.Result{}, nil
+	return false, nil
 }
 
 func (r *COSRReconciler) teardownCOSR(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) (bool, error) {
