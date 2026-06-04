@@ -47,6 +47,8 @@ func registerActionSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the ConfigMap "([^"]*)" field "([^"]*)" is set to "([^"]*)"$`, tc.theConfigMapFieldIsSetTo)
 	sc.Step(`^the ConfigMap "([^"]*)" is recreated by the controller$`, tc.theConfigMapIsRecreatedByController)
 
+	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) lifecycleState is set to "([^"]*)"$`, tc.theCOSRInGroupLifecycleStateIsSetTo)
+
 	// COS action steps
 	sc.Step(`^the COS is created$`, tc.theCOSIsCreated)
 	sc.Step(`^the COS template spec is updated with a ConfigMap "([^"]*)" in phase "([^"]*)"$`, tc.theCOSTemplateSpecIsUpdated)
@@ -299,6 +301,22 @@ func (tc *testContext) theConfigMapFieldIsSetTo(name, field, value string) error
 
 func (tc *testContext) theConfigMapIsRecreatedByController(_ string) error {
 	return nil
+}
+
+func (tc *testContext) theCOSRInGroupLifecycleStateIsSetTo(group string, revision uint32, state string) error {
+	ctx := context.Background()
+	name := tc.cosrName(group, revision)
+	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+		if err := tc.client.Get(ctx, types.NamespacedName{Name: name}, cosr); err != nil {
+			return false, err
+		}
+		cosr.Spec.LifecycleState = orbv1alpha1.LifecycleState(state)
+		if err := tc.client.Update(ctx, cosr); err != nil {
+			return false, nil
+		}
+		return true, nil
+	})
 }
 
 func (tc *testContext) aNewCOSRIsCreated(group string, revision uint32) {

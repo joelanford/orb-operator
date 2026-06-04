@@ -40,3 +40,16 @@ Feature: COS status is derived from its COSRs
     When the COS template spec is updated with a ConfigMap "cm-rollout-2" in phase "install"
     Then the COS "status-rollout" should have active revision 2
     And the COS "status-rollout" should become available without becoming unavailable
+
+  Scenario: COS remains Available when latest revision is manually archived
+    Given a COS named "status-archive-latest"
+    And a phase "install" with a ConfigMap "cm-sal-1"
+    When the COS is created
+    Then the COS "status-archive-latest" should have condition "Available" with status "True" and reason "Available"
+    # Create rev 2 with a gate so it stays Unavailable
+    When the COS template spec is updated with a gated ConfigMap "cm-sal-2" in phase "install"
+    Then a COSR should exist with group "status-archive-latest" and revision 2
+    And the COS "status-archive-latest" should have condition "Available" with status "Unknown" and reason "Progressing"
+    # Manually archive rev 2 — rev 1 is still Active and Available
+    When the COSR with group "status-archive-latest" and revision 2 lifecycleState is set to "Archived"
+    Then the COS "status-archive-latest" should have condition "Available" with status "True" and reason "Available"

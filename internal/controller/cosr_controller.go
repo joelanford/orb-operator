@@ -215,7 +215,7 @@ func (r *COSRReconciler) reconcileActiveMembers(ctx context.Context, log logr.Lo
 	}
 
 	for _, p := range chain.predecessors {
-		if err := r.updatePredecessorStatus(ctx, log, p); err != nil {
+		if err := r.reconcilePredecessor(ctx, log, p); err != nil {
 			return err
 		}
 	}
@@ -270,51 +270,66 @@ func (r *COSRReconciler) doReconcileLatest(
 	return nil
 }
 
-func (r *COSRReconciler) updatePredecessorStatus(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) error {
-	log.Info("marking predecessor as superseded", "cosr", cosr.Name)
+func (r *COSRReconciler) reconcilePredecessor(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) error {
+	log.Info("reconciling predecessor COSR", "cosr", cosr.Name)
 
 	existing := cosr.DeepCopy()
-	setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, "a newer revision exists in this group")
+	r.doReconcilePredecessor(cosr)
 
 	if !equality.Semantic.DeepEqual(existing.Status, cosr.Status) {
 		if err := r.client.Status().Update(ctx, cosr); err != nil {
-			return fmt.Errorf("updating superseded status for %s: %w", cosr.Name, err)
+			return fmt.Errorf("updating predecessor status for %s: %w", cosr.Name, err)
 		}
 	}
 	return nil
 }
 
+func (r *COSRReconciler) doReconcilePredecessor(cosr *orbv1alpha1.ClusterObjectSetRevision) {
+	setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, "a newer revision exists in this group")
+}
+
 func (r *COSRReconciler) reconcileArchived(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (bool, error) {
 	log.Info("reconciling archived COSR", "cosr", cosr.Name)
 
+	existing := cosr.DeepCopy()
+	needsRequeue, reconcileErr := r.doReconcileArchived(ctx, cosr)
+
+	if !equality.Semantic.DeepEqual(existing.Status, cosr.Status) {
+		if err := r.client.Status().Update(ctx, cosr); err != nil {
+			return false, errors.Join(reconcileErr, fmt.Errorf("updating archived status for %s: %w", cosr.Name, err))
+		}
+	}
+	if reconcileErr != nil {
+		return false, reconcileErr
+	}
+
+	return needsRequeue, nil
+}
+
+func (r *COSRReconciler) doReconcileArchived(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) (bool, error) {
 	engine, err := r.engineForCOSR(ctx, cosr)
 	if err != nil {
-		r.setArchivedCondition(ctx, cosr, fmt.Sprintf("engine setup: %v", err))
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, fmt.Sprintf("engine setup: %v", err))
 		return false, err
 	}
 
 	rev, err := r.buildRevision(cosr)
 	if err != nil {
-		r.setArchivedCondition(ctx, cosr, fmt.Sprintf("building revision: %v", err))
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, fmt.Sprintf("building revision: %v", err))
 		return false, fmt.Errorf("building revision: %w", err)
 	}
 	result, err := engine.Teardown(ctx, rev)
 	if err != nil {
-		r.setArchivedCondition(ctx, cosr, fmt.Sprintf("teardown failed: %v", err))
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, fmt.Sprintf("teardown failed: %v", err))
 		return false, fmt.Errorf("teardown: %w", err)
 	}
 
-	r.setArchivedCondition(ctx, cosr, "COSR is archived")
-
-	return !result.IsComplete(), nil
-}
-
-func (r *COSRReconciler) setArchivedCondition(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision, message string) {
-	existing := cosr.DeepCopy()
-	setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, message)
-	if !equality.Semantic.DeepEqual(existing.Status, cosr.Status) {
-		_ = r.client.Status().Update(ctx, cosr)
+	if result.IsComplete() {
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, "teardown complete")
+	} else {
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, "teardown in progress")
 	}
+	return !result.IsComplete(), nil
 }
 
 func (r *COSRReconciler) handleDeletion(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (ctrl.Result, error) {
