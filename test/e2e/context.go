@@ -208,10 +208,6 @@ func cosrConditions(obj client.Object) []metav1.Condition {
 	return obj.(*orbv1alpha1.ClusterObjectSetRevision).Status.Conditions
 }
 
-func cosConditions(obj client.Object) []metav1.Condition {
-	return obj.(*orbv1alpha1.ClusterObjectSet).Status.Conditions
-}
-
 func (tc *testContext) pollForConditionOn(ctx context.Context, obj client.Object, key types.NamespacedName, accessor conditionAccessor, condType string, status metav1.ConditionStatus) error {
 	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
 		if err := tc.client.Get(ctx, key, obj); err != nil {

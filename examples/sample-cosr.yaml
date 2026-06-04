@@ -1,0 +1,150 @@
+apiVersion: orb.operatorframework.io/v1alpha1
+kind: ClusterObjectSetRevision
+metadata:
+  name: sample-group-2
+spec:
+  group: sample-group
+  lifecycleState: Active
+  phases:
+  - name: crds
+    objects:
+    - assertions:
+      - conditionEqual:
+          status: "True"
+          type: Established
+      object:
+        apiVersion: apiextensions.k8s.io/v1
+        kind: CustomResourceDefinition
+        metadata:
+          name: widgets.example.com
+        spec:
+          group: example.com
+          names:
+            kind: Widget
+            listKind: WidgetList
+            plural: widgets
+            singular: widget
+          scope: Namespaced
+          versions:
+          - name: v1
+            schema:
+              openAPIV3Schema:
+                properties:
+                  spec:
+                    properties:
+                      size:
+                        type: string
+                    type: object
+                type: object
+            served: true
+            storage: true
+    - assertions:
+      - conditionEqual:
+          status: "True"
+          type: Established
+      object:
+        apiVersion: apiextensions.k8s.io/v1
+        kind: CustomResourceDefinition
+        metadata:
+          name: gadgets.example.com
+        spec:
+          group: example.com
+          names:
+            kind: Gadget
+            listKind: GadgetList
+            plural: gadgets
+            singular: gadget
+          scope: Namespaced
+          versions:
+          - name: v1
+            schema:
+              openAPIV3Schema:
+                properties:
+                  spec:
+                    properties:
+                      color:
+                        type: string
+                    type: object
+                type: object
+            served: true
+            storage: true
+  - name: namespace
+    objects:
+    - assertions:
+      - fieldValue:
+          fieldPath: .status.phase
+          value: Active
+      object:
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: sample-system
+  - name: rbac
+    objects:
+    - object:
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+          name: sample-controller
+          namespace: sample-system
+    - object:
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: ClusterRole
+        metadata:
+          name: sample-controller
+        rules:
+        - apiGroups:
+          - example.com
+          resources:
+          - widgets
+          - gadgets
+          verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+          - patch
+          - delete
+    - object:
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: ClusterRoleBinding
+        metadata:
+          name: sample-controller
+        roleRef:
+          apiGroup: rbac.authorization.k8s.io
+          kind: ClusterRole
+          name: sample-controller
+        subjects:
+        - kind: ServiceAccount
+          name: sample-controller
+          namespace: sample-system
+  - name: deployment
+    objects:
+    - assertions:
+      - fieldsEqual:
+          fieldA: .status.replicas
+          fieldB: .status.readyReplicas
+      object:
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: sample-controller
+          namespace: sample-system
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app: sample-controller
+          template:
+            metadata:
+              labels:
+                app: sample-controller
+            spec:
+              containers:
+              - image: registry.k8s.io/pause:3.10
+                name: controller
+                ports:
+                - containerPort: 8080
+              serviceAccountName: sample-controller
+  revision: 2

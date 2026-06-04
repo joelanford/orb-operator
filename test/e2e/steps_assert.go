@@ -274,17 +274,20 @@ func (tc *testContext) cosrShouldHaveAnnotation(group string, revision uint32, k
 }
 
 func (tc *testContext) cosrShouldHaveControllerOwnerRef(group string, revision uint32, cosName string) error {
-	cosr, err := tc.getCOSR(context.Background(), group, revision)
-	if err != nil {
-		return err
-	}
 	fullCOSName := tc.namespace + "-" + cosName
-	for _, ref := range cosr.OwnerReferences {
-		if ref.Kind == "ClusterObjectSet" && ref.Name == fullCOSName && ref.Controller != nil && *ref.Controller {
-			return nil
+	name := tc.cosrName(group, revision)
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	return wait.PollUntilContextTimeout(context.Background(), pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		if err := tc.client.Get(ctx, types.NamespacedName{Name: name}, cosr); err != nil {
+			return false, nil
 		}
-	}
-	return fmt.Errorf("COSR %s-%d has no controller owner reference to COS %q", group, revision, fullCOSName)
+		for _, ref := range cosr.OwnerReferences {
+			if ref.Kind == "ClusterObjectSet" && ref.Name == fullCOSName && ref.Controller != nil && *ref.Controller {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
 }
 
 func (tc *testContext) cosrShouldNotExist(group string, revision uint32) error {

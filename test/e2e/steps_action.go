@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
@@ -336,82 +337,107 @@ func (tc *testContext) theCOSIsCreated() error {
 func (tc *testContext) theCOSTemplateSpecIsUpdated(cmName, phaseName string) error {
 	ctx := context.Background()
 	name := tc.lastCreatedCOSName()
-	cos := &orbv1alpha1.ClusterObjectSet{}
-	if err := tc.client.Get(ctx, types.NamespacedName{Name: name}, cos); err != nil {
-		return err
-	}
-	cos.Spec.Template.Spec = orbv1alpha1.ClusterObjectSetTemplateSpec{
-		Phases: []orbv1alpha1.Phase{{
-			Name: phaseName,
-			Objects: []orbv1alpha1.PhaseObject{{
-				Object: runtime.RawExtension{Object: newConfigMap(cmName, tc.namespace)},
+	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		cos := &orbv1alpha1.ClusterObjectSet{}
+		if err := tc.client.Get(ctx, types.NamespacedName{Name: name}, cos); err != nil {
+			return false, err
+		}
+		cos.Spec.Template.Spec = orbv1alpha1.ClusterObjectSetTemplateSpec{
+			Phases: []orbv1alpha1.Phase{{
+				Name: phaseName,
+				Objects: []orbv1alpha1.PhaseObject{{
+					Object: runtime.RawExtension{Object: newConfigMap(cmName, tc.namespace)},
+				}},
 			}},
-		}},
-	}
-	return tc.client.Update(ctx, cos)
+		}
+		if err := tc.client.Update(ctx, cos); err != nil {
+			return false, nil
+		}
+		return true, nil
+	})
 }
 
 func (tc *testContext) theCOSTemplateSpecIsUpdatedWithGatedConfigMap(cmName, phaseName string) error {
 	ctx := context.Background()
 	name := tc.lastCreatedCOSName()
-	cos := &orbv1alpha1.ClusterObjectSet{}
-	if err := tc.client.Get(ctx, types.NamespacedName{Name: name}, cos); err != nil {
-		return err
-	}
-	cos.Spec.Template.Spec = orbv1alpha1.ClusterObjectSetTemplateSpec{
-		Phases: []orbv1alpha1.Phase{{
-			Name: phaseName,
-			Objects: []orbv1alpha1.PhaseObject{{
-				Object: runtime.RawExtension{Object: newConfigMap(cmName, tc.namespace)},
-				Assertions: []orbv1alpha1.Assertion{{
-					FieldValue: &orbv1alpha1.FieldValueAssertion{
-						FieldPath: ".data.ready",
-						Value:     "true",
-					},
+	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		cos := &orbv1alpha1.ClusterObjectSet{}
+		if err := tc.client.Get(ctx, types.NamespacedName{Name: name}, cos); err != nil {
+			return false, err
+		}
+		cos.Spec.Template.Spec = orbv1alpha1.ClusterObjectSetTemplateSpec{
+			Phases: []orbv1alpha1.Phase{{
+				Name: phaseName,
+				Objects: []orbv1alpha1.PhaseObject{{
+					Object: runtime.RawExtension{Object: newConfigMap(cmName, tc.namespace)},
+					Assertions: []orbv1alpha1.Assertion{{
+						FieldValue: &orbv1alpha1.FieldValueAssertion{
+							FieldPath: ".data.ready",
+							Value:     "true",
+						},
+					}},
 				}},
 			}},
-		}},
-	}
-	return tc.client.Update(ctx, cos)
+		}
+		if err := tc.client.Update(ctx, cos); err != nil {
+			return false, nil
+		}
+		return true, nil
+	})
 }
 
 func (tc *testContext) theCOSTemplateLabelIsUpdated(key, value string) error {
 	ctx := context.Background()
 	name := tc.lastCreatedCOSName()
-	cos := &orbv1alpha1.ClusterObjectSet{}
-	if err := tc.client.Get(ctx, types.NamespacedName{Name: name}, cos); err != nil {
-		return err
-	}
-	if cos.Spec.Template.Metadata.Labels == nil {
-		cos.Spec.Template.Metadata.Labels = make(map[string]string)
-	}
-	cos.Spec.Template.Metadata.Labels[key] = value
-	return tc.client.Update(ctx, cos)
+	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		cos := &orbv1alpha1.ClusterObjectSet{}
+		if err := tc.client.Get(ctx, types.NamespacedName{Name: name}, cos); err != nil {
+			return false, err
+		}
+		if cos.Spec.Template.Metadata.Labels == nil {
+			cos.Spec.Template.Metadata.Labels = make(map[string]string)
+		}
+		cos.Spec.Template.Metadata.Labels[key] = value
+		if err := tc.client.Update(ctx, cos); err != nil {
+			return false, nil
+		}
+		return true, nil
+	})
 }
 
 func (tc *testContext) theCOSLabelIsSetTo(cosName, key, value string) error {
 	ctx := context.Background()
 	fullName := tc.namespace + "-" + cosName
-	cos := &orbv1alpha1.ClusterObjectSet{}
-	if err := tc.client.Get(ctx, types.NamespacedName{Name: fullName}, cos); err != nil {
-		return err
-	}
-	if cos.Labels == nil {
-		cos.Labels = make(map[string]string)
-	}
-	cos.Labels[key] = value
-	return tc.client.Update(ctx, cos)
+	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		cos := &orbv1alpha1.ClusterObjectSet{}
+		if err := tc.client.Get(ctx, types.NamespacedName{Name: fullName}, cos); err != nil {
+			return false, err
+		}
+		if cos.Labels == nil {
+			cos.Labels = make(map[string]string)
+		}
+		cos.Labels[key] = value
+		if err := tc.client.Update(ctx, cos); err != nil {
+			return false, nil
+		}
+		return true, nil
+	})
 }
 
 func (tc *testContext) theCOSRevisionHistoryLimitIsSetTo(cosName string, limit int32) error {
 	ctx := context.Background()
 	fullName := tc.namespace + "-" + cosName
-	cos := &orbv1alpha1.ClusterObjectSet{}
-	if err := tc.client.Get(ctx, types.NamespacedName{Name: fullName}, cos); err != nil {
-		return err
-	}
-	cos.Spec.RevisionHistoryLimit = &limit
-	return tc.client.Update(ctx, cos)
+	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		cos := &orbv1alpha1.ClusterObjectSet{}
+		if err := tc.client.Get(ctx, types.NamespacedName{Name: fullName}, cos); err != nil {
+			return false, err
+		}
+		cos.Spec.RevisionHistoryLimit = &limit
+		if err := tc.client.Update(ctx, cos); err != nil {
+			return false, nil
+		}
+		return true, nil
+	})
 }
 
 func (tc *testContext) cosNameOfLength(n int) string {

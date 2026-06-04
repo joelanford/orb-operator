@@ -52,3 +52,15 @@ Feature: COS creates new revisions on template changes
     # Trigger a reconcile by changing a COS label (not the template)
     When the COS "rev-idempotent" label "trigger" is set to "reconcile"
     Then the COSR count for COS "rev-idempotent" should be 1
+
+  Scenario: Revision transition archives old revision and cleans up old objects
+    Given a COS named "rev-cleanup"
+    And a phase "install" with a ConfigMap "cm-cleanup-old"
+    When the COS is created
+    Then the COS "rev-cleanup" should have condition "Available" with status "True" and reason "Available"
+    And the ConfigMap "cm-cleanup-old" should exist
+    When the COS template spec is updated with a ConfigMap "cm-cleanup-new" in phase "install"
+    Then the COS "rev-cleanup" should have condition "Available" with status "True" and reason "Available"
+    And the COSR with group "rev-cleanup" and revision 1 should have lifecycleState "Archived"
+    And the ConfigMap "cm-cleanup-old" should not exist
+    And the ConfigMap "cm-cleanup-new" should exist
