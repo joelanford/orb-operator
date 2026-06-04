@@ -19,7 +19,7 @@ test-integration:
 
 test-e2e: KIND_CLUSTER = orb-operator-e2e
 test-e2e: run
-	go test ./test/e2e/...
+	go test ./test/e2e/... -count 1 -v
 
 test-all: test-unit test-integration test-e2e
 

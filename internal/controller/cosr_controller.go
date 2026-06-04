@@ -24,6 +24,7 @@ import (
 	"pkg.package-operator.run/boxcutter/probing"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -86,11 +87,7 @@ func (r *COSRReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		).
 		WatchesRawSource(
 			r.accessManager.Source(
-				managedcache.NewEnqueueWatchingObjects(
-					r.accessManager,
-					&orbv1alpha1.ClusterObjectSetRevision{},
-					r.scheme,
-				),
+				handler.EnqueueRequestsFromMapFunc(r.managedObjectToHighestRevInChain),
 			),
 		).
 		Complete(r)
@@ -98,12 +95,45 @@ func (r *COSRReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 func (r *COSRReconciler) mapToHighestRevInChain(ctx context.Context, obj client.Object) []reconcile.Request {
 	cosr := obj.(*orbv1alpha1.ClusterObjectSetRevision)
-	var list orbv1alpha1.ClusterObjectSetRevisionList
-	if err := r.client.List(ctx, &list, client.MatchingFields{groupIndex: cosr.Spec.Group}); err != nil {
+	req, ok := r.highestRevRequest(ctx, cosr.Spec.Group, controllerOwnerName(cosr))
+	if !ok {
+		return nil
+	}
+	return []reconcile.Request{req}
+}
+
+func (r *COSRReconciler) managedObjectToHighestRevInChain(ctx context.Context, obj client.Object) []reconcile.Request {
+	ref := metav1.GetControllerOf(obj)
+	if ref == nil {
 		return nil
 	}
 
-	ownerName := controllerOwnerName(cosr)
+	cosrGVK, err := apiutil.GVKForObject(&orbv1alpha1.ClusterObjectSetRevision{}, r.scheme)
+	if err != nil {
+		return nil
+	}
+	refGV, err := schema.ParseGroupVersion(ref.APIVersion)
+	if err != nil || refGV.Group != cosrGVK.Group || ref.Kind != cosrGVK.Kind {
+		return nil
+	}
+
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	if err := r.client.Get(ctx, client.ObjectKey{Name: ref.Name}, cosr); err != nil {
+		return nil
+	}
+	req, ok := r.highestRevRequest(ctx, cosr.Spec.Group, controllerOwnerName(cosr))
+	if !ok {
+		return nil
+	}
+	return []reconcile.Request{req}
+}
+
+func (r *COSRReconciler) highestRevRequest(ctx context.Context, group, ownerName string) (reconcile.Request, bool) {
+	var list orbv1alpha1.ClusterObjectSetRevisionList
+	if err := r.client.List(ctx, &list, client.MatchingFields{groupIndex: group}); err != nil {
+		return reconcile.Request{}, false
+	}
+
 	var latest *orbv1alpha1.ClusterObjectSetRevision
 	for i := range list.Items {
 		m := &list.Items[i]
@@ -115,9 +145,9 @@ func (r *COSRReconciler) mapToHighestRevInChain(ctx context.Context, obj client.
 		}
 	}
 	if latest == nil {
-		return nil
+		return reconcile.Request{}, false
 	}
-	return []reconcile.Request{{NamespacedName: client.ObjectKeyFromObject(latest)}}
+	return reconcile.Request{NamespacedName: client.ObjectKeyFromObject(latest)}, true
 }
 
 func (r *COSRReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {

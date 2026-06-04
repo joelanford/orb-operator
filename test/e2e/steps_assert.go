@@ -47,6 +47,7 @@ func registerAssertSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should have a controller owner reference to COS "([^"]*)"$`, tc.cosrShouldHaveControllerOwnerRef)
 	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should not exist$`, tc.cosrShouldNotExist)
 	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should not have an owner reference$`, tc.cosrShouldNotHaveOwnerRef)
+	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should not have finalizer "([^"]*)"$`, tc.cosrShouldNotHaveFinalizer)
 	sc.Step(`^the COSR count for COS "([^"]*)" should be (\d+)$`, tc.cosrCountForCOSShouldBe)
 	sc.Step(`^the COS "([^"]*)" should have condition "([^"]*)" with status "([^"]*)" and reason "([^"]*)"$`, tc.theCOSShouldHaveConditionWithReason)
 	sc.Step(`^the COS "([^"]*)" should become available without becoming unavailable$`, tc.theCOSShouldBecomeAvailableWithoutBecomingUnavailable)
@@ -304,6 +305,23 @@ func (tc *testContext) cosrShouldNotHaveOwnerRef(group string, revision uint32) 
 			return false, nil
 		}
 		return len(cosr.OwnerReferences) == 0, nil
+	})
+}
+
+func (tc *testContext) cosrShouldNotHaveFinalizer(group string, revision uint32, finalizer string) error {
+	ctx := context.Background()
+	name := tc.cosrName(group, revision)
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		if err := tc.client.Get(ctx, types.NamespacedName{Name: name}, cosr); err != nil {
+			return false, err
+		}
+		for _, f := range cosr.Finalizers {
+			if f == finalizer {
+				return false, nil
+			}
+		}
+		return true, nil
 	})
 }
 

@@ -48,6 +48,7 @@ func registerActionSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the ConfigMap "([^"]*)" is recreated by the controller$`, tc.theConfigMapIsRecreatedByController)
 
 	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) lifecycleState is set to "([^"]*)"$`, tc.theCOSRInGroupLifecycleStateIsSetTo)
+	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) is deleted$`, tc.theCOSRInGroupIsDeleted)
 
 	// COS action steps
 	sc.Step(`^the COS is created$`, tc.theCOSIsCreated)
@@ -317,6 +318,16 @@ func (tc *testContext) theCOSRInGroupLifecycleStateIsSetTo(group string, revisio
 		}
 		return true, nil
 	})
+}
+
+func (tc *testContext) theCOSRInGroupIsDeleted(group string, revision uint32) error {
+	ctx := context.Background()
+	name := tc.cosrName(group, revision)
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	if err := tc.client.Get(ctx, types.NamespacedName{Name: name}, cosr); err != nil {
+		return err
+	}
+	return tc.client.Delete(ctx, cosr)
 }
 
 func (tc *testContext) aNewCOSRIsCreated(group string, revision uint32) {

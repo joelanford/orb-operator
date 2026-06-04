@@ -90,3 +90,24 @@ Feature: COSR Active and Archived lifecycle behavior
     When the COSR lifecycleState is set to "Archived"
     Then the ConfigMap "cm-archive" should not exist
     And the COSR should have condition "Available" with status "False" and reason "Archived"
+
+  Scenario: Archived COSR finalizer is removed after teardown completes
+    Given a COSR with group "fin-remove" and revision 1
+    And a phase "install" with a ConfigMap "cm-fin-remove"
+    And the COSR is created and becomes Available
+    When the COSR with group "fin-remove" and revision 1 lifecycleState is set to "Archived"
+    Then the ConfigMap "cm-fin-remove" should not exist
+    And the COSR with group "fin-remove" and revision 1 should not have finalizer "orb.operatorframework.io/cosr-finalizer"
+
+  Scenario: Deleting a lower-revision COSR in a chain tears down its managed objects
+    Given a COSR with group "chain-del" and revision 1
+    And a phase "install" with a ConfigMap "cm-chain-del-1"
+    And the COSR is created and becomes Available
+    When a COSR with group "chain-del" and revision 2 is created
+    And the phase "install" has a ConfigMap "cm-chain-del-2"
+    And the new COSR is created and becomes Available
+    Then revision 1 should have condition "Available" with status "False" and reason "Superseded"
+    When the COSR with group "chain-del" and revision 1 is deleted
+    Then the COSR with group "chain-del" and revision 1 should not exist
+    And the ConfigMap "cm-chain-del-1" should not exist
+    And the ConfigMap "cm-chain-del-2" should exist

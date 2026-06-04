@@ -1,7 +1,7 @@
 apiVersion: orb.operatorframework.io/v1alpha1
 kind: ClusterObjectSetRevision
 metadata:
-  name: sample-group-4
+  name: sample-group-5
   labels:
     orb.operatorframework.io/template-hash: 569a9089
 spec:
@@ -149,4 +149,4 @@ spec:
                 ports:
                 - containerPort: 8080
               serviceAccountName: sample-controller
-  revision: 4
+  revision: 5
