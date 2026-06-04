@@ -373,20 +373,28 @@ func (r *COSRReconciler) doReconcileArchived(ctx context.Context, cosr *orbv1alp
 }
 
 func (r *COSRReconciler) handleDeletion(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (ctrl.Result, error) {
-	// The VAP "cosr-orphan-finalizer-ordering" guarantees the "orphan" finalizer
-	// cannot be removed while our finalizer is still present. So if the "orphan"
-	// finalizer is set, we can safely skip teardown.
-	if controllerutil.ContainsFinalizer(cosr, "orphan") {
-		log.Info("orphan finalizer present, skipping teardown")
+	if !controllerutil.ContainsFinalizer(cosr, finalizerKey) {
 		return ctrl.Result{}, nil
 	}
 
-	needsRequeue, err := r.teardownCOSR(ctx, cosr)
-	if err != nil {
-		return ctrl.Result{}, err
+	// The VAP "cosr-orphan-finalizer-ordering" guarantees the "orphan" finalizer
+	// cannot be removed while our finalizer is still present. When the "orphan"
+	// finalizer is set, skip teardown but still release the finalizer so the
+	// deletion can proceed.
+	if !controllerutil.ContainsFinalizer(cosr, "orphan") {
+		needsRequeue, err := r.teardownCOSR(ctx, cosr)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if needsRequeue {
+			return ctrl.Result{RequeueAfter: time.Second}, nil
+		}
+		return ctrl.Result{}, nil
 	}
-	if needsRequeue {
-		return ctrl.Result{RequeueAfter: time.Second}, nil
+
+	log.Info("orphan finalizer present, skipping teardown")
+	if err := r.releaseCOSR(ctx, cosr); err != nil {
+		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
 }
@@ -414,14 +422,20 @@ func (r *COSRReconciler) teardownCOSR(ctx context.Context, cosr *orbv1alpha1.Clu
 		return true, nil
 	}
 
-	if err := r.accessManager.FreeWithUser(ctx, cosr, cosr); err != nil {
-		return false, fmt.Errorf("freeing access manager: %w", err)
-	}
-
-	if err := removeFinalizer(ctx, r.client, cosr, finalizerKey); err != nil {
-		return false, fmt.Errorf("removing finalizer: %w", err)
+	if err := r.releaseCOSR(ctx, cosr); err != nil {
+		return false, err
 	}
 	return false, nil
+}
+
+func (r *COSRReconciler) releaseCOSR(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) error {
+	if err := r.accessManager.FreeWithUser(ctx, cosr, cosr); err != nil {
+		return fmt.Errorf("freeing access manager: %w", err)
+	}
+	if err := removeFinalizer(ctx, r.client, cosr, finalizerKey); err != nil {
+		return fmt.Errorf("removing finalizer: %w", err)
+	}
+	return nil
 }
 
 func (r *COSRReconciler) engineForCOSR(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) (*boxcutter.RevisionEngine, error) {
