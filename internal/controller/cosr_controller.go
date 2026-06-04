@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -64,9 +65,6 @@ func NewCOSRReconciler(
 	}
 }
 
-// REVIEW: Is there a reason this is publically separate from SetupWithManager?
-//   If callers always call both, perhaps make these unexported and have a single
-//   method on COSRReconciler.
 func SetupIndexes(mgr ctrl.Manager) error {
 	return mgr.GetFieldIndexer().IndexField(
 		context.Background(),
@@ -81,7 +79,11 @@ func SetupIndexes(mgr ctrl.Manager) error {
 
 func (r *COSRReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&orbv1alpha1.ClusterObjectSetRevision{}).
+		Named("cosr").
+		Watches(
+			&orbv1alpha1.ClusterObjectSetRevision{},
+			handler.EnqueueRequestsFromMapFunc(r.mapToHighestRevInChain),
+		).
 		WatchesRawSource(
 			r.accessManager.Source(
 				managedcache.NewEnqueueWatchingObjects(
@@ -91,32 +93,31 @@ func (r *COSRReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				),
 			),
 		).
-		Watches(
-			&orbv1alpha1.ClusterObjectSetRevision{},
-			// perhaps instead we should always map to the latest revision for the group, then the orchestrate updates for all COSRs in the group in a single reconcile invocaton?
-			handler.EnqueueRequestsFromMapFunc(r.mapToGroupMembers),
-		).
 		Complete(r)
 }
 
-func (r *COSRReconciler) mapToGroupMembers(ctx context.Context, obj client.Object) []reconcile.Request {
+func (r *COSRReconciler) mapToHighestRevInChain(ctx context.Context, obj client.Object) []reconcile.Request {
 	cosr := obj.(*orbv1alpha1.ClusterObjectSetRevision)
 	var list orbv1alpha1.ClusterObjectSetRevisionList
 	if err := r.client.List(ctx, &list, client.MatchingFields{groupIndex: cosr.Spec.Group}); err != nil {
 		return nil
 	}
 
-	// REVIEW: should we sort this list so the reconcile requests are added in an certain order?
-	var reqs []reconcile.Request
+	ownerName := controllerOwnerName(cosr)
+	var latest *orbv1alpha1.ClusterObjectSetRevision
 	for i := range list.Items {
-		if list.Items[i].Name == cosr.Name {
+		m := &list.Items[i]
+		if controllerOwnerName(m) != ownerName {
 			continue
 		}
-		reqs = append(reqs, reconcile.Request{
-			NamespacedName: client.ObjectKeyFromObject(&list.Items[i]),
-		})
+		if latest == nil || m.Spec.Revision > latest.Spec.Revision {
+			latest = m
+		}
 	}
-	return reqs
+	if latest == nil {
+		return nil
+	}
+	return []reconcile.Request{{NamespacedName: client.ObjectKeyFromObject(latest)}}
 }
 
 func (r *COSRReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -128,7 +129,6 @@ func (r *COSRReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 
 	if !existing.DeletionTimestamp.IsZero() {
-		// REVIEW: if this errors, should we update status to reflect the error?
 		return r.handleDeletion(ctx, log, existing)
 	}
 
@@ -140,37 +140,181 @@ func (r *COSRReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, nil
 	}
 
-	cosr := existing.DeepCopy()
-	res, reconcileErr := r.reconcile(ctx, log, cosr)
-
-	if !equality.Semantic.DeepEqual(existing.Status, cosr.Status) {
-		if err := r.client.Status().Update(ctx, cosr); err != nil {
-			return res, errors.Join(reconcileErr, fmt.Errorf("updating status: %w", err))
-		}
-	}
-
-	return res, reconcileErr
+	return r.reconcile(ctx, log, existing)
 }
 
 func (r *COSRReconciler) reconcile(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (ctrl.Result, error) {
 	groupMembers, err := r.listGroupMembers(ctx, cosr.Spec.Group)
 	if err != nil {
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, fmt.Sprintf("listing group members: %v", err))
 		return ctrl.Result{}, err
 	}
 
-	if cosr.Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived {
-		// REVIEW: if this errors, should we update status to reflect the error?
-		return r.reconcileArchived(ctx, log, cosr)
+	ownerName := controllerOwnerName(cosr)
+	members := filterByControllerOwner(groupMembers, ownerName)
+	chain := buildChain(members)
+
+	return r.reconcileChain(ctx, log, cosr, chain)
+}
+
+type revisionChain struct {
+	latestActive *orbv1alpha1.ClusterObjectSetRevision
+	predecessors []*orbv1alpha1.ClusterObjectSetRevision
+	archived     []*orbv1alpha1.ClusterObjectSetRevision
+}
+
+func buildChain(members []orbv1alpha1.ClusterObjectSetRevision) revisionChain {
+	slices.SortFunc(members, func(a, b orbv1alpha1.ClusterObjectSetRevision) int {
+		return cmp.Compare(b.Spec.Revision, a.Spec.Revision)
+	})
+
+	var ch revisionChain
+	for i := range members {
+		m := &members[i]
+		switch {
+		case m.Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived:
+			ch.archived = append(ch.archived, m)
+		case ch.latestActive == nil:
+			ch.latestActive = m
+		default:
+			ch.predecessors = append(ch.predecessors, m)
+		}
+	}
+	return ch
+}
+
+func (r *COSRReconciler) reconcileChain(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision, chain revisionChain) (ctrl.Result, error) {
+	if err := r.reconcileActiveMembers(ctx, log, cosr, chain); err != nil {
+		return ctrl.Result{}, err
 	}
 
-	latestActive := findLatestActive(groupMembers)
-	if latestActive != nil && latestActive.Name != cosr.Name {
-		// REVIEW: if this errors, should we update status to reflect the error?
-		return r.reconcileSuperseded(ctx, log, cosr, latestActive)
+	var needsRequeue bool
+	for _, m := range chain.archived {
+		requeue, err := r.reconcileArchived(ctx, log, m)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if requeue {
+			needsRequeue = true
+		}
 	}
 
-	// REVIEW: if this errors, should we update status to reflect the error?
-	return r.reconcileActive(ctx, log, cosr, groupMembers)
+	if needsRequeue {
+		return ctrl.Result{RequeueAfter: time.Second}, nil
+	}
+	return ctrl.Result{}, nil
+}
+
+func (r *COSRReconciler) reconcileActiveMembers(ctx context.Context, log logr.Logger, _ *orbv1alpha1.ClusterObjectSetRevision, chain revisionChain) error {
+	if chain.latestActive == nil {
+		return nil
+	}
+
+	if err := r.reconcileLatest(ctx, log, chain.latestActive, chain.predecessors); err != nil {
+		return err
+	}
+
+	for _, p := range chain.predecessors {
+		if err := r.updatePredecessorStatus(ctx, log, p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *COSRReconciler) reconcileLatest(
+	ctx context.Context, log logr.Logger,
+	cosr *orbv1alpha1.ClusterObjectSetRevision,
+	predecessors []*orbv1alpha1.ClusterObjectSetRevision,
+) error {
+	log.Info("reconciling latest active COSR")
+
+	existing := cosr.DeepCopy()
+	reconcileErr := r.doReconcileLatest(ctx, cosr, predecessors)
+
+	if !equality.Semantic.DeepEqual(existing.Status, cosr.Status) {
+		if err := r.client.Status().Update(ctx, cosr); err != nil {
+			return errors.Join(reconcileErr, fmt.Errorf("updating status for %s: %w", cosr.Name, err))
+		}
+	}
+	return reconcileErr
+}
+
+func (r *COSRReconciler) doReconcileLatest(
+	ctx context.Context,
+	cosr *orbv1alpha1.ClusterObjectSetRevision,
+	predecessors []*orbv1alpha1.ClusterObjectSetRevision,
+) error {
+	engine, err := r.engineForCOSR(ctx, cosr)
+	if err != nil {
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, fmt.Sprintf("engine setup: %v", err))
+		return err
+	}
+
+	rev, err := r.buildRevisionWithPreviousOwners(cosr, predecessors)
+	if err != nil {
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, fmt.Sprintf("building revision: %v", err))
+		return fmt.Errorf("building revision: %w", err)
+	}
+	result, err := engine.Reconcile(ctx, rev)
+	if err != nil {
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, fmt.Sprintf("reconcile failed: %v", err))
+		return fmt.Errorf("reconciling: %w", err)
+	}
+
+	if result.IsComplete() {
+		setCondition(cosr, metav1.ConditionTrue, orbv1alpha1.ReasonAvailable, "all phases complete")
+	} else {
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, "phases not yet complete")
+	}
+	return nil
+}
+
+func (r *COSRReconciler) updatePredecessorStatus(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) error {
+	log.Info("marking predecessor as superseded", "cosr", cosr.Name)
+
+	existing := cosr.DeepCopy()
+	setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, "a newer revision exists in this group")
+
+	if !equality.Semantic.DeepEqual(existing.Status, cosr.Status) {
+		if err := r.client.Status().Update(ctx, cosr); err != nil {
+			return fmt.Errorf("updating superseded status for %s: %w", cosr.Name, err)
+		}
+	}
+	return nil
+}
+
+func (r *COSRReconciler) reconcileArchived(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (bool, error) {
+	log.Info("reconciling archived COSR", "cosr", cosr.Name)
+
+	engine, err := r.engineForCOSR(ctx, cosr)
+	if err != nil {
+		r.setArchivedCondition(ctx, cosr, fmt.Sprintf("engine setup: %v", err))
+		return false, err
+	}
+
+	rev, err := r.buildRevision(cosr)
+	if err != nil {
+		r.setArchivedCondition(ctx, cosr, fmt.Sprintf("building revision: %v", err))
+		return false, fmt.Errorf("building revision: %w", err)
+	}
+	result, err := engine.Teardown(ctx, rev)
+	if err != nil {
+		r.setArchivedCondition(ctx, cosr, fmt.Sprintf("teardown failed: %v", err))
+		return false, fmt.Errorf("teardown: %w", err)
+	}
+
+	r.setArchivedCondition(ctx, cosr, "COSR is archived")
+
+	return !result.IsComplete(), nil
+}
+
+func (r *COSRReconciler) setArchivedCondition(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision, message string) {
+	existing := cosr.DeepCopy()
+	setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, message)
+	if !equality.Semantic.DeepEqual(existing.Status, cosr.Status) {
+		_ = r.client.Status().Update(ctx, cosr)
+	}
 }
 
 func (r *COSRReconciler) handleDeletion(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (ctrl.Result, error) {
@@ -178,30 +322,8 @@ func (r *COSRReconciler) handleDeletion(ctx context.Context, log logr.Logger, co
 		return ctrl.Result{}, nil
 	}
 
-	// The VAP "cosr-orphan-finalizer-ordering" guarantees the "orphan" finalizer
-	// cannot be removed while our finalizer is still present. So if the "orphan"
-	// finalizer is set, we can safely skip teardown.
-	if controllerutil.ContainsFinalizer(cosr, "orphan") {
-		log.Info("orphan finalizer present, skipping teardown")
-	} else {
-		log.Info("tearing down for deletion")
-		engine, err := r.engineForCOSR(ctx, cosr)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-
-		rev, err := r.buildRevision(cosr)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("building revision: %w", err)
-		}
-		result, err := engine.Teardown(ctx, rev)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("teardown: %w", err)
-		}
-
-		if !result.IsComplete() {
-			return ctrl.Result{Requeue: true}, nil
-		}
+	if res, err := r.teardownForDeletion(ctx, log, cosr); res.RequeueAfter > 0 || err != nil {
+		return res, err
 	}
 
 	if err := r.accessManager.FreeWithUser(ctx, cosr, cosr); err != nil {
@@ -214,8 +336,16 @@ func (r *COSRReconciler) handleDeletion(ctx context.Context, log logr.Logger, co
 	return ctrl.Result{}, nil
 }
 
-func (r *COSRReconciler) reconcileArchived(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (ctrl.Result, error) {
-	log.Info("reconciling archived COSR")
+func (r *COSRReconciler) teardownForDeletion(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (ctrl.Result, error) {
+	// The VAP "cosr-orphan-finalizer-ordering" guarantees the "orphan" finalizer
+	// cannot be removed while our finalizer is still present. So if the "orphan"
+	// finalizer is set, we can safely skip teardown.
+	if controllerutil.ContainsFinalizer(cosr, "orphan") {
+		log.Info("orphan finalizer present, skipping teardown")
+		return ctrl.Result{}, nil
+	}
+
+	log.Info("tearing down for deletion")
 	engine, err := r.engineForCOSR(ctx, cosr)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -229,101 +359,9 @@ func (r *COSRReconciler) reconcileArchived(ctx context.Context, log logr.Logger,
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("teardown: %w", err)
 	}
-	
-	// REVIEW: There are other error paths above that result in returning from Reconcile with an error,
-	// but without setting status. That's a problem.
-
-	// REVIEW: if the result is not complete, then are we really archived yet?
-	setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, "COSR is archived")
 
 	if !result.IsComplete() {
-		// REVIEW: teardown isn't complete, then in theory we keep our cache around,
-		// which means we will see more events from the children, which means we don't
-		// need to force a requeue? Maybe teardown is different because we might not
-		// actually get events from children we didn't delete.
-		return ctrl.Result{Requeue: true}, nil
-	}
-
-	return ctrl.Result{}, nil
-}
-
-func (r *COSRReconciler) reconcileSuperseded(
-	ctx context.Context, log logr.Logger,
-	cosr *orbv1alpha1.ClusterObjectSetRevision,
-	latestActive *orbv1alpha1.ClusterObjectSetRevision,
-) (ctrl.Result, error) {
-	log.Info("COSR superseded by newer revision", "latest", latestActive.Name)
-
-	engine, err := r.engineForCOSR(ctx, latestActive)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	// REVIEW: Should we only actually do this when reconciling the latest revision?
-	//   And in that case, we'd include all of the previous owners?
-	latestRev, err := r.buildRevisionWithPreviousOwners(latestActive, []*orbv1alpha1.ClusterObjectSetRevision{cosr})
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("building revision: %w", err)
-	}
-	_, engineErr := engine.Reconcile(ctx, latestRev)
-
-	// REVIEW: Same question here: there are a couple of error paths above that
-	//   do not result in setting/updating conditions.
-	setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, "a newer revision exists in this group")
-
-	if engineErr != nil {
-		return ctrl.Result{}, fmt.Errorf("reconciling latest: %w", engineErr)
-	}
-
-	if meta.IsStatusConditionTrue(latestActive.Status.Conditions, orbv1alpha1.ConditionTypeAvailable) {
-		cosr.Spec.LifecycleState = orbv1alpha1.LifecycleStateArchived
-		// REVIEW: Should the spec updates also be collected up and handled in big-R Reconcile?
-		//   Thinking even more. Usually it is an anti-pattern for a reconciler to update the spec of
-		//   the object it is reconciling. Should active/archived be a status thing?
-		if err := r.client.Update(ctx, cosr); err != nil {
-			return ctrl.Result{}, fmt.Errorf("archiving superseded COSR: %w", err)
-		}
-	}
-
-	return ctrl.Result{}, nil
-}
-
-func (r *COSRReconciler) reconcileActive(
-	ctx context.Context, log logr.Logger,
-	cosr *orbv1alpha1.ClusterObjectSetRevision,
-	groupMembers []orbv1alpha1.ClusterObjectSetRevision,
-) (ctrl.Result, error) {
-	log.Info("reconciling active COSR")
-
-	var previousOwners []*orbv1alpha1.ClusterObjectSetRevision
-	for i := range groupMembers {
-		m := &groupMembers[i]
-		if m.Name != cosr.Name && m.Spec.Revision < cosr.Spec.Revision {
-			previousOwners = append(previousOwners, m)
-		}
-	}
-
-	engine, err := r.engineForCOSR(ctx, cosr)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	rev, err := r.buildRevisionWithPreviousOwners(cosr, previousOwners)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("building revision: %w", err)
-	}
-	result, err := engine.Reconcile(ctx, rev)
-	if err != nil {
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, fmt.Sprintf("reconcile failed: %v", err))
-		return ctrl.Result{}, fmt.Errorf("reconciling: %w", err)
-	}
-	
-	// REVIEW: Lots of error paths above that do not result in an update to the status. That's a problem.
-
-	if result.IsComplete() {
-		setCondition(cosr, metav1.ConditionTrue, orbv1alpha1.ReasonAvailable, "all phases complete")
-	} else {
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, "phases not yet complete")
+		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
 	return ctrl.Result{}, nil
 }
@@ -468,18 +506,22 @@ func (r *COSRReconciler) listGroupMembers(ctx context.Context, group string) ([]
 	return list.Items, nil
 }
 
-func findLatestActive(members []orbv1alpha1.ClusterObjectSetRevision) *orbv1alpha1.ClusterObjectSetRevision {
-	var latest *orbv1alpha1.ClusterObjectSetRevision
-	for i := range members {
-		m := &members[i]
-		if m.Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived {
-			continue
-		}
-		if latest == nil || m.Spec.Revision > latest.Spec.Revision {
-			latest = m
+func controllerOwnerName(cosr *orbv1alpha1.ClusterObjectSetRevision) string {
+	ref := metav1.GetControllerOf(cosr)
+	if ref == nil {
+		return ""
+	}
+	return ref.Name
+}
+
+func filterByControllerOwner(members []orbv1alpha1.ClusterObjectSetRevision, ownerName string) []orbv1alpha1.ClusterObjectSetRevision {
+	var result []orbv1alpha1.ClusterObjectSetRevision
+	for _, m := range members {
+		if controllerOwnerName(&m) == ownerName {
+			result = append(result, m)
 		}
 	}
-	return latest
+	return result
 }
 
 func objectFromRawExtension(raw runtime.RawExtension) (*unstructured.Unstructured, error) {
