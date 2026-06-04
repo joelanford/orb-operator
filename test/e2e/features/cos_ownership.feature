@@ -24,7 +24,7 @@ Feature: COS owns stamped COSRs via owner references
     Then a COSR should exist with group "own-orphan" and revision 1
     And the COSR with group "own-orphan" and revision 1 should not have an owner reference
 
-  Scenario: COS adopts an unowned COSR in its group
+  Scenario: COS adopts a pre-existing unowned COSR in its group
     Given a COSR with group "own-adopt" and revision 1
     And a phase "install" with a ConfigMap "cm-adopt"
     And the COSR is created and becomes Available
@@ -33,3 +33,13 @@ Feature: COS owns stamped COSRs via owner references
     When the COS is created
     Then the COSR with group "own-adopt" and revision 1 should have a controller owner reference to COS "own-adopt"
     And a COSR should exist with group "own-adopt" and revision 2
+
+  Scenario: COS adopts an unowned COSR created after the COS
+    Given a COS named "own-late"
+    And a phase "install" with a ConfigMap "cm-late"
+    When the COS is created
+    Then the COS "own-late" should have condition "Available" with status "True" and reason "Available"
+    Given a COSR with group "own-late" and revision 10
+    And a phase "install" with a ConfigMap "cm-late-external"
+    And the COSR is created
+    Then the COSR with group "own-late" and revision 10 should have a controller owner reference to COS "own-late"

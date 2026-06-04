@@ -1,7 +1,9 @@
 apiVersion: orb.operatorframework.io/v1alpha1
 kind: ClusterObjectSetRevision
 metadata:
-  name: sample-group-2
+  name: sample-group-4
+  labels:
+    orb.operatorframework.io/template-hash: 569a9089
 spec:
   group: sample-group
   lifecycleState: Active
@@ -147,4 +149,4 @@ spec:
                 ports:
                 - containerPort: 8080
               serviceAccountName: sample-controller
-  revision: 2
+  revision: 4
