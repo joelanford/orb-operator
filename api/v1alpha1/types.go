@@ -89,6 +89,7 @@ type PhaseObject struct {
 	Assertions []Assertion `json:"assertions,omitempty"`
 }
 
+// +kubebuilder:validation:ExactlyOneOf=conditionEqual;fieldsEqual;fieldValue;celExpression
 type Assertion struct {
 	ConditionEqual *ConditionEqualAssertion `json:"conditionEqual,omitempty"`
 	FieldsEqual    *FieldsEqualAssertion    `json:"fieldsEqual,omitempty"`
@@ -97,21 +98,27 @@ type Assertion struct {
 }
 
 type ConditionEqualAssertion struct {
-	Type   string `json:"type"`
+	// +kubebuilder:validation:MinLength=1
+	Type string `json:"type"`
+	// +kubebuilder:validation:MinLength=1
 	Status string `json:"status"`
 }
 
 type FieldsEqualAssertion struct {
+	// +kubebuilder:validation:MinLength=1
 	FieldA string `json:"fieldA"`
+	// +kubebuilder:validation:MinLength=1
 	FieldB string `json:"fieldB"`
 }
 
 type FieldValueAssertion struct {
+	// +kubebuilder:validation:MinLength=1
 	FieldPath string `json:"fieldPath"`
 	Value     string `json:"value"`
 }
 
 type CELExpressionAssertion struct {
+	// +kubebuilder:validation:MinLength=1
 	Expression string `json:"expression"`
 	Message    string `json:"message,omitempty"`
 }

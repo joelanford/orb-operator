@@ -89,6 +89,7 @@ spec:
                                 celExpression:
                                   properties:
                                     expression:
+                                      minLength: 1
                                       type: string
                                     message:
                                       type: string
@@ -98,8 +99,10 @@ spec:
                                 conditionEqual:
                                   properties:
                                     status:
+                                      minLength: 1
                                       type: string
                                     type:
+                                      minLength: 1
                                       type: string
                                   required:
                                   - status
@@ -108,6 +111,7 @@ spec:
                                 fieldValue:
                                   properties:
                                     fieldPath:
+                                      minLength: 1
                                       type: string
                                     value:
                                       type: string
@@ -118,14 +122,21 @@ spec:
                                 fieldsEqual:
                                   properties:
                                     fieldA:
+                                      minLength: 1
                                       type: string
                                     fieldB:
+                                      minLength: 1
                                       type: string
                                   required:
                                   - fieldA
                                   - fieldB
                                   type: object
                               type: object
+                              x-kubernetes-validations:
+                              - message: exactly one of the fields in [conditionEqual
+                                  fieldsEqual fieldValue celExpression] must be set
+                                rule: '[has(self.conditionEqual),has(self.fieldsEqual),has(self.fieldValue),has(self.celExpression)].filter(x,x==true).size()
+                                  == 1'
                             maxItems: 16
                             type: array
                           collisionProtection:
