@@ -26,6 +26,11 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
+        description: |-
+          ClusterObjectSet declares a set of Kubernetes objects that should be applied
+          to the cluster and kept in the desired state. The controller creates
+          ClusterObjectSetRevision resources to track each unique template snapshot and
+          manages their lifecycle automatically.
         properties:
           apiVersion:
             description: |-
@@ -45,65 +50,162 @@ spec:
           metadata:
             type: object
           spec:
+            description: spec defines the desired set of objects and their lifecycle
+              configuration.
             properties:
               revisionHistoryLimit:
+                description: |-
+                  revisionHistoryLimit is the maximum number of archived
+                  ClusterObjectSetRevision resources to retain. Older archived revisions
+                  beyond this limit are garbage collected by the controller. When omitted,
+                  the platform chooses a reasonable default, which is subject to change over
+                  time. The current default is 10. Set to 0 to disable revision history
+                  entirely.
                 format: int32
                 minimum: 0
                 type: integer
               template:
+                description: |-
+                  template defines the ClusterObjectSetRevision that the controller will
+                  create whenever the template content changes.
                 properties:
                   metadata:
+                    description: |-
+                      metadata contains labels and annotations that are propagated to each
+                      ClusterObjectSetRevision created from this template.
                     properties:
                       annotations:
                         additionalProperties:
                           type: string
+                        description: |-
+                          annotations is a set of key/value pairs propagated to each revision's
+                          metadata. Keys must conform to the Kubernetes annotation key format.
+                          Values are free-form strings up to 256 KiB each. A maximum of 32
+                          annotations may be specified.
+                        maxProperties: 32
                         type: object
                       labels:
                         additionalProperties:
                           type: string
+                        description: |-
+                          labels is a set of key/value pairs propagated to each revision's metadata.
+                          Keys and values must conform to the Kubernetes label format. A maximum of
+                          32 labels may be specified.
+                        maxProperties: 32
                         type: object
                     type: object
+                    x-kubernetes-validations:
+                    - message: annotation values must be 256 KiB or less
+                      rule: '!has(self.annotations) || self.annotations.all(k, self.annotations[k].size()
+                        <= 262144)'
                   spec:
+                    description: |-
+                      spec defines the phases, objects, and configuration for each revision
+                      created from this template.
                     properties:
                       collisionProtection:
+                        description: |-
+                          collisionProtection sets the default collision protection for all phases
+                          and objects in the revision. Individual phases and objects may override
+                          this setting. When omitted, the platform chooses a reasonable default,
+                          which is subject to change over time. The current default is "Prevent".
+                          Allowed values are "Prevent", "IfNoController", and "None".
                         enum:
                         - Prevent
                         - IfNoController
                         - None
                         type: string
                       phases:
+                        description: |-
+                          phases is the ordered list of phases that define the managed objects. The
+                          list must contain between 1 and 20 phases. Phases are applied
+                          sequentially: the controller does not advance to the next phase until all
+                          objects in the current phase satisfy their assertions.
                         items:
+                          description: |-
+                            Phase is an ordered group of objects that are applied together. Phases within
+                            a revision are applied sequentially: the controller does not advance to the
+                            next phase until all objects in the current phase satisfy their assertions.
                           properties:
                             collisionProtection:
+                              description: |-
+                                collisionProtection overrides the revision-level collision protection
+                                setting for all objects in this phase. When omitted, the revision-level
+                                setting applies.
                               enum:
                               - Prevent
                               - IfNoController
                               - None
                               type: string
                             name:
+                              description: |-
+                                name is a human-readable identifier for this phase. It is used in log
+                                messages and status reporting.
+                              maxLength: 253
+                              minLength: 1
                               type: string
                             objects:
+                              description: |-
+                                objects is the list of Kubernetes objects to manage in this phase. The
+                                list must contain between 1 and 50 objects.
                               items:
+                                description: |-
+                                  PhaseObject wraps a single Kubernetes object with optional collision
+                                  protection and availability assertions.
                                 properties:
                                   assertions:
+                                    description: |-
+                                      assertions define conditions that must be met before this object is
+                                      considered available. A maximum of 16 assertions may be specified. When
+                                      omitted, the object is considered available immediately after successful
+                                      apply.
                                     items:
+                                      description: |-
+                                        Assertion defines a single availability check that must pass before the
+                                        containing object is considered available. Exactly one of conditionEqual,
+                                        fieldsEqual, fieldValue, or celExpression must be set.
                                       properties:
                                         celExpression:
+                                          description: |-
+                                            celExpression evaluates a CEL expression against the object. The
+                                            expression must evaluate to true for the assertion to pass.
                                           properties:
                                             expression:
+                                              description: |-
+                                                expression is a CEL expression that must evaluate to true for the
+                                                assertion to pass. The managed object is available as "self" in the
+                                                expression scope.
+                                              maxLength: 4096
                                               minLength: 1
                                               type: string
                                             message:
+                                              description: |-
+                                                message is an optional human-readable explanation shown when the assertion
+                                                fails. When omitted, the raw expression text is used in error messages.
+                                              maxLength: 1024
                                               type: string
                                           required:
                                           - expression
                                           type: object
                                         conditionEqual:
+                                          description: |-
+                                            conditionEqual checks that a status condition with the given type has the
+                                            expected status value.
                                           properties:
                                             status:
-                                              minLength: 1
+                                              description: |-
+                                                status is the expected value of the condition's status field. Allowed
+                                                values are "True", "False", and "Unknown".
+                                              enum:
+                                              - "True"
+                                              - "False"
+                                              - Unknown
                                               type: string
                                             type:
+                                              description: type is the condition type
+                                                to match, for example "Available"
+                                                or "Ready".
+                                              maxLength: 316
                                               minLength: 1
                                               type: string
                                           required:
@@ -111,22 +213,40 @@ spec:
                                           - type
                                           type: object
                                         fieldValue:
+                                          description: |-
+                                            fieldValue checks that a single field on the object matches an expected
+                                            value.
                                           properties:
                                             fieldPath:
+                                              description: fieldPath is the JSON path
+                                                to the field to check.
+                                              maxLength: 512
                                               minLength: 1
                                               type: string
                                             value:
+                                              description: |-
+                                                value is the expected value of the field. An empty string is a valid
+                                                expected value.
+                                              maxLength: 1024
                                               type: string
                                           required:
                                           - fieldPath
                                           - value
                                           type: object
                                         fieldsEqual:
+                                          description: fieldsEqual checks that two
+                                            fields on the object have equal values.
                                           properties:
                                             fieldA:
+                                              description: fieldA is the JSON path
+                                                to the first field to compare.
+                                              maxLength: 512
                                               minLength: 1
                                               type: string
                                             fieldB:
+                                              description: fieldB is the JSON path
+                                                to the second field to compare.
+                                              maxLength: 512
                                               minLength: 1
                                               type: string
                                           required:
@@ -143,12 +263,20 @@ spec:
                                     maxItems: 16
                                     type: array
                                   collisionProtection:
+                                    description: |-
+                                      collisionProtection overrides the phase-level collision protection
+                                      setting for this specific object. When omitted, the phase-level setting
+                                      applies.
                                     enum:
                                     - Prevent
                                     - IfNoController
                                     - None
                                     type: string
                                   object:
+                                    description: |-
+                                      object is the Kubernetes resource to create or update. The controller
+                                      applies this object to the cluster and manages it for the lifetime of the
+                                      owning revision.
                                     type: object
                                     x-kubernetes-preserve-unknown-fields: true
                                 required:
@@ -174,14 +302,19 @@ spec:
             - template
             type: object
           status:
+            description: |-
+              status reports the observed state of the ClusterObjectSet, including
+              aggregate availability and the state of active revisions.
             properties:
               activeRevisions:
                 description: |-
-                  activeRevisions holds the currently active (non-archived) COSRs, including
-                  any revision just created but not yet visible in the informer cache.
+                  activeRevisions holds the currently active (non-archived)
+                  ClusterObjectSetRevision resources, including any revision just created
+                  but not yet visible in the informer cache.
                 items:
-                  description: ClusterObjectSetRevisionStatusSummary summarizes the
-                    state of a single active COSR.
+                  description: |-
+                    ClusterObjectSetRevisionStatusSummary summarizes the state of a single active
+                    ClusterObjectSetRevision.
                   properties:
                     conditions:
                       description: conditions reflects the Available condition of
@@ -246,7 +379,9 @@ spec:
                       - type
                       x-kubernetes-list-type: map
                     name:
-                      description: name of the ClusterObjectSetRevision resource.
+                      description: name is the metadata.name of the ClusterObjectSetRevision
+                        resource.
+                      minLength: 1
                       type: string
                   required:
                   - name
@@ -256,6 +391,10 @@ spec:
                 - name
                 x-kubernetes-list-type: map
               conditions:
+                description: |-
+                  conditions represent the latest available observations of the
+                  ClusterObjectSet's state. The "Available" condition indicates whether the
+                  active revision's managed objects satisfy their assertions.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -315,6 +454,8 @@ spec:
                 - type
                 x-kubernetes-list-type: map
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true

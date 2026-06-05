@@ -92,7 +92,7 @@ func (r *COSRReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 func (r *COSRReconciler) mapToHighestRevInChain(ctx context.Context, obj client.Object) []reconcile.Request {
 	cosr := obj.(*orbv1alpha1.ClusterObjectSetRevision)
-	req, ok := r.highestRevRequest(ctx, cosr.Spec.Group, controllerOwnerName(cosr))
+	req, ok := r.highestRevRequest(ctx, cosr.Spec.Group, controllerOwnerKeyOf(cosr))
 	if !ok {
 		return nil
 	}
@@ -118,14 +118,14 @@ func (r *COSRReconciler) managedObjectToHighestRevInChain(ctx context.Context, o
 	if err := r.client.Get(ctx, client.ObjectKey{Name: ref.Name}, cosr); err != nil {
 		return nil
 	}
-	req, ok := r.highestRevRequest(ctx, cosr.Spec.Group, controllerOwnerName(cosr))
+	req, ok := r.highestRevRequest(ctx, cosr.Spec.Group, controllerOwnerKeyOf(cosr))
 	if !ok {
 		return nil
 	}
 	return []reconcile.Request{req}
 }
 
-func (r *COSRReconciler) highestRevRequest(ctx context.Context, group, ownerName string) (reconcile.Request, bool) {
+func (r *COSRReconciler) highestRevRequest(ctx context.Context, group string, key controllerOwnerKey) (reconcile.Request, bool) {
 	var list orbv1alpha1.ClusterObjectSetRevisionList
 	if err := r.client.List(ctx, &list, client.MatchingFields{groupIndex: group}); err != nil {
 		return reconcile.Request{}, false
@@ -134,7 +134,7 @@ func (r *COSRReconciler) highestRevRequest(ctx context.Context, group, ownerName
 	var latest *orbv1alpha1.ClusterObjectSetRevision
 	for i := range list.Items {
 		m := &list.Items[i]
-		if controllerOwnerName(m) != ownerName {
+		if controllerOwnerKeyOf(m) != key {
 			continue
 		}
 		if latest == nil || m.Spec.Revision > latest.Spec.Revision {
@@ -164,8 +164,8 @@ func (r *COSRReconciler) reconcile(ctx context.Context, log logr.Logger, cosr *o
 		return ctrl.Result{}, err
 	}
 
-	ownerName := controllerOwnerName(cosr)
-	members := filterByControllerOwner(groupMembers, ownerName)
+	ownerKey := controllerOwnerKeyOf(cosr)
+	members := filterByControllerOwner(groupMembers, ownerKey)
 	chain := buildChain(members)
 
 	return r.reconcileChain(ctx, log, cosr, chain)
@@ -570,18 +570,23 @@ func (r *COSRReconciler) listGroupMembers(ctx context.Context, group string) ([]
 	return list.Items, nil
 }
 
-func controllerOwnerName(cosr *orbv1alpha1.ClusterObjectSetRevision) string {
-	ref := metav1.GetControllerOf(cosr)
-	if ref == nil {
-		return ""
-	}
-	return ref.Name
+type controllerOwnerKey struct {
+	Kind string
+	Name string
 }
 
-func filterByControllerOwner(members []orbv1alpha1.ClusterObjectSetRevision, ownerName string) []orbv1alpha1.ClusterObjectSetRevision {
+func controllerOwnerKeyOf(cosr *orbv1alpha1.ClusterObjectSetRevision) controllerOwnerKey {
+	ref := metav1.GetControllerOf(cosr)
+	if ref == nil {
+		return controllerOwnerKey{}
+	}
+	return controllerOwnerKey{Kind: ref.Kind, Name: ref.Name}
+}
+
+func filterByControllerOwner(members []orbv1alpha1.ClusterObjectSetRevision, key controllerOwnerKey) []orbv1alpha1.ClusterObjectSetRevision {
 	var result []orbv1alpha1.ClusterObjectSetRevision
 	for _, m := range members {
-		if controllerOwnerName(&m) == ownerName {
+		if controllerOwnerKeyOf(&m) == key {
 			result = append(result, m)
 		}
 	}
