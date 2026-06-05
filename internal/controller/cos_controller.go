@@ -120,7 +120,9 @@ func (r *COSReconciler) reconcile(ctx context.Context, cos *orbv1alpha1.ClusterO
 		return err
 	}
 
-	r.pruneArchivedCOSRs(ctx, cos, ownedCOSRs)
+	if err := r.pruneArchivedCOSRs(ctx, cos, ownedCOSRs); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -216,9 +218,7 @@ func buildCOSRFromTemplate(cos *orbv1alpha1.ClusterObjectSet, revision uint32, h
 	}
 }
 
-func (r *COSReconciler) pruneArchivedCOSRs(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, cosrs []orbv1alpha1.ClusterObjectSetRevision) {
-	log := ctrl.LoggerFrom(ctx)
-
+func (r *COSReconciler) pruneArchivedCOSRs(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, cosrs []orbv1alpha1.ClusterObjectSetRevision) error {
 	limit := defaultRevisionHistoryLimit
 	if cos.Spec.RevisionHistoryLimit != nil {
 		limit = *cos.Spec.RevisionHistoryLimit
@@ -238,9 +238,10 @@ func (r *COSReconciler) pruneArchivedCOSRs(ctx context.Context, cos *orbv1alpha1
 	excess := len(prunable) - int(limit)
 	for i := range excess {
 		if err := r.client.Delete(ctx, &prunable[i]); err != nil {
-			log.Error(err, "pruning archived COSR", "cosr", prunable[i].Name)
+			return fmt.Errorf("pruning archived COSR %s: %w", prunable[i].Name, err)
 		}
 	}
+	return nil
 }
 
 func (r *COSReconciler) setStatus(cos *orbv1alpha1.ClusterObjectSet, ownedCOSRs []orbv1alpha1.ClusterObjectSetRevision) {
