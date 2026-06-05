@@ -102,7 +102,10 @@ func (r *COSReconciler) reconcile(ctx context.Context, cos *orbv1alpha1.ClusterO
 		latestOwned = &ownedCOSRs[len(ownedCOSRs)-1]
 	}
 
-	currentHash := templateHash(cos.Spec.Template)
+	currentHash, err := templateHash(cos.Spec.Template)
+	if err != nil {
+		return fmt.Errorf("computing template hash: %w", err)
+	}
 	if latestOwned == nil || latestOwned.Labels[labelTemplateHash] != currentHash {
 		nextRevision := r.nextRevision(cosrList.Items)
 

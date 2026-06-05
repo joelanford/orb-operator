@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
@@ -24,8 +25,10 @@ func TestTemplateHash_Stability(t *testing.T) {
 		},
 	}
 
-	h1 := templateHash(tmpl)
-	h2 := templateHash(tmpl)
+	h1, err := templateHash(tmpl)
+	require.NoError(t, err)
+	h2, err := templateHash(tmpl)
+	require.NoError(t, err)
 	assert.Equal(t, h1, h2, "same input must produce the same hash")
 	assert.Len(t, h1, 8, "hash should be 8 hex characters")
 }
@@ -64,7 +67,12 @@ func TestTemplateHash_Sensitivity(t *testing.T) {
 		},
 	}
 
-	baseHash := templateHash(base)
-	assert.NotEqual(t, baseHash, templateHash(changedLabel), "different labels must produce a different hash")
-	assert.NotEqual(t, baseHash, templateHash(changedSpec), "different spec must produce a different hash")
+	baseHash, err := templateHash(base)
+	require.NoError(t, err)
+	changedLabelHash, err := templateHash(changedLabel)
+	require.NoError(t, err)
+	changedSpecHash, err := templateHash(changedSpec)
+	require.NoError(t, err)
+	assert.NotEqual(t, baseHash, changedLabelHash, "different labels must produce a different hash")
+	assert.NotEqual(t, baseHash, changedSpecHash, "different spec must produce a different hash")
 }
