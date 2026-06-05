@@ -3,6 +3,7 @@ package controller
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -69,7 +70,7 @@ func (r *COSReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	if !equality.Semantic.DeepEqual(existing.Status, reconciledCOS.Status) {
 		if err := r.client.Status().Update(ctx, reconciledCOS); err != nil {
-			return ctrl.Result{}, fmt.Errorf("updating status: %w", err)
+			reconcileErr = errors.Join(reconcileErr, fmt.Errorf("updating status: %w", err))
 		}
 	}
 
