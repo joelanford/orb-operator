@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -90,6 +91,16 @@ func (tc *testContext) teardown(ctx context.Context) error {
 	for _, cosr := range tc.cosrs {
 		_ = tc.client.Delete(ctx, cosr)
 	}
+
+	var allCOSRs orbv1alpha1.ClusterObjectSetRevisionList
+	if err := tc.client.List(ctx, &allCOSRs); err == nil {
+		for i := range allCOSRs.Items {
+			if strings.HasPrefix(allCOSRs.Items[i].Spec.Group, tc.namespace+"-") {
+				_ = tc.client.Delete(ctx, &allCOSRs.Items[i])
+			}
+		}
+	}
+
 	for _, name := range tc.crds {
 		crd := &apiextensionsv1.CustomResourceDefinition{}
 		crd.Name = name

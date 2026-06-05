@@ -60,7 +60,10 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	sc.Before(func(ctx context.Context, s *godog.Scenario) (context.Context, error) {
 		return ctx, tc.setup(ctx)
 	})
-	sc.After(func(ctx context.Context, s *godog.Scenario, err error) (context.Context, error) {
+	sc.After(func(ctx context.Context, s *godog.Scenario, scenarioErr error) (context.Context, error) {
+		if scenarioErr != nil {
+			return ctx, nil
+		}
 		return ctx, tc.teardown(ctx)
 	})
 
