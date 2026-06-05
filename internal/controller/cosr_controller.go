@@ -161,7 +161,6 @@ func (r *COSRReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 func (r *COSRReconciler) reconcile(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (ctrl.Result, error) {
 	groupMembers, err := r.listGroupMembers(ctx, cosr.Spec.Group)
 	if err != nil {
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, fmt.Sprintf("listing group members: %v", err))
 		return ctrl.Result{}, err
 	}
 
