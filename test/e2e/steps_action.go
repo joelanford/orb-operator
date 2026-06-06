@@ -9,7 +9,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -34,7 +33,7 @@ func registerActionSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^creating a COSR with a group name longer than 52 characters should fail$`, tc.creatingCOSRWithLongGroupShouldFail)
 	sc.Step(`^the COSR is deleted with cascade (foreground|background|orphan)$`, tc.theCOSRIsDeletedWithCascade)
 	sc.Step(`^the CRD "([^"]*)" is deleted$`, tc.theCRDIsDeleted)
-	sc.Step(`^the ConfigMap "([^"]*)" field "([^"]*)" is set to "([^"]*)"$`, tc.theConfigMapFieldIsSetTo)
+	sc.Step(`^the gate on ConfigMap "([^"]*)" is (opened|closed)$`, tc.theConfigMapGateIsSetTo)
 
 	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) lifecycleState is set to "([^"]*)"$`, tc.theCOSRInGroupLifecycleStateIsSetTo)
 	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) is deleted$`, tc.theCOSRInGroupIsDeleted)
@@ -185,19 +184,17 @@ func (tc *testContext) creatingCOSRWithLongGroupShouldFail() error {
 	return expectError(tc.createCOSR(context.Background()), "COSR with group longer than 52 characters")
 }
 
-func (tc *testContext) theConfigMapFieldIsSetTo(name, field, value string) error {
-	ctx := context.Background()
-	cm := &corev1.ConfigMap{}
-	key := types.NamespacedName{Namespace: tc.namespace, Name: name}
-	if err := tc.client.Get(ctx, key, cm); err != nil {
-		return fmt.Errorf("getting ConfigMap %q: %w", name, err)
+func (tc *testContext) theConfigMapGateIsSetTo(name, state string) error {
+	value := "open"
+	if state == "closed" {
+		value = "closed"
 	}
-	if cm.Data == nil {
-		cm.Data = make(map[string]string)
-	}
-	dataKey := strings.TrimPrefix(field, ".data.")
-	cm.Data[dataKey] = value
-	return tc.client.Update(ctx, cm)
+	return pollMutateUpdate[corev1.ConfigMap](tc, types.NamespacedName{Namespace: tc.namespace, Name: name}, func(cm *corev1.ConfigMap) {
+		if cm.Data == nil {
+			cm.Data = make(map[string]string)
+		}
+		cm.Data["gate"] = value
+	})
 }
 
 func (tc *testContext) theCOSRInGroupLifecycleStateIsSetTo(group string, revision uint32, state string) error {
@@ -236,10 +233,8 @@ func (tc *testContext) theCOSTemplateSpecIsUpdated(cmName, phaseName string) err
 	return pollMutateUpdate[orbv1alpha1.ClusterObjectSet](tc, types.NamespacedName{Name: tc.lastCreatedCOSName()}, func(cos *orbv1alpha1.ClusterObjectSet) {
 		cos.Spec.Template.Spec = orbv1alpha1.ClusterObjectSetTemplateSpec{
 			Phases: []orbv1alpha1.Phase{{
-				Name: phaseName,
-				Objects: []orbv1alpha1.PhaseObject{{
-					Object: runtime.RawExtension{Object: newConfigMap(cmName, tc.namespace)},
-				}},
+				Name:    phaseName,
+				Objects: []orbv1alpha1.PhaseObject{newGatedConfigMapPhaseObject(cmName, tc.namespace, false)},
 			}},
 		}
 	})
@@ -249,16 +244,8 @@ func (tc *testContext) theCOSTemplateSpecIsUpdatedWithGatedConfigMap(cmName, pha
 	return pollMutateUpdate[orbv1alpha1.ClusterObjectSet](tc, types.NamespacedName{Name: tc.lastCreatedCOSName()}, func(cos *orbv1alpha1.ClusterObjectSet) {
 		cos.Spec.Template.Spec = orbv1alpha1.ClusterObjectSetTemplateSpec{
 			Phases: []orbv1alpha1.Phase{{
-				Name: phaseName,
-				Objects: []orbv1alpha1.PhaseObject{{
-					Object: runtime.RawExtension{Object: newConfigMap(cmName, tc.namespace)},
-					Assertions: []orbv1alpha1.Assertion{{
-						FieldValue: &orbv1alpha1.FieldValueAssertion{
-							FieldPath: ".data.ready",
-							Value:     "true",
-						},
-					}},
-				}},
+				Name:    phaseName,
+				Objects: []orbv1alpha1.PhaseObject{newGatedConfigMapPhaseObject(cmName, tc.namespace, true)},
 			}},
 		}
 	})

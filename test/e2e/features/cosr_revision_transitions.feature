@@ -25,7 +25,7 @@ Feature: COSR multi-revision ownership handoffs within a group
     And a phase "install" with a ConfigMap "cm-stuck"
     And the COSR is created and becomes Available
     When a COSR with group "test" and revision 2 is created
-    And a phase "install" with a ConfigMap "cm-stuck" with assertion fieldValue path ".data.ready" value "yes"
+    And a phase "install" with a gated ConfigMap "cm-stuck"
     And the COSR is created
     Then revision 1 should have condition "Available" with status "False" and reason "Superseded"
     And revision 2 should have condition "Available" with status "False" and reason "Unavailable"

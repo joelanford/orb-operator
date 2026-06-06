@@ -10,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -369,7 +370,10 @@ func (tc *testContext) theCOSShouldBecomeAvailableWithoutBecomingUnavailable(cos
 	var sawUnavailable bool
 	err := wait.PollUntilContextTimeout(context.Background(), pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
 		if err := tc.client.Get(ctx, key, cos); err != nil {
-			return false, nil
+			if errors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, err
 		}
 		for _, c := range cos.Status.Conditions {
 			if c.Type != orbv1alpha1.ConditionTypeAvailable || c.ObservedGeneration != cos.Generation {

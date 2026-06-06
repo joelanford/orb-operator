@@ -8,6 +8,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 )
@@ -16,6 +17,7 @@ func registerSetupSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^a COSR named "([^"]*)" with group "([^"]*)" and revision (\d+)$`, tc.aCOSRNamedWithGroupAndRevision)
 	sc.Step(`^a COSR with group "([^"]*)" and revision (\d+)$`, tc.aCOSRWithGroupAndRevision)
 	sc.Step(`^(?:a|the) phase "([^"]*)" (?:with|has) a ConfigMap "([^"]*)"$`, tc.aPhaseWithConfigMap)
+	sc.Step(`^(?:a|the) phase "([^"]*)" (?:with|has) a gated ConfigMap "([^"]*)"$`, tc.aPhaseWithGatedConfigMap)
 	sc.Step(`^the phase "([^"]*)" also has a ConfigMap "([^"]*)"$`, tc.phaseAlsoHasConfigMap)
 	sc.Step(`^a phase "([^"]*)" with a CRD "([^"]*)"$`, tc.aPhaseWithCRD)
 	sc.Step(`^the phase "([^"]*)" also has a CRD "([^"]*)"$`, tc.phaseAlsoHasCRD)
@@ -56,7 +58,7 @@ func (tc *testContext) aCOSRNamedWithGroupAndRevision(name, group string, revisi
 func (tc *testContext) anAvailableCOSR(group string, revision uint32) error {
 	tc.resetCOSRBuilder(group, revision)
 	tc.addPhase("install")
-	tc.addObjectToPhase(newConfigMap("cm-"+group, tc.namespace))
+	tc.addConfigMapToPhase("cm-"+group, false)
 	if err := tc.createCOSR(context.Background()); err != nil {
 		return err
 	}
@@ -67,13 +69,30 @@ func (tc *testContext) aCOSRWithGroupAndRevision(group string, revision uint32) 
 	tc.resetCOSRBuilder(group, revision)
 }
 
+func (tc *testContext) addConfigMapToPhase(name string, gated bool) {
+	assertion := openByDefaultGateAssertion
+	if gated {
+		assertion = closedByDefaultGateAssertion
+	}
+	phase := tc.currentPhase()
+	phase.Objects = append(phase.Objects, orbv1alpha1.PhaseObject{
+		Object:     runtime.RawExtension{Object: newConfigMap(name, tc.namespace)},
+		Assertions: []orbv1alpha1.Assertion{assertion},
+	})
+}
+
 func (tc *testContext) aPhaseWithConfigMap(phaseName, cmName string) {
 	tc.addPhase(phaseName)
-	tc.addObjectToPhase(newConfigMap(cmName, tc.namespace))
+	tc.addConfigMapToPhase(cmName, false)
+}
+
+func (tc *testContext) aPhaseWithGatedConfigMap(phaseName, cmName string) {
+	tc.addPhase(phaseName)
+	tc.addConfigMapToPhase(cmName, true)
 }
 
 func (tc *testContext) phaseAlsoHasConfigMap(_, cmName string) {
-	tc.addObjectToPhase(newConfigMap(cmName, tc.namespace))
+	tc.addConfigMapToPhase(cmName, false)
 }
 
 func (tc *testContext) aPhaseWithCRDConditionEqual(phaseName, crdName, condType, condStatus string) {
@@ -223,7 +242,7 @@ func (tc *testContext) aCOSNamed(name string) {
 func (tc *testContext) anAvailableCOS(name string) error {
 	tc.resetCOSBuilder(name)
 	tc.addPhase("install")
-	tc.addObjectToPhase(newConfigMap("cm-"+name, tc.namespace))
+	tc.addConfigMapToPhase("cm-"+name, false)
 	if err := tc.createCOS(context.Background()); err != nil {
 		return err
 	}
@@ -266,6 +285,29 @@ func newConfigMapWithData(name, namespace string, data map[string]string) *corev
 	cm := newConfigMap(name, namespace)
 	cm.Data = data
 	return cm
+}
+
+var openByDefaultGateAssertion = orbv1alpha1.Assertion{
+	CELExpression: &orbv1alpha1.CELExpressionAssertion{
+		Expression: "!has(self.data) || !has(self.data.gate) || self.data.gate != 'closed'",
+	},
+}
+
+var closedByDefaultGateAssertion = orbv1alpha1.Assertion{
+	CELExpression: &orbv1alpha1.CELExpressionAssertion{
+		Expression: "has(self.data) && has(self.data.gate) && self.data.gate == 'open'",
+	},
+}
+
+func newGatedConfigMapPhaseObject(name, namespace string, gated bool) orbv1alpha1.PhaseObject {
+	assertion := openByDefaultGateAssertion
+	if gated {
+		assertion = closedByDefaultGateAssertion
+	}
+	return orbv1alpha1.PhaseObject{
+		Object:     runtime.RawExtension{Object: newConfigMap(name, namespace)},
+		Assertions: []orbv1alpha1.Assertion{assertion},
+	}
 }
 
 func newCRD(name string) *apiextensionsv1.CustomResourceDefinition {

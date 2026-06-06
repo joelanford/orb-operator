@@ -8,6 +8,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -233,7 +234,10 @@ func cosConditions(obj client.Object) ([]metav1.Condition, int64) {
 func (tc *testContext) pollForConditionOn(ctx context.Context, obj client.Object, key types.NamespacedName, accessor conditionAccessor, condType string, status metav1.ConditionStatus) error {
 	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
 		if err := tc.client.Get(ctx, key, obj); err != nil {
-			return false, nil
+			if errors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, err
 		}
 		conds, gen := accessor(obj)
 		for _, c := range conds {
@@ -248,7 +252,10 @@ func (tc *testContext) pollForConditionOn(ctx context.Context, obj client.Object
 func (tc *testContext) pollForConditionWithReasonOn(ctx context.Context, obj client.Object, key types.NamespacedName, accessor conditionAccessor, condType string, status metav1.ConditionStatus, reason string) error {
 	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
 		if err := tc.client.Get(ctx, key, obj); err != nil {
-			return false, nil
+			if errors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, err
 		}
 		conds, gen := accessor(obj)
 		for _, c := range conds {
@@ -271,7 +278,10 @@ func (tc *testContext) pollForCOSConditionWithReason(ctx context.Context, name s
 func (tc *testContext) pollForObject(ctx context.Context, key types.NamespacedName, obj client.Object) error {
 	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
 		if err := tc.client.Get(ctx, key, obj); err != nil {
-			return false, nil
+			if errors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, err
 		}
 		return true, nil
 	})
@@ -284,7 +294,10 @@ func pollForObjectMatching[T any, PT interface {
 	return wait.PollUntilContextTimeout(context.Background(), pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
 		obj := PT(new(T))
 		if err := tc.client.Get(ctx, key, obj); err != nil {
-			return false, nil
+			if errors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, err
 		}
 		return match(obj), nil
 	})
@@ -292,9 +305,11 @@ func pollForObjectMatching[T any, PT interface {
 
 func (tc *testContext) pollForObjectAbsence(ctx context.Context, key types.NamespacedName, obj client.Object) error {
 	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
-		err := tc.client.Get(ctx, key, obj)
-		if err != nil {
-			return true, nil
+		if err := tc.client.Get(ctx, key, obj); err != nil {
+			if errors.IsNotFound(err) {
+				return true, nil
+			}
+			return false, err
 		}
 		return false, nil
 	})
@@ -315,6 +330,9 @@ func pollMutateUpdate[T any, PT interface {
 	return wait.PollUntilContextTimeout(context.Background(), pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
 		obj := PT(new(T))
 		if err := tc.client.Get(ctx, key, obj); err != nil {
+			if errors.IsNotFound(err) {
+				return false, nil
+			}
 			return false, err
 		}
 		mutate(obj)

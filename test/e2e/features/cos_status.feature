@@ -8,20 +8,21 @@ Feature: COS status is derived from its COSRs
 
   Scenario: COS is Unavailable when single Active COSR is not Available
     Given a COS named "status-unavail"
-    And a phase "install" with a ConfigMap "cm-status-unavail" with assertion fieldValue path ".data.ready" value "true"
+    And a phase "install" with a gated ConfigMap "cm-status-unavail"
     When the COS is created
     Then the COS "status-unavail" should have condition "Available" with status "False" and reason "Unavailable"
 
   Scenario: COS status updates when COSR status changes
     Given a COS named "status-propagate"
-    And a phase "install" with a ConfigMap "cm-propagate" with assertion celExpression "!has(self.data) || self.data['fail'] != 'true'"
+    And a phase "install" with a gated ConfigMap "cm-propagate"
     When the COS is created
+    And the gate on ConfigMap "cm-propagate" is opened
     Then the COS "status-propagate" should be Available
-    # COSR assertion starts failing — COS should reflect Unavailable
-    When the ConfigMap "cm-propagate" field ".data.fail" is set to "true"
+    # Close the gate — COS should reflect Unavailable
+    When the gate on ConfigMap "cm-propagate" is closed
     Then the COS "status-propagate" should have condition "Available" with status "False" and reason "Unavailable"
-    # COSR assertion recovers — COS should reflect Available again
-    When the ConfigMap "cm-propagate" field ".data.fail" is set to "false"
+    # Reopen the gate — COS should reflect Available again
+    When the gate on ConfigMap "cm-propagate" is opened
     Then the COS "status-propagate" should be Available
 
   Scenario: COS is Progressing when multiple Active COSRs exist

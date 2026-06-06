@@ -8,7 +8,7 @@ Feature: COSR status conditions reflect rollout state
 
   Scenario: COSR is not Available while phases are incomplete
     Given a COSR with group "test" and revision 1
-    And a phase "deploy" with a ConfigMap "cm-blocked" with assertion fieldValue path ".data.ready" value "true"
+    And a phase "deploy" with a gated ConfigMap "cm-blocked"
     When the COSR is created
     Then the COSR should have condition "Available" with status "False" and reason "Unavailable"
 
