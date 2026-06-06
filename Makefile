@@ -43,3 +43,4 @@ run: generate
 	go tool kind create cluster --name $(KIND_CLUSTER)
 	go tool kind load docker-image $(IMAGE)-$$(go env GOARCH) --name $(KIND_CLUSTER)
 	go tool jsonnet --ext-str image=$(IMAGE)-$$(go env GOARCH) --ext-str namespace=$(NAMESPACE) deploy/operator.jsonnet | kubectl apply -f -
+	kubectl -n $(NAMESPACE) rollout status deployment/orb-operator --timeout=60s
