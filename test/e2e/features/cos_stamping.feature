@@ -4,8 +4,7 @@ Feature: COS stamps out a COSR from its template
     Given a COS named "stamp-basic"
     And a phase "install" with a ConfigMap "cm-stamp"
     When the COS is created
-    Then a COSR should exist with group "stamp-basic" and revision 1
-    And the COSR with group "stamp-basic" and revision 1 should have lifecycleState "Active"
+    Then the COSR with group "stamp-basic" and revision 1 should have lifecycleState "Active"
 
   Scenario: Stamped COSR spec matches complex template without root collisionProtection
     Given a COS named "stamp-no-cp"

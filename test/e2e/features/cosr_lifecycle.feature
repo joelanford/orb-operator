@@ -51,9 +51,7 @@ Feature: COSR Active and Archived lifecycle behavior
     Then the COSR should have condition "Available" with status "True"
 
   Scenario: Archived COSR cannot be unarchived
-    Given a COSR with group "test" and revision 1
-    And a phase "install" with a ConfigMap "cm-no-reactivate"
-    And the COSR is created and becomes Available
+    Given an available COSR with group "test" and revision 1
     When the COSR lifecycleState is set to "Archived"
     Then setting the COSR lifecycleState to "Active" should fail
 
@@ -105,7 +103,7 @@ Feature: COSR Active and Archived lifecycle behavior
     And the COSR is created and becomes Available
     When a COSR with group "chain-del" and revision 2 is created
     And the phase "install" has a ConfigMap "cm-chain-del-2"
-    And the new COSR is created and becomes Available
+    And the COSR is created and becomes Available
     Then revision 1 should have condition "Available" with status "False" and reason "Superseded"
     When the COSR with group "chain-del" and revision 1 is deleted
     Then the COSR with group "chain-del" and revision 1 should not exist

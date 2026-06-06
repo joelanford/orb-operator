@@ -4,8 +4,7 @@ Feature: COS owns stamped COSRs via owner references
     Given a COS named "own-ref"
     And a phase "install" with a ConfigMap "cm-own-ref"
     When the COS is created
-    Then a COSR should exist with group "own-ref" and revision 1
-    And the COSR with group "own-ref" and revision 1 should have a controller owner reference to COS "own-ref"
+    Then the COSR with group "own-ref" and revision 1 should have a controller owner reference to COS "own-ref"
 
   Scenario: Deleting COS cascades deletion to owned COSRs
     Given a COS named "own-cascade"
@@ -35,11 +34,8 @@ Feature: COS owns stamped COSRs via owner references
     And a COSR should exist with group "own-adopt" and revision 2
 
   Scenario: COS adopts an unowned COSR created after the COS
-    Given a COS named "own-late"
-    And a phase "install" with a ConfigMap "cm-late"
-    When the COS is created
-    Then the COS "own-late" should have condition "Available" with status "True" and reason "Available"
-    Given a COSR with group "own-late" and revision 10
+    Given an available COS named "own-late"
+    And a COSR with group "own-late" and revision 10
     And a phase "install" with a ConfigMap "cm-late-external"
     And the COSR is created
     Then the COSR with group "own-late" and revision 10 should have a controller owner reference to COS "own-late"

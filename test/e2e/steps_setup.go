@@ -15,7 +15,7 @@ import (
 func registerSetupSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^a COSR named "([^"]*)" with group "([^"]*)" and revision (\d+)$`, tc.aCOSRNamedWithGroupAndRevision)
 	sc.Step(`^a COSR with group "([^"]*)" and revision (\d+)$`, tc.aCOSRWithGroupAndRevision)
-	sc.Step(`^a phase "([^"]*)" with a ConfigMap "([^"]*)"$`, tc.aPhaseWithConfigMap)
+	sc.Step(`^(?:a|the) phase "([^"]*)" (?:with|has) a ConfigMap "([^"]*)"$`, tc.aPhaseWithConfigMap)
 	sc.Step(`^the phase "([^"]*)" also has a ConfigMap "([^"]*)"$`, tc.phaseAlsoHasConfigMap)
 	sc.Step(`^a phase "([^"]*)" with a CRD "([^"]*)"$`, tc.aPhaseWithCRD)
 	sc.Step(`^the phase "([^"]*)" also has a CRD "([^"]*)"$`, tc.phaseAlsoHasCRD)
@@ -25,11 +25,9 @@ func registerSetupSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^a phase "([^"]*)" with a ConfigMap "([^"]*)" with assertion fieldValue path "([^"]*)" value "([^"]*)"$`, tc.aPhaseWithConfigMapFieldValue)
 	sc.Step(`^a phase "([^"]*)" with a ConfigMap "([^"]*)" with assertion celExpression "([^"]*)"$`, tc.aPhaseWithConfigMapCEL)
 	sc.Step(`^a phase "([^"]*)" with a ConfigMap "([^"]*)" with assertion celExpression "([^"]*)" message "([^"]*)"$`, tc.aPhaseWithConfigMapCELMessage)
-	sc.Step(`^a phase "([^"]*)" with a ConfigMap "([^"]*)" with data:$`, tc.aPhaseWithConfigMapDataTable)
+	sc.Step(`^(?:a|the) phase "([^"]*)" (?:with|has) a ConfigMap "([^"]*)" with data:$`, tc.aPhaseWithConfigMapDataTable)
 	sc.Step(`^a phase "([^"]*)" with a ConfigMap "([^"]*)" with data key "([^"]*)" value "([^"]*)"$`, tc.aPhaseWithConfigMapData)
-	sc.Step(`^the phase "([^"]*)" has a ConfigMap "([^"]*)"$`, tc.phaseHasConfigMap)
 	sc.Step(`^the phase "([^"]*)" also has a ConfigMap "([^"]*)" with data:$`, tc.phaseAlsoHasConfigMapDataTable)
-	sc.Step(`^the phase "([^"]*)" has a ConfigMap "([^"]*)" with data:$`, tc.phaseHasConfigMapDataTable)
 	sc.Step(`^the last object has assertion conditionEqual type "([^"]*)" status "([^"]*)"$`, tc.lastObjectHasConditionEqualAssertion)
 	sc.Step(`^the last object has assertion fieldsEqual fieldA "([^"]*)" fieldB "([^"]*)"$`, tc.lastObjectHasFieldsEqualAssertion)
 	sc.Step(`^the last object has assertion fieldValue path "([^"]*)" value "([^"]*)"$`, tc.lastObjectHasFieldValueAssertion)
@@ -41,16 +39,28 @@ func registerSetupSteps(sc *godog.ScenarioContext, tc *testContext) {
 
 	sc.Step(`^a phase "([^"]*)" with an unregistered resource type$`, tc.aPhaseWithUnregisteredResourceType)
 
+	sc.Step(`^an available COSR with group "([^"]*)" and revision (\d+)$`, tc.anAvailableCOSR)
+
 	// COS setup steps
 	sc.Step(`^a COS named "([^"]*)"$`, tc.aCOSNamed)
 	sc.Step(`^a COS named "([^"]*)" with revisionHistoryLimit (\d+)$`, tc.aCOSNamedWithRevisionHistoryLimit)
-	sc.Step(`^the COS template has label "([^"]*)" with value "([^"]*)"$`, tc.theCOSTemplateHasLabel)
-	sc.Step(`^the COS template has annotation "([^"]*)" with value "([^"]*)"$`, tc.theCOSTemplateHasAnnotation)
+	sc.Step(`^an available COS named "([^"]*)"$`, tc.anAvailableCOS)
+	sc.Step(`^the COS template has (label|annotation) "([^"]*)" with value "([^"]*)"$`, tc.theCOSTemplateHasMetadata)
 }
 
 func (tc *testContext) aCOSRNamedWithGroupAndRevision(name, group string, revision uint32) {
 	tc.resetCOSRBuilder(group, revision)
 	tc.cosr.nameOverride = name
+}
+
+func (tc *testContext) anAvailableCOSR(group string, revision uint32) error {
+	tc.resetCOSRBuilder(group, revision)
+	tc.addPhase("install")
+	tc.addObjectToPhase(newConfigMap("cm-"+group, tc.namespace))
+	if err := tc.createCOSR(context.Background()); err != nil {
+		return err
+	}
+	return tc.pollForCOSRCondition(context.Background(), tc.lastCreatedCOSRName(), "Available", metav1.ConditionTrue)
 }
 
 func (tc *testContext) aCOSRWithGroupAndRevision(group string, revision uint32) {
@@ -139,23 +149,12 @@ func (tc *testContext) aPhaseWithConfigMapData(phaseName, cmName, key, value str
 	tc.addObjectToPhase(newConfigMapWithData(cmName, tc.namespace, map[string]string{key: value}))
 }
 
-func (tc *testContext) phaseHasConfigMap(phaseName, cmName string) {
-	tc.addPhase(phaseName)
-	tc.addObjectToPhase(newConfigMap(cmName, tc.namespace))
-}
-
 func (tc *testContext) phaseAlsoHasConfigMapDataTable(_, cmName string, table *godog.Table) {
 	tc.addObjectToPhase(newConfigMapWithData(cmName, tc.namespace, tableToMap(table)))
 }
 
-func (tc *testContext) phaseHasConfigMapDataTable(phaseName, cmName string, table *godog.Table) {
-	tc.addPhase(phaseName)
-	tc.addObjectToPhase(newConfigMapWithData(cmName, tc.namespace, tableToMap(table)))
-}
-
 func (tc *testContext) lastObjectHasConditionEqualAssertion(condType, condStatus string) {
-	phase := tc.currentPhase()
-	obj := &phase.Objects[len(phase.Objects)-1]
+	obj := tc.lastObject()
 	obj.Assertions = append(obj.Assertions, orbv1alpha1.Assertion{
 		ConditionEqual: &orbv1alpha1.ConditionEqualAssertion{
 			Type:   condType,
@@ -165,8 +164,7 @@ func (tc *testContext) lastObjectHasConditionEqualAssertion(condType, condStatus
 }
 
 func (tc *testContext) lastObjectHasFieldsEqualAssertion(fieldA, fieldB string) {
-	phase := tc.currentPhase()
-	obj := &phase.Objects[len(phase.Objects)-1]
+	obj := tc.lastObject()
 	obj.Assertions = append(obj.Assertions, orbv1alpha1.Assertion{
 		FieldsEqual: &orbv1alpha1.FieldsEqualAssertion{
 			FieldA: fieldA,
@@ -176,8 +174,7 @@ func (tc *testContext) lastObjectHasFieldsEqualAssertion(fieldA, fieldB string) 
 }
 
 func (tc *testContext) lastObjectHasFieldValueAssertion(path, value string) {
-	phase := tc.currentPhase()
-	obj := &phase.Objects[len(phase.Objects)-1]
+	obj := tc.lastObject()
 	obj.Assertions = append(obj.Assertions, orbv1alpha1.Assertion{
 		FieldValue: &orbv1alpha1.FieldValueAssertion{
 			FieldPath: path,
@@ -187,8 +184,7 @@ func (tc *testContext) lastObjectHasFieldValueAssertion(path, value string) {
 }
 
 func (tc *testContext) lastObjectHasCELAssertion(expr string) {
-	phase := tc.currentPhase()
-	obj := &phase.Objects[len(phase.Objects)-1]
+	obj := tc.lastObject()
 	obj.Assertions = append(obj.Assertions, orbv1alpha1.Assertion{
 		CELExpression: &orbv1alpha1.CELExpressionAssertion{
 			Expression: expr,
@@ -213,8 +209,7 @@ func (tc *testContext) thePhaseCollisionProtectionIs(phaseName, cp string) {
 
 func (tc *testContext) theLastObjectCollisionProtectionIs(cp string) {
 	v := orbv1alpha1.CollisionProtection(cp)
-	phase := tc.currentPhase()
-	phase.Objects[len(phase.Objects)-1].CollisionProtection = &v
+	tc.lastObject().CollisionProtection = &v
 }
 
 func (tc *testContext) aStandaloneConfigMapExists(name string) error {
@@ -225,23 +220,33 @@ func (tc *testContext) aCOSNamed(name string) {
 	tc.resetCOSBuilder(name)
 }
 
+func (tc *testContext) anAvailableCOS(name string) error {
+	tc.resetCOSBuilder(name)
+	tc.addPhase("install")
+	tc.addObjectToPhase(newConfigMap("cm-"+name, tc.namespace))
+	if err := tc.createCOS(context.Background()); err != nil {
+		return err
+	}
+	return tc.theCOSShouldBeAvailable(name)
+}
+
 func (tc *testContext) aCOSNamedWithRevisionHistoryLimit(name string, limit int32) {
 	tc.resetCOSBuilder(name)
 	tc.cos.revisionHistoryLimit = &limit
 }
 
-func (tc *testContext) theCOSTemplateHasLabel(key, value string) {
-	if tc.cos.labels == nil {
-		tc.cos.labels = make(map[string]string)
+func (tc *testContext) theCOSTemplateHasMetadata(kind, key, value string) {
+	if kind == "label" {
+		if tc.cos.labels == nil {
+			tc.cos.labels = make(map[string]string)
+		}
+		tc.cos.labels[key] = value
+	} else {
+		if tc.cos.annotations == nil {
+			tc.cos.annotations = make(map[string]string)
+		}
+		tc.cos.annotations[key] = value
 	}
-	tc.cos.labels[key] = value
-}
-
-func (tc *testContext) theCOSTemplateHasAnnotation(key, value string) {
-	if tc.cos.annotations == nil {
-		tc.cos.annotations = make(map[string]string)
-	}
-	tc.cos.annotations[key] = value
 }
 
 func newConfigMap(name, namespace string) *corev1.ConfigMap {

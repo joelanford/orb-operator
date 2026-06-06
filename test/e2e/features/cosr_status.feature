@@ -4,7 +4,6 @@ Feature: COSR status conditions reflect rollout state
     Given a COSR with group "test" and revision 1
     And a phase "install" with a ConfigMap "cm-status"
     When the COSR is created
-    And all phases complete successfully
     Then the COSR should have condition "Available" with status "True"
 
   Scenario: COSR is not Available while phases are incomplete

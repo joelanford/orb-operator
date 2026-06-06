@@ -43,10 +43,11 @@ func TestFeatures(t *testing.T) {
 	suite := godog.TestSuite{
 		ScenarioInitializer: initializeScenario,
 		Options: &godog.Options{
-			Format:   "pretty",
-			Paths:    []string{"features"},
-			Output:   colors.Colored(os.Stdout),
-			TestingT: t,
+			Concurrency: 16,
+			Format:      "pretty",
+			Paths:       []string{"features"},
+			Output:      colors.Colored(os.Stdout),
+			TestingT:    t,
 		},
 	}
 	if suite.Run() != 0 {

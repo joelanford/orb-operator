@@ -1,37 +1,25 @@
 Feature: COS creates new revisions on template changes
 
   Scenario: Updating template spec creates a new revision
-    Given a COS named "rev-spec"
-    And a phase "install" with a ConfigMap "cm-rev1"
-    When the COS is created
-    Then the COS "rev-spec" should have condition "Available" with status "True" and reason "Available"
+    Given an available COS named "rev-spec"
     When the COS template spec is updated with a ConfigMap "cm-rev2" in phase "install"
     Then a COSR should exist with group "rev-spec" and revision 2
 
   Scenario: Updating template metadata creates a new revision
-    Given a COS named "rev-meta"
-    And a phase "install" with a ConfigMap "cm-rev-meta"
-    When the COS is created
-    Then the COS "rev-meta" should have condition "Available" with status "True" and reason "Available"
+    Given an available COS named "rev-meta"
     When the COS template label "version" is updated to "v2"
     Then a COSR should exist with group "rev-meta" and revision 2
 
   Scenario: Multiple template changes produce monotonically increasing revisions
-    Given a COS named "rev-multi"
-    And a phase "install" with a ConfigMap "cm-multi-1"
-    When the COS is created
-    Then the COS "rev-multi" should have condition "Available" with status "True" and reason "Available"
+    Given an available COS named "rev-multi"
     When the COS template spec is updated with a ConfigMap "cm-multi-2" in phase "install"
     Then the COS "rev-multi" should have active revision 2
-    And the COS "rev-multi" should have condition "Available" with status "True" and reason "Available"
+    And the COS "rev-multi" should be Available
     When the COS template spec is updated with a ConfigMap "cm-multi-3" in phase "install"
     Then a COSR should exist with group "rev-multi" and revision 3
 
   Scenario: Template change during in-progress transition
-    Given a COS named "rev-midtx"
-    And a phase "install" with a ConfigMap "cm-midtx-1"
-    When the COS is created
-    Then the COS "rev-midtx" should have condition "Available" with status "True" and reason "Available"
+    Given an available COS named "rev-midtx"
     # Rev 2 has a probe that won't pass — holds it unavailable
     When the COS template spec is updated with a gated ConfigMap "cm-midtx-2" in phase "install"
     Then a COSR should exist with group "rev-midtx" and revision 2
@@ -40,7 +28,7 @@ Feature: COS creates new revisions on template changes
     When the COS template spec is updated with a ConfigMap "cm-midtx-3" in phase "install"
     Then a COSR should exist with group "rev-midtx" and revision 3
     # Rev 3 eventually becomes available; rev 1 and 2 are archived
-    And the COS "rev-midtx" should have condition "Available" with status "True" and reason "Available"
+    And the COS "rev-midtx" should be Available
     And the COSR with group "rev-midtx" and revision 1 should have lifecycleState "Archived"
     And the COSR with group "rev-midtx" and revision 2 should have lifecycleState "Archived"
 
@@ -57,10 +45,10 @@ Feature: COS creates new revisions on template changes
     Given a COS named "rev-cleanup"
     And a phase "install" with a ConfigMap "cm-cleanup-old"
     When the COS is created
-    Then the COS "rev-cleanup" should have condition "Available" with status "True" and reason "Available"
+    Then the COS "rev-cleanup" should be Available
     And the ConfigMap "cm-cleanup-old" should exist
     When the COS template spec is updated with a ConfigMap "cm-cleanup-new" in phase "install"
-    Then the COS "rev-cleanup" should have condition "Available" with status "True" and reason "Available"
+    Then the COS "rev-cleanup" should be Available
     And the COSR with group "rev-cleanup" and revision 1 should have lifecycleState "Archived"
     And the ConfigMap "cm-cleanup-old" should not exist
     And the ConfigMap "cm-cleanup-new" should exist

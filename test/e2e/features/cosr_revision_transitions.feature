@@ -6,7 +6,7 @@ Feature: COSR multi-revision ownership handoffs within a group
     And the COSR is created and becomes Available
     When a COSR with group "test" and revision 2 is created
     And the phase "install" has a ConfigMap "cm-shared"
-    And the new COSR is created
+    And the COSR is created
     Then revision 1 should have condition "Available" with status "False" and reason "Superseded"
 
   Scenario: Shared objects transfer ownership without recreation
@@ -16,7 +16,7 @@ Feature: COSR multi-revision ownership handoffs within a group
     And the ConfigMap "cm-transfer" UID is tracked
     When a COSR with group "test" and revision 2 is created
     And the phase "install" has a ConfigMap "cm-transfer"
-    And the new COSR is created and becomes Available
+    And the COSR is created and becomes Available
     Then the ConfigMap "cm-transfer" should exist
     And the ConfigMap "cm-transfer" should not have been deleted and recreated
 
@@ -26,7 +26,7 @@ Feature: COSR multi-revision ownership handoffs within a group
     And the COSR is created and becomes Available
     When a COSR with group "test" and revision 2 is created
     And a phase "install" with a ConfigMap "cm-stuck" with assertion fieldValue path ".data.ready" value "yes"
-    And the new COSR is created
+    And the COSR is created
     Then revision 1 should have condition "Available" with status "False" and reason "Superseded"
     And revision 2 should have condition "Available" with status "False" and reason "Unavailable"
 
@@ -36,7 +36,7 @@ Feature: COSR multi-revision ownership handoffs within a group
     And the COSR is created and becomes Available
     When a COSR with group "test" and revision 5 is created
     And the phase "install" has a ConfigMap "cm-gap"
-    And the new COSR is created and becomes Available
+    And the COSR is created and becomes Available
     Then revision 1 should have condition "Available" with status "False" and reason "Superseded"
 
   Scenario: Old revision is superseded after new revision succeeds
@@ -45,7 +45,7 @@ Feature: COSR multi-revision ownership handoffs within a group
     And the COSR is created and becomes Available
     When a COSR with group "test" and revision 2 is created
     And the phase "install" has a ConfigMap "cm-archive-test"
-    And the new COSR is created and becomes Available
+    And the COSR is created and becomes Available
     Then revision 1 should have condition "Available" with status "False" and reason "Superseded"
 
   Scenario: Superseded COSR retains objects not present in the new revision
@@ -56,7 +56,7 @@ Feature: COSR multi-revision ownership handoffs within a group
     When a COSR with group "test" and revision 2 is created
     And the phase "install" has a ConfigMap "cm-shared"
     And the phase "install" also has a ConfigMap "cm-new-only"
-    And the new COSR is created and becomes Available
+    And the COSR is created and becomes Available
     Then revision 1 should have condition "Available" with status "False" and reason "Superseded"
     And the ConfigMap "cm-old-only" should exist
     And the ConfigMap "cm-old-only" should have an owner reference

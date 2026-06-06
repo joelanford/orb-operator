@@ -178,6 +178,11 @@ func (tc *testContext) currentPhase() *orbv1alpha1.Phase {
 	return &tc.tmpl.phases[len(tc.tmpl.phases)-1]
 }
 
+func (tc *testContext) lastObject() *orbv1alpha1.PhaseObject {
+	phase := tc.currentPhase()
+	return &phase.Objects[len(phase.Objects)-1]
+}
+
 func (tc *testContext) addObjectToPhase(obj runtime.Object) {
 	phase := tc.currentPhase()
 	phase.Objects = append(phase.Objects, orbv1alpha1.PhaseObject{
@@ -213,10 +218,16 @@ func (tc *testContext) createCOS(ctx context.Context) error {
 	return nil
 }
 
-type conditionAccessor func(client.Object) []metav1.Condition
+type conditionAccessor func(client.Object) ([]metav1.Condition, int64)
 
-func cosrConditions(obj client.Object) []metav1.Condition {
-	return obj.(*orbv1alpha1.ClusterObjectSetRevision).Status.Conditions
+func cosrConditions(obj client.Object) ([]metav1.Condition, int64) {
+	o := obj.(*orbv1alpha1.ClusterObjectSetRevision)
+	return o.Status.Conditions, o.Generation
+}
+
+func cosConditions(obj client.Object) ([]metav1.Condition, int64) {
+	o := obj.(*orbv1alpha1.ClusterObjectSet)
+	return o.Status.Conditions, o.Generation
 }
 
 func (tc *testContext) pollForConditionOn(ctx context.Context, obj client.Object, key types.NamespacedName, accessor conditionAccessor, condType string, status metav1.ConditionStatus) error {
@@ -224,8 +235,24 @@ func (tc *testContext) pollForConditionOn(ctx context.Context, obj client.Object
 		if err := tc.client.Get(ctx, key, obj); err != nil {
 			return false, nil
 		}
-		for _, c := range accessor(obj) {
-			if c.Type == condType && c.Status == status {
+		conds, gen := accessor(obj)
+		for _, c := range conds {
+			if c.Type == condType && c.Status == status && c.ObservedGeneration == gen {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+}
+
+func (tc *testContext) pollForConditionWithReasonOn(ctx context.Context, obj client.Object, key types.NamespacedName, accessor conditionAccessor, condType string, status metav1.ConditionStatus, reason string) error {
+	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		if err := tc.client.Get(ctx, key, obj); err != nil {
+			return false, nil
+		}
+		conds, gen := accessor(obj)
+		for _, c := range conds {
+			if c.Type == condType && c.Status == status && c.Reason == reason && c.ObservedGeneration == gen {
 				return true, nil
 			}
 		}
@@ -237,34 +264,8 @@ func (tc *testContext) pollForCOSRCondition(ctx context.Context, name string, co
 	return tc.pollForConditionOn(ctx, &orbv1alpha1.ClusterObjectSetRevision{}, types.NamespacedName{Name: name}, cosrConditions, condType, status)
 }
 
-func (tc *testContext) pollForConditionWithReasonOn(ctx context.Context, obj client.Object, key types.NamespacedName, accessor conditionAccessor, condType string, status metav1.ConditionStatus, reason string) error {
-	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
-		if err := tc.client.Get(ctx, key, obj); err != nil {
-			return false, nil
-		}
-		for _, c := range accessor(obj) {
-			if c.Type == condType && c.Status == status && c.Reason == reason {
-				return true, nil
-			}
-		}
-		return false, nil
-	})
-}
-
 func (tc *testContext) pollForCOSConditionWithReason(ctx context.Context, name string, condType string, status metav1.ConditionStatus, reason string) error {
-	cos := &orbv1alpha1.ClusterObjectSet{}
-	key := types.NamespacedName{Name: name}
-	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
-		if err := tc.client.Get(ctx, key, cos); err != nil {
-			return false, nil
-		}
-		for _, c := range cos.Status.Conditions {
-			if c.Type == condType && c.Status == status && c.Reason == reason && c.ObservedGeneration == cos.Generation {
-				return true, nil
-			}
-		}
-		return false, nil
-	})
+	return tc.pollForConditionWithReasonOn(ctx, &orbv1alpha1.ClusterObjectSet{}, types.NamespacedName{Name: name}, cosConditions, condType, status, reason)
 }
 
 func (tc *testContext) pollForObject(ctx context.Context, key types.NamespacedName, obj client.Object) error {
@@ -273,6 +274,19 @@ func (tc *testContext) pollForObject(ctx context.Context, key types.NamespacedNa
 			return false, nil
 		}
 		return true, nil
+	})
+}
+
+func pollForObjectMatching[T any, PT interface {
+	*T
+	client.Object
+}](tc *testContext, key types.NamespacedName, match func(PT) bool) error {
+	return wait.PollUntilContextTimeout(context.Background(), pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		obj := PT(new(T))
+		if err := tc.client.Get(ctx, key, obj); err != nil {
+			return false, nil
+		}
+		return match(obj), nil
 	})
 }
 
@@ -292,4 +306,38 @@ func (tc *testContext) lastCreatedCOSRName() string {
 
 func (tc *testContext) lastCreatedCOSName() string {
 	return tc.lastCreatedCOS
+}
+
+func pollMutateUpdate[T any, PT interface {
+	*T
+	client.Object
+}](tc *testContext, key types.NamespacedName, mutate func(PT)) error {
+	return wait.PollUntilContextTimeout(context.Background(), pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		obj := PT(new(T))
+		if err := tc.client.Get(ctx, key, obj); err != nil {
+			return false, err
+		}
+		mutate(obj)
+		if err := tc.client.Update(ctx, obj); err != nil {
+			return false, nil
+		}
+		return true, nil
+	})
+}
+
+func deleteObject[T any, PT interface {
+	*T
+	client.Object
+}](tc *testContext, key types.NamespacedName, opts ...client.DeleteOption) error {
+	obj := PT(new(T))
+	obj.SetName(key.Name)
+	obj.SetNamespace(key.Namespace)
+	return tc.client.Delete(context.Background(), obj, opts...)
+}
+
+func expectError(err error, msg string) error {
+	if err == nil {
+		return fmt.Errorf("expected %s to fail, but it succeeded", msg)
+	}
+	return nil
 }

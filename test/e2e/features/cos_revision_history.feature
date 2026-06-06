@@ -4,16 +4,16 @@ Feature: COS enforces revisionHistoryLimit on archived COSRs
     Given a COS named "hist-serial" with revisionHistoryLimit 2
     And a phase "install" with a ConfigMap "cm-hs-1"
     When the COS is created
-    Then the COS "hist-serial" should have condition "Available" with status "True" and reason "Available"
+    Then the COS "hist-serial" should be Available
     When the COS template spec is updated with a ConfigMap "cm-hs-2" in phase "install"
     Then the COS "hist-serial" should have active revision 2
-    And the COS "hist-serial" should have condition "Available" with status "True" and reason "Available"
+    And the COS "hist-serial" should be Available
     When the COS template spec is updated with a ConfigMap "cm-hs-3" in phase "install"
     Then the COS "hist-serial" should have active revision 3
-    And the COS "hist-serial" should have condition "Available" with status "True" and reason "Available"
+    And the COS "hist-serial" should be Available
     When the COS template spec is updated with a ConfigMap "cm-hs-4" in phase "install"
     Then the COS "hist-serial" should have active revision 4
-    And the COS "hist-serial" should have condition "Available" with status "True" and reason "Available"
+    And the COS "hist-serial" should be Available
     # With limit 2, only the 2 highest-revision archived COSRs are retained
     And the COSR with group "hist-serial" and revision 1 should not exist
 
@@ -29,25 +29,25 @@ Feature: COS enforces revisionHistoryLimit on archived COSRs
     Given a COS named "hist-default"
     And a phase "install" with a ConfigMap "cm-hd-1"
     When the COS is created
-    Then the COS "hist-default" should have condition "Available" with status "True" and reason "Available"
+    Then the COS "hist-default" should be Available
     When the COS template spec is updated with a ConfigMap "cm-hd-2" in phase "install"
     Then the COS "hist-default" should have active revision 2
-    And the COS "hist-default" should have condition "Available" with status "True" and reason "Available"
+    And the COS "hist-default" should be Available
     When the COS template spec is updated with a ConfigMap "cm-hd-3" in phase "install"
     Then the COS "hist-default" should have active revision 3
-    And the COS "hist-default" should have condition "Available" with status "True" and reason "Available"
+    And the COS "hist-default" should be Available
     When the COS template spec is updated with a ConfigMap "cm-hd-4" in phase "install"
     Then the COS "hist-default" should have active revision 4
-    And the COS "hist-default" should have condition "Available" with status "True" and reason "Available"
+    And the COS "hist-default" should be Available
     When the COS template spec is updated with a ConfigMap "cm-hd-5" in phase "install"
     Then the COS "hist-default" should have active revision 5
-    And the COS "hist-default" should have condition "Available" with status "True" and reason "Available"
+    And the COS "hist-default" should be Available
     When the COS template spec is updated with a ConfigMap "cm-hd-6" in phase "install"
     Then the COS "hist-default" should have active revision 6
-    And the COS "hist-default" should have condition "Available" with status "True" and reason "Available"
+    And the COS "hist-default" should be Available
     When the COS template spec is updated with a ConfigMap "cm-hd-7" in phase "install"
     Then the COS "hist-default" should have active revision 7
-    And the COS "hist-default" should have condition "Available" with status "True" and reason "Available"
+    And the COS "hist-default" should be Available
     # Revision 1 should be pruned (6 archived > limit of 5)
     And the COSR with group "hist-default" and revision 1 should not exist
 
@@ -55,25 +55,25 @@ Feature: COS enforces revisionHistoryLimit on archived COSRs
     Given a COS named "hist-lower"
     And a phase "install" with a ConfigMap "cm-hl-1"
     When the COS is created
-    Then the COS "hist-lower" should have condition "Available" with status "True" and reason "Available"
+    Then the COS "hist-lower" should be Available
     When the COS template spec is updated with a ConfigMap "cm-hl-2" in phase "install"
     Then the COS "hist-lower" should have active revision 2
-    And the COS "hist-lower" should have condition "Available" with status "True" and reason "Available"
+    And the COS "hist-lower" should be Available
     When the COS template spec is updated with a ConfigMap "cm-hl-3" in phase "install"
     Then the COS "hist-lower" should have active revision 3
-    And the COS "hist-lower" should have condition "Available" with status "True" and reason "Available"
+    And the COS "hist-lower" should be Available
     When the COS template spec is updated with a ConfigMap "cm-hl-4" in phase "install"
     Then the COS "hist-lower" should have active revision 4
-    And the COS "hist-lower" should have condition "Available" with status "True" and reason "Available"
+    And the COS "hist-lower" should be Available
     When the COS template spec is updated with a ConfigMap "cm-hl-5" in phase "install"
     Then the COS "hist-lower" should have active revision 5
-    And the COS "hist-lower" should have condition "Available" with status "True" and reason "Available"
+    And the COS "hist-lower" should be Available
     When the COS template spec is updated with a ConfigMap "cm-hl-6" in phase "install"
     Then the COS "hist-lower" should have active revision 6
-    And the COS "hist-lower" should have condition "Available" with status "True" and reason "Available"
+    And the COS "hist-lower" should be Available
     When the COS template spec is updated with a ConfigMap "cm-hl-7" in phase "install"
     Then the COS "hist-lower" should have active revision 7
-    And the COS "hist-lower" should have condition "Available" with status "True" and reason "Available"
+    And the COS "hist-lower" should be Available
     # Default limit 5: revisions 1 is pruned, 2-6 archived, 7 active
     And the COSR with group "hist-lower" and revision 1 should not exist
     # Lower limit to 2: revisions 2-4 should be pruned retroactively
