@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 ---
 # Controller Architecture — Chain Model & COS-Driven Lifecycle
 

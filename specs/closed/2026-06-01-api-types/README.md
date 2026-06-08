@@ -1,5 +1,5 @@
 ---
-status: idea
+status: superseded
 ---
 # API Types — ClusterObjectSlice
 

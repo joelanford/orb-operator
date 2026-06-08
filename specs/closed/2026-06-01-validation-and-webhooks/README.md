@@ -1,5 +1,5 @@
 ---
-status: idea
+status: done
 ---
 # Validation, GoDoc, and API Best Practices
 
