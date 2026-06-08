@@ -33,7 +33,7 @@ import (
 
 const (
 	fieldOwner   = "orb-operator"
-	systemPrefix = "orb"
+	systemPrefix = "orb.operatorframework.io"
 	finalizerKey = "orb.operatorframework.io/cosr-finalizer"
 	groupIndex   = ".spec.group"
 )
@@ -304,7 +304,7 @@ func (r *COSRReconciler) doReconcileLatest(
 		return err
 	}
 
-	rev, err := r.buildRevisionWithPreviousOwners(cosr, predecessors)
+	rev, err := r.buildRevisionWithSiblings(cosr, predecessors)
 	if err != nil {
 		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, fmt.Sprintf("building revision: %v", err))
 		return fmt.Errorf("building revision: %w", err)
@@ -445,6 +445,7 @@ func (r *COSRReconciler) engineForCOSR(ctx context.Context, cosr *orbv1alpha1.Cl
 		Scheme:           r.scheme,
 		FieldOwner:       fieldOwner,
 		SystemPrefix:     systemPrefix,
+		ManagedBy:        fieldOwner,
 		DiscoveryClient:  r.discoveryClient,
 		RestMapper:       r.restMapper,
 		Writer:           accessor,
@@ -478,12 +479,12 @@ func (r *COSRReconciler) managedObjectsForCOSR(cosr *orbv1alpha1.ClusterObjectSe
 }
 
 func (r *COSRReconciler) buildRevision(cosr *orbv1alpha1.ClusterObjectSetRevision) (boxcutter.Revision, error) {
-	return r.buildRevisionWithPreviousOwners(cosr, nil)
+	return r.buildRevisionWithSiblings(cosr, nil)
 }
 
-func (r *COSRReconciler) buildRevisionWithPreviousOwners(
+func (r *COSRReconciler) buildRevisionWithSiblings(
 	cosr *orbv1alpha1.ClusterObjectSetRevision,
-	previousOwners []*orbv1alpha1.ClusterObjectSetRevision,
+	siblings []*orbv1alpha1.ClusterObjectSetRevision,
 ) (boxcutter.Revision, error) {
 	phases := make([]boxcutter.Phase, 0, len(cosr.Spec.Phases))
 
@@ -540,12 +541,12 @@ func (r *COSRReconciler) buildRevisionWithPreviousOwners(
 		reconcileOpts = append(reconcileOpts, mapCollisionProtection(orbv1alpha1.CollisionProtectionPrevent))
 	}
 
-	if len(previousOwners) > 0 {
-		prevOwners := make(boxcutter.WithPreviousOwners, 0, len(previousOwners))
-		for _, po := range previousOwners {
-			prevOwners = append(prevOwners, po)
+	if len(siblings) > 0 {
+		siblingObjs := make([]client.Object, 0, len(siblings))
+		for _, s := range siblings {
+			siblingObjs = append(siblingObjs, s)
 		}
-		reconcileOpts = append(reconcileOpts, prevOwners)
+		reconcileOpts = append(reconcileOpts, boxcutter.WithSiblingOwners(siblingObjs))
 	}
 
 	rev := boxcutter.NewRevisionWithOwner(
