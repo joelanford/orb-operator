@@ -9,8 +9,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 )
@@ -34,6 +36,7 @@ func registerActionSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the COSR is deleted with cascade (foreground|background|orphan)$`, tc.theCOSRIsDeletedWithCascade)
 	sc.Step(`^the CRD "([^"]*)" is deleted$`, tc.theCRDIsDeleted)
 	sc.Step(`^the gate on ConfigMap "([^"]*)" is (opened|closed)$`, tc.theConfigMapGateIsSetTo)
+	sc.Step(`^a resource is patched with:$`, tc.aResourceIsPatched)
 
 	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) lifecycleState is set to "([^"]*)"$`, tc.theCOSRInGroupLifecycleStateIsSetTo)
 	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) is deleted$`, tc.theCOSRInGroupIsDeleted)
@@ -195,6 +198,15 @@ func (tc *testContext) theConfigMapGateIsSetTo(name, state string) error {
 		}
 		cm.Data["gate"] = value
 	})
+}
+
+func (tc *testContext) aResourceIsPatched(doc *godog.DocString) error {
+	content := strings.ReplaceAll(doc.Content, "${NAMESPACE}", tc.namespace)
+	obj := &unstructured.Unstructured{}
+	if err := yaml.Unmarshal([]byte(content), &obj.Object); err != nil {
+		return fmt.Errorf("parsing patch YAML: %w", err)
+	}
+	return tc.client.Apply(context.Background(), client.ApplyConfigurationFromUnstructured(obj), client.FieldOwner("e2e-test"), client.ForceOwnership)
 }
 
 func (tc *testContext) theCOSRInGroupLifecycleStateIsSetTo(group string, revision uint32, state string) error {

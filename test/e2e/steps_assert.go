@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/cucumber/godog"
 	"github.com/google/go-cmp/cmp"
@@ -16,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"sigs.k8s.io/yaml"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 )
@@ -24,8 +26,7 @@ func registerAssertSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the ConfigMap "([^"]*)" should (exist|not exist|be recreated)$`, tc.theConfigMapExistenceCheck)
 	sc.Step(`^the ConfigMap "([^"]*)" UID is tracked$`, tc.theConfigMapUIDisTracked)
 	sc.Step(`^the ConfigMap "([^"]*)" should not have been deleted and recreated$`, tc.theConfigMapShouldNotHaveBeenRecreated)
-	sc.Step(`^the ConfigMap "([^"]*)" should have data key "([^"]*)" with value "([^"]*)"$`, tc.theConfigMapShouldHaveDataKeyValue)
-	sc.Step(`^the ConfigMap "([^"]*)" should not have data key "([^"]*)"$`, tc.theConfigMapShouldNotHaveDataKey)
+	sc.Step(`^a resource should match:$`, tc.aResourceShouldMatch)
 	sc.Step(`^the CRD "([^"]*)" should exist$`, tc.theCRDShouldExist)
 	sc.Step(`^the "([^"]*)" named "([^"]*)" should exist$`, tc.theCRShouldExist)
 	sc.Step(`^the ConfigMap "([^"]*)" should (have|not have) an owner reference$`, tc.theConfigMapOwnerRefCheck)
@@ -85,26 +86,18 @@ func (tc *testContext) theConfigMapShouldNotHaveBeenRecreated(name string) error
 	return nil
 }
 
-func (tc *testContext) theConfigMapShouldHaveDataKeyValue(name, key, value string) error {
-	cm := &corev1.ConfigMap{}
-	if err := tc.pollForObject(context.Background(), types.NamespacedName{Namespace: tc.namespace, Name: name}, cm); err != nil {
-		return err
+func (tc *testContext) aResourceShouldMatch(doc *godog.DocString) error {
+	content := strings.ReplaceAll(doc.Content, "${NAMESPACE}", tc.namespace)
+	expected := &unstructured.Unstructured{}
+	if err := yaml.Unmarshal([]byte(content), &expected.Object); err != nil {
+		return fmt.Errorf("parsing expected YAML: %w", err)
 	}
-	if got := cm.Data[key]; got != value {
-		return fmt.Errorf("ConfigMap %q data key %q: got %q, want %q", name, key, got, value)
-	}
-	return nil
-}
-
-func (tc *testContext) theConfigMapShouldNotHaveDataKey(name, key string) error {
-	cm := &corev1.ConfigMap{}
-	if err := tc.pollForObject(context.Background(), types.NamespacedName{Namespace: tc.namespace, Name: name}, cm); err != nil {
-		return err
-	}
-	if _, ok := cm.Data[key]; ok {
-		return fmt.Errorf("ConfigMap %q should not have data key %q, but it does", name, key)
-	}
-	return nil
+	actual := &unstructured.Unstructured{}
+	actual.SetGroupVersionKind(expected.GroupVersionKind())
+	key := types.NamespacedName{Name: expected.GetName(), Namespace: expected.GetNamespace()}
+	return pollForObjectMatching(tc, actual, key, func() bool {
+		return equality.Semantic.DeepDerivative(expected.Object, actual.Object)
+	})
 }
 
 func (tc *testContext) theCRDShouldExist(name string) error {
@@ -203,7 +196,8 @@ func (tc *testContext) aCOSRShouldExistWithGroupAndRevision(group string, revisi
 }
 
 func (tc *testContext) cosrShouldHaveLifecycleState(group string, revision uint32, state string) error {
-	return pollForObjectMatching[orbv1alpha1.ClusterObjectSetRevision](tc, types.NamespacedName{Name: tc.cosrName(group, revision)}, func(cosr *orbv1alpha1.ClusterObjectSetRevision) bool {
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: tc.cosrName(group, revision)}, func() bool {
 		actual := string(cosr.Spec.LifecycleState)
 		if actual == "" {
 			actual = "Active"
@@ -277,7 +271,8 @@ func (tc *testContext) cosrShouldBeNamed(group string, revision uint32, expected
 
 func (tc *testContext) cosrShouldHaveControllerOwnerRef(group string, revision uint32, cosName string) error {
 	fullCOSName := tc.cosFullName(cosName)
-	return pollForObjectMatching[orbv1alpha1.ClusterObjectSetRevision](tc, types.NamespacedName{Name: tc.cosrName(group, revision)}, func(cosr *orbv1alpha1.ClusterObjectSetRevision) bool {
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: tc.cosrName(group, revision)}, func() bool {
 		for _, ref := range cosr.OwnerReferences {
 			if ref.Kind == "ClusterObjectSet" && ref.Name == fullCOSName && ref.Controller != nil && *ref.Controller {
 				return true
@@ -293,13 +288,15 @@ func (tc *testContext) cosrShouldNotExist(group string, revision uint32) error {
 }
 
 func (tc *testContext) cosrShouldNotHaveOwnerRef(group string, revision uint32) error {
-	return pollForObjectMatching[orbv1alpha1.ClusterObjectSetRevision](tc, types.NamespacedName{Name: tc.cosrName(group, revision)}, func(cosr *orbv1alpha1.ClusterObjectSetRevision) bool {
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: tc.cosrName(group, revision)}, func() bool {
 		return len(cosr.OwnerReferences) == 0
 	})
 }
 
 func (tc *testContext) cosrShouldNotHaveFinalizer(group string, revision uint32, finalizer string) error {
-	return pollForObjectMatching[orbv1alpha1.ClusterObjectSetRevision](tc, types.NamespacedName{Name: tc.cosrName(group, revision)}, func(cosr *orbv1alpha1.ClusterObjectSetRevision) bool {
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: tc.cosrName(group, revision)}, func() bool {
 		for _, f := range cosr.Finalizers {
 			if f == finalizer {
 				return false
@@ -400,7 +397,8 @@ func (tc *testContext) theCOSShouldBecomeAvailableWithoutBecomingUnavailable(cos
 func (tc *testContext) theCOSShouldHaveActiveRevision(cosName string, revision uint32) error {
 	fullCOSName := tc.cosFullName(cosName)
 	expectedCOSRName := fmt.Sprintf("%s-%d", fullCOSName, revision)
-	return pollForObjectMatching[orbv1alpha1.ClusterObjectSet](tc, types.NamespacedName{Name: fullCOSName}, func(cos *orbv1alpha1.ClusterObjectSet) bool {
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	return pollForObjectMatching(tc, cos, types.NamespacedName{Name: fullCOSName}, func() bool {
 		for _, rs := range cos.Status.ActiveRevisions {
 			if rs.Name == expectedCOSRName {
 				return true

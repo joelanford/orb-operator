@@ -287,19 +287,15 @@ func (tc *testContext) pollForObject(ctx context.Context, key types.NamespacedNa
 	})
 }
 
-func pollForObjectMatching[T any, PT interface {
-	*T
-	client.Object
-}](tc *testContext, key types.NamespacedName, match func(PT) bool) error {
+func pollForObjectMatching(tc *testContext, obj client.Object, key types.NamespacedName, match func() bool) error {
 	return wait.PollUntilContextTimeout(context.Background(), pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
-		obj := PT(new(T))
 		if err := tc.client.Get(ctx, key, obj); err != nil {
 			if errors.IsNotFound(err) {
 				return false, nil
 			}
 			return false, err
 		}
-		return match(obj), nil
+		return match(), nil
 	})
 }
 
