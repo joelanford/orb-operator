@@ -45,9 +45,8 @@ const (
 	// reconciling.
 	ReasonArchived = "Archived"
 
-	// ReasonSuperseded indicates a higher-numbered active revision exists in
-	// the same group. A superseded revision relinquishes control of any objects
-	// that the highest-numbered revision also claims.
+	// ReasonSuperseded indicates all objects in this revision have been
+	// adopted by a higher-numbered sibling revision.
 	ReasonSuperseded = "Superseded"
 )
 

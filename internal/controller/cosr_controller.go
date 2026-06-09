@@ -23,9 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 	"github.com/joelanford/orb-operator/internal/assertions"
@@ -45,7 +43,6 @@ type COSRReconciler struct {
 	discoveryClient discovery.OpenAPIV3SchemaInterface
 	accessManager   managedcache.ObjectBoundAccessManager[*orbv1alpha1.ClusterObjectSetRevision]
 	ownerStrategy   boxcutter.OwnerStrategy
-	predecessorCh   chan event.GenericEvent
 }
 
 func NewCOSRReconciler(
@@ -62,7 +59,6 @@ func NewCOSRReconciler(
 		discoveryClient: discoveryClient,
 		accessManager:   accessManager,
 		ownerStrategy:   ownerhandling.NewNative(scheme),
-		predecessorCh:   make(chan event.GenericEvent, 1024),
 	}
 }
 
@@ -86,9 +82,6 @@ func (r *COSRReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			r.accessManager.Source(
 				handler.EnqueueRequestForOwner(r.scheme, mgr.GetRESTMapper(), &orbv1alpha1.ClusterObjectSetRevision{}, handler.OnlyControllerOwner()),
 			),
-		).
-		WatchesRawSource(
-			source.Channel(r.predecessorCh, &handler.EnqueueRequestForObject{}),
 		).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 4}).
 		Complete(r)
@@ -132,12 +125,7 @@ func (r *COSRReconciler) reconcile(ctx context.Context, log logr.Logger, cosr *o
 	}
 
 	siblings := chain.siblingsOf(cosr)
-	if chain.latestActive != nil && chain.latestActive.Name == cosr.Name {
-		err := r.reconcileLatest(ctx, log, cosr, siblings)
-		r.enqueuePredecessors(chain.predecessors)
-		return ctrl.Result{}, err
-	}
-	return ctrl.Result{}, r.reconcilePredecessor(ctx, log, cosr, siblings)
+	return ctrl.Result{}, r.reconcileActive(ctx, log, cosr, siblings)
 }
 
 type revisionChain struct {
@@ -182,12 +170,6 @@ func (ch revisionChain) siblingsOf(cosr *orbv1alpha1.ClusterObjectSetRevision) [
 	return siblings
 }
 
-func (r *COSRReconciler) enqueuePredecessors(predecessors []*orbv1alpha1.ClusterObjectSetRevision) {
-	for _, p := range predecessors {
-		r.predecessorCh <- event.GenericEvent{Object: p}
-	}
-}
-
 func (r *COSRReconciler) ensureFinalizer(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) error {
 	if controllerutil.ContainsFinalizer(cosr, finalizerKey) {
 		return nil
@@ -199,15 +181,11 @@ func (r *COSRReconciler) ensureFinalizer(ctx context.Context, cosr *orbv1alpha1.
 	return nil
 }
 
-func (r *COSRReconciler) reconcileLatest(
-	ctx context.Context, log logr.Logger,
-	cosr *orbv1alpha1.ClusterObjectSetRevision,
-	predecessors []*orbv1alpha1.ClusterObjectSetRevision,
-) error {
-	log.Info("reconciling latest active COSR")
+func (r *COSRReconciler) reconcileActive(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision, siblings []*orbv1alpha1.ClusterObjectSetRevision) error {
+	log.Info("reconciling active COSR")
 
 	existing := cosr.DeepCopy()
-	reconcileErr := r.doReconcileLatest(ctx, cosr, predecessors)
+	reconcileErr := r.doReconcileActive(ctx, cosr, siblings)
 
 	if !equality.Semantic.DeepEqual(existing.Status, cosr.Status) {
 		if err := r.client.Status().Update(ctx, cosr); err != nil {
@@ -217,18 +195,14 @@ func (r *COSRReconciler) reconcileLatest(
 	return reconcileErr
 }
 
-func (r *COSRReconciler) doReconcileLatest(
-	ctx context.Context,
-	cosr *orbv1alpha1.ClusterObjectSetRevision,
-	predecessors []*orbv1alpha1.ClusterObjectSetRevision,
-) error {
+func (r *COSRReconciler) doReconcileActive(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision, siblings []*orbv1alpha1.ClusterObjectSetRevision) error {
 	engine, err := r.engineForCOSR(ctx, cosr)
 	if err != nil {
 		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, fmt.Sprintf("engine setup: %v", err))
 		return err
 	}
 
-	rev, err := r.buildRevisionWithSiblings(cosr, predecessors)
+	rev, err := r.buildRevisionWithSiblings(cosr, siblings)
 	if err != nil {
 		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, fmt.Sprintf("building revision: %v", err))
 		return fmt.Errorf("building revision: %w", err)
@@ -239,50 +213,16 @@ func (r *COSRReconciler) doReconcileLatest(
 		return fmt.Errorf("reconciling: %w", err)
 	}
 
-	if result.IsComplete() {
+	// HasProgressed implies IsComplete (progressed objects pass their probes),
+	// so check HasProgressed first to distinguish "all objects adopted by a
+	// sibling" from "all objects healthy under this revision."
+	switch {
+	case result.HasProgressed():
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, "all objects adopted by a newer revision")
+	case result.IsComplete():
 		setCondition(cosr, metav1.ConditionTrue, orbv1alpha1.ReasonAvailable, "all phases complete")
-	} else {
+	default:
 		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, "phases not yet complete")
-	}
-	return nil
-}
-
-func (r *COSRReconciler) reconcilePredecessor(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision, siblings []*orbv1alpha1.ClusterObjectSetRevision) error {
-	log.Info("reconciling predecessor COSR", "cosr", cosr.Name)
-
-	existing := cosr.DeepCopy()
-	reconcileErr := r.doReconcilePredecessor(ctx, cosr, siblings)
-
-	if !equality.Semantic.DeepEqual(existing.Status, cosr.Status) {
-		if err := r.client.Status().Update(ctx, cosr); err != nil {
-			return errors.Join(reconcileErr, fmt.Errorf("updating predecessor status for %s: %w", cosr.Name, err))
-		}
-	}
-	return reconcileErr
-}
-
-func (r *COSRReconciler) doReconcilePredecessor(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision, siblings []*orbv1alpha1.ClusterObjectSetRevision) error {
-	engine, err := r.engineForCOSR(ctx, cosr)
-	if err != nil {
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, fmt.Sprintf("engine setup: %v", err))
-		return err
-	}
-
-	rev, err := r.buildRevisionWithSiblings(cosr, siblings)
-	if err != nil {
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, fmt.Sprintf("building revision: %v", err))
-		return fmt.Errorf("building revision: %w", err)
-	}
-	result, err := engine.Reconcile(ctx, rev)
-	if err != nil {
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, fmt.Sprintf("reconcile failed: %v", err))
-		return fmt.Errorf("reconciling: %w", err)
-	}
-
-	if result.IsComplete() {
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, "all phases complete, superseded by newer revision")
-	} else {
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, "phases not yet complete")
 	}
 	return nil
 }

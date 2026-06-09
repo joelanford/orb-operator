@@ -30,6 +30,7 @@ func registerAssertSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the CRD "([^"]*)" should exist$`, tc.theCRDShouldExist)
 	sc.Step(`^the "([^"]*)" named "([^"]*)" should exist$`, tc.theCRShouldExist)
 	sc.Step(`^the ConfigMap "([^"]*)" should (have|not have) an owner reference$`, tc.theConfigMapOwnerRefCheck)
+	sc.Step(`^the ConfigMap "([^"]*)" should have a controller owner reference to COSR with group "([^"]*)" and revision (\d+)$`, tc.theConfigMapShouldBeOwnedByCOSR)
 	sc.Step(`^the COSR should not exist$`, tc.theCOSRShouldNotExist)
 	sc.Step(`^the COSR should have condition "([^"]*)" with status "([^"]*)"$`, tc.theCOSRShouldHaveCondition)
 	sc.Step(`^the COSR should have condition "([^"]*)" with status "([^"]*)" and reason "([^"]*)"$`, tc.theCOSRShouldHaveConditionWithReason)
@@ -102,19 +103,19 @@ func (tc *testContext) aResourceShouldMatch(doc *godog.DocString) error {
 
 func (tc *testContext) theCRDShouldExist(name string) error {
 	crd := &apiextensionsv1.CustomResourceDefinition{}
-	return tc.pollForObject(context.Background(), types.NamespacedName{Name: name + ".e2e.orb.dev"}, crd)
+	return tc.pollForObject(context.Background(), types.NamespacedName{Name: name + "." + tc.namespace + ".e2e.orb.dev"}, crd)
 }
 
 func (tc *testContext) theCRShouldExist(crdName, crName string) error {
 	obj := &unstructured.Unstructured{}
-	obj.SetGroupVersionKind(crGVK(crdName))
+	obj.SetGroupVersionKind(tc.crGVK(crdName))
 	return tc.pollForObject(context.Background(), types.NamespacedName{Name: crName}, obj)
 }
 
-func crGVK(crdName string) schema.GroupVersionKind {
+func (tc *testContext) crGVK(crdName string) schema.GroupVersionKind {
 	kind := crdName[:len(crdName)-1]
 	return schema.GroupVersionKind{
-		Group:   "e2e.orb.dev",
+		Group:   tc.namespace + ".e2e.orb.dev",
 		Version: "v1alpha1",
 		Kind:    capitalize(kind),
 	}
@@ -133,6 +134,15 @@ func (tc *testContext) theConfigMapOwnerRefCheck(name, haveOrNotHave string) err
 		return fmt.Errorf("ConfigMap %q still has owner references: %v", name, cm.OwnerReferences)
 	}
 	return nil
+}
+
+func (tc *testContext) theConfigMapShouldBeOwnedByCOSR(name, group string, revision uint32) error {
+	expectedOwner := tc.cosrName(group, revision)
+	cm := &corev1.ConfigMap{}
+	return pollForObjectMatching(tc, cm, types.NamespacedName{Namespace: tc.namespace, Name: name}, func() bool {
+		ref := metav1.GetControllerOf(cm)
+		return ref != nil && ref.Kind == "ClusterObjectSetRevision" && ref.Name == expectedOwner
+	})
 }
 
 func (tc *testContext) theCOSRShouldNotExist() error {

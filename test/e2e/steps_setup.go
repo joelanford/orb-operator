@@ -97,7 +97,7 @@ func (tc *testContext) phaseAlsoHasConfigMap(_, cmName string) {
 
 func (tc *testContext) aPhaseWithCRDConditionEqual(phaseName, crdName, condType, condStatus string) {
 	tc.addPhase(phaseName)
-	crd := newCRD(crdName)
+	crd := newCRD(crdName, tc.namespace)
 	tc.crds = append(tc.crds, crd.Name)
 	tc.addObjectWithAssertions(crd, []orbv1alpha1.Assertion{{
 		ConditionEqual: &orbv1alpha1.ConditionEqualAssertion{
@@ -109,24 +109,24 @@ func (tc *testContext) aPhaseWithCRDConditionEqual(phaseName, crdName, condType,
 
 func (tc *testContext) aPhaseWithCRD(phaseName, crdName string) {
 	tc.addPhase(phaseName)
-	crd := newCRD(crdName)
+	crd := newCRD(crdName, tc.namespace)
 	tc.crds = append(tc.crds, crd.Name)
 	tc.addObjectToPhase(crd)
 }
 
 func (tc *testContext) phaseAlsoHasCRD(_, crdName string) {
-	crd := newCRD(crdName)
+	crd := newCRD(crdName, tc.namespace)
 	tc.crds = append(tc.crds, crd.Name)
 	tc.addObjectToPhase(crd)
 }
 
 func (tc *testContext) aPhaseWithCR(phaseName, crdName, crName string) {
 	tc.addPhase(phaseName)
-	tc.addObjectToPhase(newCR(crdName, crName))
+	tc.addObjectToPhase(newCR(crdName, crName, tc.namespace))
 }
 
 func (tc *testContext) phaseAlsoHasCR(_, crdName, crName string) {
-	tc.addObjectToPhase(newCR(crdName, crName))
+	tc.addObjectToPhase(newCR(crdName, crName, tc.namespace))
 }
 
 func (tc *testContext) aPhaseWithConfigMapFieldValue(phaseName, cmName, path, value string) {
@@ -310,17 +310,18 @@ func newGatedConfigMapPhaseObject(name, namespace string, gated bool) orbv1alpha
 	}
 }
 
-func newCRD(name string) *apiextensionsv1.CustomResourceDefinition {
+func newCRD(name, namespace string) *apiextensionsv1.CustomResourceDefinition {
+	group := namespace + ".e2e.orb.dev"
 	return &apiextensionsv1.CustomResourceDefinition{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "apiextensions.k8s.io/v1",
 			Kind:       "CustomResourceDefinition",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name + ".e2e.orb.dev",
+			Name: name + "." + group,
 		},
 		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
-			Group: "e2e.orb.dev",
+			Group: group,
 			Names: apiextensionsv1.CustomResourceDefinitionNames{
 				Plural:   name,
 				Singular: name[:len(name)-1],
@@ -353,10 +354,10 @@ func boolPtr(b bool) *bool {
 	return &b
 }
 
-func newCR(crdName, crName string) *unstructured.Unstructured {
+func newCR(crdName, crName, namespace string) *unstructured.Unstructured {
 	return &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "e2e.orb.dev/v1alpha1",
+			"apiVersion": namespace + ".e2e.orb.dev/v1alpha1",
 			"kind":       capitalize(crdName[:len(crdName)-1]),
 			"metadata": map[string]interface{}{
 				"name": crName,

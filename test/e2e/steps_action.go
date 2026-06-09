@@ -84,7 +84,7 @@ func cascadePolicy(cascade string) metav1.DeletionPropagation {
 }
 
 func (tc *testContext) theCRDIsDeleted(name string) error {
-	return deleteObject[apiextensionsv1.CustomResourceDefinition](tc, types.NamespacedName{Name: name + ".e2e.orb.dev"})
+	return deleteObject[apiextensionsv1.CustomResourceDefinition](tc, types.NamespacedName{Name: name + "." + tc.namespace + ".e2e.orb.dev"})
 }
 
 func (tc *testContext) theCOSRLifecycleStateIsSetTo(state string) error {
