@@ -132,10 +132,16 @@ spec:
                     name:
                       description: |-
                         name is a human-readable identifier for this phase. It is used in log
-                        messages and status reporting.
-                      maxLength: 253
+                        messages and status reporting. Must be a valid DNS-1035 label: lowercase
+                        alphanumeric characters or '-', must start with a letter and end with
+                        an alphanumeric character (e.g. "my-phase", "phase1").
+                      maxLength: 63
                       minLength: 1
                       type: string
+                      x-kubernetes-validations:
+                      - message: 'name must be a valid DNS-1035 label: lowercase alphanumeric
+                          or ''-'', starting with a letter, ending with an alphanumeric'
+                        rule: self.matches('^[a-z]([a-z0-9-]*[a-z0-9])?$')
                     objects:
                       description: |-
                         objects is the list of Kubernetes objects to manage in this phase. The
@@ -314,6 +320,14 @@ spec:
               status reports the observed state of this revision, including availability
               conditions.
             properties:
+              completedAt:
+                description: |-
+                  completedAt is the timestamp when all phases first completed
+                  successfully. Set once and never cleared. Nil means the revision
+                  has never been fully available. When set and Available is False,
+                  the revision has regressed after a successful rollout.
+                format: date-time
+                type: string
               conditions:
                 description: |-
                   conditions represent the latest available observations of the revision's
@@ -377,7 +391,130 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              observedPhases:
+                description: |-
+                  observedPhases reports the observed state of each phase in the
+                  revision. All phases from the spec are always listed, in spec
+                  order. Each phase's status indicates whether the controller has
+                  evaluated it and whether it has completed. The list may contain
+                  at most 20 entries, matching the maximum number of spec phases.
+                items:
+                  description: ObservedPhase reports the observed state of a single
+                    phase in the rollout.
+                  properties:
+                    error:
+                      description: |-
+                        error is a phase-level error message describing a validation or
+                        configuration problem with the phase itself (as opposed to
+                        individual objects). At most 1024 characters; longer messages
+                        are truncated by the controller.
+                      maxLength: 1024
+                      type: string
+                    incompleteObjects:
+                      description: |-
+                        incompleteObjects lists objects in this phase that are not
+                        yet complete. For Reconciling phases, this includes probe
+                        failures, collisions, creation/update errors, and any other
+                        condition preventing completion. For TearingDown phases,
+                        this lists objects still awaiting deletion. Each entry
+                        identifies the object and carries failure messages. Empty
+                        when status is Available, TeardownComplete, or Unknown.
+                        The list may contain at most 50 entries, matching the maximum
+                        number of objects per phase.
+                      items:
+                        description: ObjectStatus identifies a managed object and
+                          its failure messages.
+                        properties:
+                          group:
+                            description: |-
+                              group is the API group of the object (empty string for core
+                              resources). At most 253 characters (DNS subdomain max).
+                            maxLength: 253
+                            type: string
+                          kind:
+                            description: |-
+                              kind is the kind of the object. Must be between 1 and 63
+                              characters.
+                            maxLength: 63
+                            minLength: 1
+                            type: string
+                          messages:
+                            description: |-
+                              messages lists the failure reasons for this object. The maximum
+                              of 17 entries accounts for up to 16 assertion probe failures
+                              plus one collision message. Each message is at most 1024
+                              characters; longer messages are truncated by the controller.
+                            items:
+                              maxLength: 1024
+                              type: string
+                            maxItems: 17
+                            type: array
+                          name:
+                            description: |-
+                              name is the name of the object. Must be between 1 and 253
+                              characters (DNS subdomain max).
+                            maxLength: 253
+                            minLength: 1
+                            type: string
+                          namespace:
+                            description: |-
+                              namespace is the namespace of the object. Empty for cluster-scoped
+                              resources. At most 253 characters (DNS subdomain max).
+                            maxLength: 253
+                            type: string
+                          version:
+                            description: |-
+                              version is the API version of the object. Must be between 1 and
+                              63 characters.
+                            maxLength: 63
+                            minLength: 1
+                            type: string
+                        required:
+                        - kind
+                        - name
+                        - version
+                        type: object
+                      maxItems: 50
+                      type: array
+                    name:
+                      description: |-
+                        name is the name of the phase from the spec. Must be a valid DNS-1035
+                        label: lowercase alphanumeric characters or '-', must start with a
+                        letter and end with an alphanumeric character (e.g. "my-phase",
+                        "phase1"), matching the Phase name constraints.
+                      maxLength: 63
+                      minLength: 1
+                      type: string
+                      x-kubernetes-validations:
+                      - message: 'name must be a valid DNS-1035 label: lowercase alphanumeric
+                          or ''-'', starting with a letter, ending with an alphanumeric'
+                        rule: self.matches('^[a-z]([a-z0-9-]*[a-z0-9])?$')
+                    status:
+                      description: |-
+                        status is the current state of this phase in the rollout. Must be
+                        one of Reconciling, Available, Unknown, Superseded, TearingDown, or
+                        TeardownComplete.
+                      enum:
+                      - Reconciling
+                      - Available
+                      - Unknown
+                      - Superseded
+                      - TearingDown
+                      - TeardownComplete
+                      type: string
+                  required:
+                  - name
+                  - status
+                  type: object
+                maxItems: 20
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
             type: object
+            x-kubernetes-validations:
+            - message: completedAt is immutable once set
+              rule: '!has(oldSelf.completedAt) || has(self.completedAt)'
         required:
         - spec
         type: object

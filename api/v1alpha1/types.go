@@ -48,6 +48,22 @@ const (
 	// ReasonSuperseded indicates all objects in this revision have been
 	// adopted by a higher-numbered sibling revision.
 	ReasonSuperseded = "Superseded"
+
+	// ReasonInvalidRevision indicates the revision failed preflight
+	// validation and cannot be reconciled.
+	ReasonInvalidRevision = "InvalidRevision"
+
+	// ReasonInternalError indicates the controller encountered an internal
+	// error and could not evaluate the managed objects.
+	ReasonInternalError = "InternalError"
+
+	// ReasonReconcileError indicates the reconciliation engine returned an
+	// error while reconciling managed objects.
+	ReasonReconcileError = "ReconcileError"
+
+	// ReasonTeardownError indicates the reconciliation engine returned an
+	// error while tearing down managed objects.
+	ReasonTeardownError = "TeardownError"
 )
 
 // Phase is an ordered group of objects that are applied together. Phases within
@@ -55,9 +71,12 @@ const (
 // next phase until all objects in the current phase satisfy their assertions.
 type Phase struct {
 	// name is a human-readable identifier for this phase. It is used in log
-	// messages and status reporting.
+	// messages and status reporting. Must be a valid DNS-1035 label: lowercase
+	// alphanumeric characters or '-', must start with a letter and end with
+	// an alphanumeric character (e.g. "my-phase", "phase1").
 	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:XValidation:rule="self.matches('^[a-z]([a-z0-9-]*[a-z0-9])?$')",message="name must be a valid DNS-1035 label: lowercase alphanumeric or '-', starting with a letter, ending with an alphanumeric"
 	// +required
 	Name string `json:"name"`
 

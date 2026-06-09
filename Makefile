@@ -2,7 +2,7 @@ IMAGE ?= ghcr.io/joelanford/orb-operator:dev
 NAMESPACE ?= orb-operator-system
 KIND_CLUSTER ?= orb-operator
 
-.PHONY: lint lint-fix test-unit test-integration test-e2e test-all build tidy generate verify
+.PHONY: lint lint-fix test-unit test-e2e test-all build tidy generate verify
 .PHONY: run
 
 lint:
@@ -11,17 +11,17 @@ lint:
 lint-fix:
 	go tool golangci-lint run --fix ./...
 
-test-unit:
-	go test $(shell go list ./... | grep -v /test/)
+ENVTEST_K8S_VERSION := $(shell go list -m -f '{{.Version}}' k8s.io/api | sed 's/^v0\./1./' | cut -d. -f1-2)
+KUBEBUILDER_ASSETS := $(shell go tool setup-envtest use $(ENVTEST_K8S_VERSION) --print path 2>/dev/null)
 
-test-integration:
-	go test ./test/integration/...
+test-unit:
+	KUBEBUILDER_ASSETS="$(KUBEBUILDER_ASSETS)" go test $(shell go list ./... | grep -v /test/)
 
 test-e2e: KIND_CLUSTER = orb-operator-e2e
 test-e2e: run
 	go test ./test/e2e/... -count 1 -v
 
-test-all: test-unit test-integration test-e2e
+test-all: test-unit test-e2e
 
 build:
 	go build ./...
