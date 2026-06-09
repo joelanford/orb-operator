@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"pkg.package-operator.run/boxcutter"
+	"pkg.package-operator.run/boxcutter/machinery"
 	"pkg.package-operator.run/boxcutter/managedcache"
 	"pkg.package-operator.run/boxcutter/ownerhandling"
 	"pkg.package-operator.run/boxcutter/probing"
@@ -99,16 +100,8 @@ func (r *COSRReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 }
 
 func (r *COSRReconciler) reconcile(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (ctrl.Result, error) {
-	if !cosr.DeletionTimestamp.IsZero() {
-		requeue, err := r.handleDeletion(ctx, log, cosr)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{Requeue: requeue}, nil
-	}
-
-	if cosr.Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived {
-		return r.reconcileArchived(ctx, log, cosr)
+	if !cosr.DeletionTimestamp.IsZero() || cosr.Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived {
+		return r.teardownAndRelease(ctx, log, cosr)
 	}
 
 	groupMembers, err := r.listGroupMembers(ctx, cosr.Spec.Group)
@@ -198,19 +191,25 @@ func (r *COSRReconciler) reconcileActive(ctx context.Context, log logr.Logger, c
 func (r *COSRReconciler) doReconcileActive(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision, siblings []*orbv1alpha1.ClusterObjectSetRevision) error {
 	engine, err := r.engineForCOSR(ctx, cosr)
 	if err != nil {
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, fmt.Sprintf("engine setup: %v", err))
+		setInternalErrorStatus(cosr, fmt.Sprintf("engine setup: %v", err))
 		return err
 	}
 
 	rev, err := r.buildRevisionWithSiblings(cosr, siblings)
 	if err != nil {
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, fmt.Sprintf("building revision: %v", err))
+		setInternalErrorStatus(cosr, fmt.Sprintf("building revision: %v", err))
 		return fmt.Errorf("building revision: %w", err)
 	}
 	result, err := engine.Reconcile(ctx, rev)
+	cosr.Status.ObservedPhases = observedPhasesFromReconcileResult(cosr.Spec.Phases, result)
 	if err != nil {
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, fmt.Sprintf("reconcile failed: %v", err))
+		setCondition(cosr, metav1.ConditionUnknown, orbv1alpha1.ReasonReconcileError, fmt.Sprintf("reconcile failed: %v", err))
 		return fmt.Errorf("reconciling: %w", err)
+	}
+
+	if verr := result.GetValidationError(); verr != nil {
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonInvalidRevision, verr.Error())
+		return nil
 	}
 
 	// HasProgressed implies IsComplete (progressed objects pass their probes),
@@ -220,6 +219,10 @@ func (r *COSRReconciler) doReconcileActive(ctx context.Context, cosr *orbv1alpha
 	case result.HasProgressed():
 		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, "all objects adopted by a newer revision")
 	case result.IsComplete():
+		if cosr.Status.CompletedAt == nil {
+			now := metav1.Now()
+			cosr.Status.CompletedAt = &now
+		}
 		setCondition(cosr, metav1.ConditionTrue, orbv1alpha1.ReasonAvailable, "all phases complete")
 	default:
 		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, "phases not yet complete")
@@ -227,85 +230,77 @@ func (r *COSRReconciler) doReconcileActive(ctx context.Context, cosr *orbv1alpha
 	return nil
 }
 
-func (r *COSRReconciler) reconcileArchived(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (ctrl.Result, error) {
-	log.Info("reconciling archived COSR", "cosr", cosr.Name)
-
-	existing := cosr.DeepCopy()
-	needsRequeue, reconcileErr := r.doReconcileArchived(ctx, cosr)
-
-	if !equality.Semantic.DeepEqual(existing.Status, cosr.Status) {
-		if err := r.client.Status().Update(ctx, cosr); err != nil {
-			return ctrl.Result{}, errors.Join(reconcileErr, fmt.Errorf("updating archived status for %s: %w", cosr.Name, err))
-		}
-	}
-	if reconcileErr != nil {
-		return ctrl.Result{}, reconcileErr
-	}
-
-	return ctrl.Result{Requeue: needsRequeue}, nil
-}
-
-func (r *COSRReconciler) doReconcileArchived(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) (bool, error) {
-	needsRequeue, err := r.teardownCOSR(ctx, cosr)
-	if err != nil {
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, fmt.Sprintf("teardown failed: %v", err))
-		return false, err
-	}
-	if needsRequeue {
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, "teardown in progress")
-	} else {
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, "teardown complete")
-	}
-	return needsRequeue, nil
-}
-
-func (r *COSRReconciler) handleDeletion(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (bool, error) {
+func (r *COSRReconciler) teardownAndRelease(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (ctrl.Result, error) {
 	if !controllerutil.ContainsFinalizer(cosr, finalizerKey) {
-		return false, nil
+		return ctrl.Result{}, nil
 	}
 
 	// The VAP "cosr-orphan-finalizer-ordering" guarantees the "orphan" finalizer
 	// cannot be removed while our finalizer is still present. When the "orphan"
 	// finalizer is set, skip teardown but still release the finalizer so the
 	// deletion can proceed.
-	if !controllerutil.ContainsFinalizer(cosr, "orphan") {
-		return r.teardownCOSR(ctx, cosr)
+	if !cosr.DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(cosr, "orphan") {
+		log.Info("orphan finalizer present, skipping teardown")
+		return ctrl.Result{}, r.releaseCOSR(ctx, cosr)
 	}
 
-	log.Info("orphan finalizer present, skipping teardown")
-	if err := r.releaseCOSR(ctx, cosr); err != nil {
-		return false, err
+	existing := cosr.DeepCopy()
+	requeue, reconcileErr := r.doTeardownCOSR(ctx, cosr)
+
+	if !equality.Semantic.DeepEqual(existing.Status, cosr.Status) {
+		if err := r.client.Status().Update(ctx, cosr); err != nil {
+			return ctrl.Result{}, errors.Join(reconcileErr, fmt.Errorf("updating status for %s: %w", cosr.Name, err))
+		}
 	}
-	return false, nil
+	if reconcileErr != nil {
+		return ctrl.Result{}, reconcileErr
+	}
+	if requeue {
+		return ctrl.Result{Requeue: true}, nil
+	}
+
+	if err := r.releaseCOSR(ctx, cosr); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{}, nil
 }
 
-func (r *COSRReconciler) teardownCOSR(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) (bool, error) {
-	if !controllerutil.ContainsFinalizer(cosr, finalizerKey) {
-		return false, nil
-	}
-
+func (r *COSRReconciler) doTeardownCOSR(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) (bool, error) {
 	engine, err := r.engineForCOSR(ctx, cosr)
 	if err != nil {
+		setInternalErrorStatus(cosr, fmt.Sprintf("engine setup: %v", err))
 		return false, fmt.Errorf("engine setup: %w", err)
 	}
 
 	rev, err := r.buildRevision(cosr)
 	if err != nil {
+		setInternalErrorStatus(cosr, fmt.Sprintf("building revision: %v", err))
 		return false, fmt.Errorf("building revision: %w", err)
 	}
-	result, err := engine.Teardown(ctx, rev)
-	if err != nil {
-		return false, fmt.Errorf("teardown: %w", err)
-	}
 
+	result, teardownErr := engine.Teardown(ctx, rev)
+	setTeardownStatus(cosr, result, teardownErr)
+
+	if teardownErr != nil {
+		return false, fmt.Errorf("teardown: %w", teardownErr)
+	}
 	if !result.IsComplete() {
 		return true, nil
 	}
-
-	if err := r.releaseCOSR(ctx, cosr); err != nil {
-		return false, err
-	}
 	return false, nil
+}
+
+func setTeardownStatus(cosr *orbv1alpha1.ClusterObjectSetRevision, result machinery.RevisionTeardownResult, teardownErr error) {
+	cosr.Status.ObservedPhases = observedPhasesFromTeardownResult(cosr.Spec.Phases, result)
+	switch {
+	case teardownErr != nil:
+		setCondition(cosr, metav1.ConditionUnknown, orbv1alpha1.ReasonTeardownError,
+			fmt.Sprintf("teardown failed: %v", teardownErr))
+	case result != nil && !result.IsComplete():
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, "teardown in progress")
+	default:
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, "teardown complete")
+	}
 }
 
 func (r *COSRReconciler) releaseCOSR(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) error {
@@ -497,6 +492,11 @@ func objectFromRawExtension(raw runtime.RawExtension) (*unstructured.Unstructure
 		return nil, fmt.Errorf("unmarshalling raw extension: %w", err)
 	}
 	return u, nil
+}
+
+func setInternalErrorStatus(cosr *orbv1alpha1.ClusterObjectSetRevision, message string) {
+	cosr.Status.ObservedPhases = nil
+	setCondition(cosr, metav1.ConditionUnknown, orbv1alpha1.ReasonInternalError, message)
 }
 
 func setCondition(cosr *orbv1alpha1.ClusterObjectSetRevision, status metav1.ConditionStatus, reason, message string) {
