@@ -75,3 +75,16 @@ Feature: COSR multi-revision ownership handoffs within a group
     Then revision 1 should have condition "Available" with status "False" and reason "Superseded"
     When the ConfigMap "cm-old-only" is deleted
     Then the ConfigMap "cm-old-only" should be recreated
+
+  Scenario: Superseded COSR with disjoint GVKs recreates deleted object
+    Given a COSR with group "test" and revision 1
+    And a phase "crds" with a CRD "widgets" with assertion conditionEqual type "Established" status "True"
+    And a phase "instances" with a "widgets" named "w1"
+    And the COSR is created and becomes Available
+    When a COSR with group "test" and revision 2
+    And a phase "install" with a ConfigMap "cm-rev2"
+    And the COSR is created and becomes Available
+    Then revision 1 should have condition "Available" with status "False" and reason "Superseded"
+    And the "widgets" named "w1" should exist
+    When the CRD "widgets" is deleted
+    Then the CRD "widgets" should exist

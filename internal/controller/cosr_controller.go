@@ -21,11 +21,11 @@ import (
 	"pkg.package-operator.run/boxcutter/probing"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 	"github.com/joelanford/orb-operator/internal/assertions"
@@ -45,6 +45,7 @@ type COSRReconciler struct {
 	discoveryClient discovery.OpenAPIV3SchemaInterface
 	accessManager   managedcache.ObjectBoundAccessManager[*orbv1alpha1.ClusterObjectSetRevision]
 	ownerStrategy   boxcutter.OwnerStrategy
+	predecessorCh   chan event.GenericEvent
 }
 
 func NewCOSRReconciler(
@@ -61,6 +62,7 @@ func NewCOSRReconciler(
 		discoveryClient: discoveryClient,
 		accessManager:   accessManager,
 		ownerStrategy:   ownerhandling.NewNative(scheme),
+		predecessorCh:   make(chan event.GenericEvent, 1024),
 	}
 }
 
@@ -79,74 +81,17 @@ func SetupIndexes(mgr ctrl.Manager) error {
 func (r *COSRReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("cosr").
-		Watches(
-			&orbv1alpha1.ClusterObjectSetRevision{},
-			handler.EnqueueRequestsFromMapFunc(r.mapToHighestRevInChain),
-		).
+		For(&orbv1alpha1.ClusterObjectSetRevision{}).
 		WatchesRawSource(
 			r.accessManager.Source(
-				handler.EnqueueRequestsFromMapFunc(r.managedObjectToHighestRevInChain),
+				handler.EnqueueRequestForOwner(r.scheme, mgr.GetRESTMapper(), &orbv1alpha1.ClusterObjectSetRevision{}, handler.OnlyControllerOwner()),
 			),
+		).
+		WatchesRawSource(
+			source.Channel(r.predecessorCh, &handler.EnqueueRequestForObject{}),
 		).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 4}).
 		Complete(r)
-}
-
-func (r *COSRReconciler) mapToHighestRevInChain(ctx context.Context, obj client.Object) []reconcile.Request {
-	cosr := obj.(*orbv1alpha1.ClusterObjectSetRevision)
-	req, ok := r.highestRevRequest(ctx, cosr.Spec.Group, controllerOwnerKeyOf(cosr))
-	if !ok {
-		return nil
-	}
-	return []reconcile.Request{req}
-}
-
-func (r *COSRReconciler) managedObjectToHighestRevInChain(ctx context.Context, obj client.Object) []reconcile.Request {
-	ref := metav1.GetControllerOf(obj)
-	if ref == nil {
-		return nil
-	}
-
-	cosrGVK, err := apiutil.GVKForObject(&orbv1alpha1.ClusterObjectSetRevision{}, r.scheme)
-	if err != nil {
-		return nil
-	}
-	refGV, err := schema.ParseGroupVersion(ref.APIVersion)
-	if err != nil || refGV.Group != cosrGVK.Group || ref.Kind != cosrGVK.Kind {
-		return nil
-	}
-
-	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
-	if err := r.client.Get(ctx, client.ObjectKey{Name: ref.Name}, cosr); err != nil {
-		return nil
-	}
-	req, ok := r.highestRevRequest(ctx, cosr.Spec.Group, controllerOwnerKeyOf(cosr))
-	if !ok {
-		return nil
-	}
-	return []reconcile.Request{req}
-}
-
-func (r *COSRReconciler) highestRevRequest(ctx context.Context, group string, key controllerOwnerKey) (reconcile.Request, bool) {
-	var list orbv1alpha1.ClusterObjectSetRevisionList
-	if err := r.client.List(ctx, &list, client.MatchingFields{groupIndex: group}); err != nil {
-		return reconcile.Request{}, false
-	}
-
-	var latest *orbv1alpha1.ClusterObjectSetRevision
-	for i := range list.Items {
-		m := &list.Items[i]
-		if controllerOwnerKeyOf(m) != key {
-			continue
-		}
-		if latest == nil || m.Spec.Revision > latest.Spec.Revision {
-			latest = m
-		}
-	}
-	if latest == nil {
-		return reconcile.Request{}, false
-	}
-	return reconcile.Request{NamespacedName: client.ObjectKeyFromObject(latest)}, true
 }
 
 func (r *COSRReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -161,6 +106,18 @@ func (r *COSRReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 }
 
 func (r *COSRReconciler) reconcile(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (ctrl.Result, error) {
+	if !cosr.DeletionTimestamp.IsZero() {
+		requeue, err := r.handleDeletion(ctx, log, cosr)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{Requeue: requeue}, nil
+	}
+
+	if cosr.Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived {
+		return r.reconcileArchived(ctx, log, cosr)
+	}
+
 	groupMembers, err := r.listGroupMembers(ctx, cosr.Spec.Group)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -170,7 +127,17 @@ func (r *COSRReconciler) reconcile(ctx context.Context, log logr.Logger, cosr *o
 	members := filterByControllerOwner(groupMembers, ownerKey)
 	chain := buildChain(members)
 
-	return r.reconcileChain(ctx, log, cosr, chain)
+	if err := r.ensureFinalizer(ctx, cosr); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	siblings := chain.siblingsOf(cosr)
+	if chain.latestActive != nil && chain.latestActive.Name == cosr.Name {
+		err := r.reconcileLatest(ctx, log, cosr, siblings)
+		r.enqueuePredecessors(chain.predecessors)
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{}, r.reconcilePredecessor(ctx, log, cosr, siblings)
 }
 
 type revisionChain struct {
@@ -202,75 +169,32 @@ func buildChain(members []orbv1alpha1.ClusterObjectSetRevision) revisionChain {
 	return ch
 }
 
-func (r *COSRReconciler) ensureFinalizers(ctx context.Context, chain revisionChain) (bool, error) {
-	var members []*orbv1alpha1.ClusterObjectSetRevision
-	if chain.latestActive != nil {
-		members = append(members, chain.latestActive)
+func (ch revisionChain) siblingsOf(cosr *orbv1alpha1.ClusterObjectSetRevision) []*orbv1alpha1.ClusterObjectSetRevision {
+	var siblings []*orbv1alpha1.ClusterObjectSetRevision
+	if ch.latestActive != nil && ch.latestActive.Name != cosr.Name {
+		siblings = append(siblings, ch.latestActive)
 	}
-	members = append(members, chain.predecessors...)
-
-	for _, m := range members {
-		if !controllerutil.ContainsFinalizer(m, finalizerKey) {
-			controllerutil.AddFinalizer(m, finalizerKey)
-			if err := r.client.Update(ctx, m); err != nil {
-				return false, fmt.Errorf("adding finalizer to %s: %w", m.Name, err)
-			}
-			return true, nil
+	for _, p := range ch.predecessors {
+		if p.Name != cosr.Name {
+			siblings = append(siblings, p)
 		}
 	}
-	return false, nil
+	return siblings
 }
 
-func (r *COSRReconciler) reconcileChain(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision, chain revisionChain) (ctrl.Result, error) {
-	added, err := r.ensureFinalizers(ctx, chain)
-	if added || err != nil {
-		return ctrl.Result{}, err
+func (r *COSRReconciler) enqueuePredecessors(predecessors []*orbv1alpha1.ClusterObjectSetRevision) {
+	for _, p := range predecessors {
+		r.predecessorCh <- event.GenericEvent{Object: p}
 	}
-
-	var needsRequeue bool
-	for _, m := range chain.deleted {
-		requeue, err := r.handleDeletion(ctx, log, m)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		if requeue {
-			needsRequeue = true
-		}
-	}
-
-	if err := r.reconcileActiveMembers(ctx, log, cosr, chain); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	for _, m := range chain.archived {
-		requeue, err := r.reconcileArchived(ctx, log, m)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		if requeue {
-			needsRequeue = true
-		}
-	}
-
-	if needsRequeue {
-		return ctrl.Result{Requeue: true}, nil
-	}
-	return ctrl.Result{}, nil
 }
 
-func (r *COSRReconciler) reconcileActiveMembers(ctx context.Context, log logr.Logger, _ *orbv1alpha1.ClusterObjectSetRevision, chain revisionChain) error {
-	if chain.latestActive == nil {
+func (r *COSRReconciler) ensureFinalizer(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) error {
+	if controllerutil.ContainsFinalizer(cosr, finalizerKey) {
 		return nil
 	}
-
-	if err := r.reconcileLatest(ctx, log, chain.latestActive, chain.predecessors); err != nil {
-		return err
-	}
-
-	for _, p := range chain.predecessors {
-		if err := r.reconcilePredecessor(ctx, log, p); err != nil {
-			return err
-		}
+	controllerutil.AddFinalizer(cosr, finalizerKey)
+	if err := r.client.Update(ctx, cosr); err != nil {
+		return fmt.Errorf("adding finalizer to %s: %w", cosr.Name, err)
 	}
 	return nil
 }
@@ -323,25 +247,47 @@ func (r *COSRReconciler) doReconcileLatest(
 	return nil
 }
 
-func (r *COSRReconciler) reconcilePredecessor(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) error {
+func (r *COSRReconciler) reconcilePredecessor(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision, siblings []*orbv1alpha1.ClusterObjectSetRevision) error {
 	log.Info("reconciling predecessor COSR", "cosr", cosr.Name)
 
 	existing := cosr.DeepCopy()
-	r.doReconcilePredecessor(cosr)
+	reconcileErr := r.doReconcilePredecessor(ctx, cosr, siblings)
 
 	if !equality.Semantic.DeepEqual(existing.Status, cosr.Status) {
 		if err := r.client.Status().Update(ctx, cosr); err != nil {
-			return fmt.Errorf("updating predecessor status for %s: %w", cosr.Name, err)
+			return errors.Join(reconcileErr, fmt.Errorf("updating predecessor status for %s: %w", cosr.Name, err))
 		}
+	}
+	return reconcileErr
+}
+
+func (r *COSRReconciler) doReconcilePredecessor(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision, siblings []*orbv1alpha1.ClusterObjectSetRevision) error {
+	engine, err := r.engineForCOSR(ctx, cosr)
+	if err != nil {
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, fmt.Sprintf("engine setup: %v", err))
+		return err
+	}
+
+	rev, err := r.buildRevisionWithSiblings(cosr, siblings)
+	if err != nil {
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, fmt.Sprintf("building revision: %v", err))
+		return fmt.Errorf("building revision: %w", err)
+	}
+	result, err := engine.Reconcile(ctx, rev)
+	if err != nil {
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, fmt.Sprintf("reconcile failed: %v", err))
+		return fmt.Errorf("reconciling: %w", err)
+	}
+
+	if result.IsComplete() {
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, "all phases complete, superseded by newer revision")
+	} else {
+		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, "phases not yet complete")
 	}
 	return nil
 }
 
-func (r *COSRReconciler) doReconcilePredecessor(cosr *orbv1alpha1.ClusterObjectSetRevision) {
-	setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, "a newer revision exists in this group")
-}
-
-func (r *COSRReconciler) reconcileArchived(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (bool, error) {
+func (r *COSRReconciler) reconcileArchived(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (ctrl.Result, error) {
 	log.Info("reconciling archived COSR", "cosr", cosr.Name)
 
 	existing := cosr.DeepCopy()
@@ -349,14 +295,14 @@ func (r *COSRReconciler) reconcileArchived(ctx context.Context, log logr.Logger,
 
 	if !equality.Semantic.DeepEqual(existing.Status, cosr.Status) {
 		if err := r.client.Status().Update(ctx, cosr); err != nil {
-			return false, errors.Join(reconcileErr, fmt.Errorf("updating archived status for %s: %w", cosr.Name, err))
+			return ctrl.Result{}, errors.Join(reconcileErr, fmt.Errorf("updating archived status for %s: %w", cosr.Name, err))
 		}
 	}
 	if reconcileErr != nil {
-		return false, reconcileErr
+		return ctrl.Result{}, reconcileErr
 	}
 
-	return needsRequeue, nil
+	return ctrl.Result{Requeue: needsRequeue}, nil
 }
 
 func (r *COSRReconciler) doReconcileArchived(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) (bool, error) {

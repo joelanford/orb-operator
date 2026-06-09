@@ -1,5 +1,5 @@
 ---
-status: ready
+status: done
 ---
 # Independent COSR Reconciliation
 
@@ -32,6 +32,7 @@ Refactor the COSR controller so each ClusterObjectSetRevision reconciles itself 
 **New:**
 - COSR event → enqueue self
 - Managed object event → enqueue owning COSR (via controller owner ref)
+- Channel source → when the latest active COSR reconciles, it sends predecessor COSRs to an in-process channel, which enqueues them for reconciliation. This ensures predecessors promptly learn they are superseded, even when the new revision manages completely different GVKs.
 
 ### Reconciliation changes
 
@@ -62,6 +63,6 @@ When a predecessor reconciles:
 - COS controller behavior (archival decisions, status mirroring)
 - The COS controller continues to decide when to archive predecessors
 
-### Known edge case
+### Disjoint GVK handling
 
-When the new revision has a completely disjoint set of objects from the predecessor, nothing triggers the predecessor to reconcile after the new revision is created (no shared objects means no ownership transfer events). The predecessor will reconcile on its next natural event (e.g., a managed object watch event, or controller resync). An e2e test must cover this case. If the delay proves problematic, the event mapping can be extended to also enqueue lower-revision active siblings.
+When the new revision manages completely different GVKs from the predecessor, no managed object events cross-trigger the predecessor. The channel source solves this: after the latest COSR reconciles, it pushes predecessor COSRs onto an in-process channel, which the controller picks up as reconcile requests. This ensures predecessors are promptly notified regardless of GVK overlap.
