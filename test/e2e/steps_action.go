@@ -8,9 +8,11 @@ import (
 	"github.com/cucumber/godog"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
@@ -37,6 +39,11 @@ func registerActionSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the gate on ConfigMap "([^"]*)" is (opened|closed)$`, tc.theConfigMapGateIsSetTo)
 	sc.Step(`^a resource is patched with:$`, tc.aResourceIsPatched)
 
+	sc.Step(`^an object is created with:$`, tc.anObjectIsCreatedWith)
+	sc.Step(`^ConfigMap deletes are blocked in the test namespace$`, tc.configMapDeletesAreBlockedInTestNamespace)
+	sc.Step(`^a finalizer "([^"]*)" is added to ConfigMap "([^"]*)"$`, tc.aFinalizerIsAddedToConfigMap)
+	sc.Step(`^the finalizer "([^"]*)" is removed from ConfigMap "([^"]*)"$`, tc.theFinalizerIsRemovedFromConfigMap)
+	sc.Step(`^the COSR is deleted$`, tc.theCOSRIsDeleted)
 	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) lifecycleState is set to "([^"]*)"$`, tc.theCOSRInGroupLifecycleStateIsSetTo)
 	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) is deleted$`, tc.theCOSRInGroupIsDeleted)
 
@@ -206,6 +213,126 @@ func (tc *testContext) aResourceIsPatched(doc *godog.DocString) error {
 		return fmt.Errorf("parsing patch YAML: %w", err)
 	}
 	return tc.client.Apply(context.Background(), client.ApplyConfigurationFromUnstructured(obj), client.FieldOwner("e2e-test"), client.ForceOwnership)
+}
+
+func (tc *testContext) anObjectIsCreatedWith(doc *godog.DocString) error {
+	content := strings.ReplaceAll(doc.Content, "${NAMESPACE}", tc.namespace)
+	obj := &unstructured.Unstructured{}
+	if err := yaml.Unmarshal([]byte(content), &obj.Object); err != nil {
+		return fmt.Errorf("parsing YAML: %w", err)
+	}
+	if err := tc.client.Create(context.Background(), obj); err != nil {
+		return err
+	}
+	tc.createdObjects = append(tc.createdObjects, metav1.PartialObjectMetadata{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: obj.GetAPIVersion(),
+			Kind:       obj.GetKind(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      obj.GetName(),
+			Namespace: obj.GetNamespace(),
+		},
+	})
+	return nil
+}
+
+func (tc *testContext) configMapDeletesAreBlockedInTestNamespace() error {
+	ctx := context.Background()
+	vapName := tc.namespace + "-block-cm-delete"
+
+	vap := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "admissionregistration.k8s.io/v1",
+		"kind":       "ValidatingAdmissionPolicy",
+		"metadata":   map[string]interface{}{"name": vapName},
+		"spec": map[string]interface{}{
+			"failurePolicy": "Fail",
+			"matchConstraints": map[string]interface{}{
+				"resourceRules": []interface{}{map[string]interface{}{
+					"apiGroups":   []interface{}{""},
+					"apiVersions": []interface{}{"v1"},
+					"operations":  []interface{}{"DELETE"},
+					"resources":   []interface{}{"configmaps"},
+				}},
+				"namespaceSelector": map[string]interface{}{
+					"matchLabels": map[string]interface{}{
+						"kubernetes.io/metadata.name": tc.namespace,
+					},
+				},
+			},
+			"validations": []interface{}{map[string]interface{}{
+				"expression": "false",
+				"message":    "e2e: configmap deletion blocked",
+			}},
+		},
+	}}
+	if err := tc.client.Create(ctx, vap); err != nil {
+		return fmt.Errorf("creating VAP: %w", err)
+	}
+
+	vapb := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "admissionregistration.k8s.io/v1",
+		"kind":       "ValidatingAdmissionPolicyBinding",
+		"metadata":   map[string]interface{}{"name": vapName},
+		"spec": map[string]interface{}{
+			"policyName":        vapName,
+			"validationActions": []interface{}{"Deny"},
+		},
+	}}
+	if err := tc.client.Create(ctx, vapb); err != nil {
+		return fmt.Errorf("creating VAPB: %w", err)
+	}
+
+	// Register for teardown in order: VAP, VAPB. Reverse-order deletion removes VAPB first.
+	tc.createdObjects = append(tc.createdObjects,
+		metav1.PartialObjectMetadata{
+			TypeMeta:   metav1.TypeMeta{APIVersion: "admissionregistration.k8s.io/v1", Kind: "ValidatingAdmissionPolicy"},
+			ObjectMeta: metav1.ObjectMeta{Name: vapName},
+		},
+		metav1.PartialObjectMetadata{
+			TypeMeta:   metav1.TypeMeta{APIVersion: "admissionregistration.k8s.io/v1", Kind: "ValidatingAdmissionPolicyBinding"},
+			ObjectMeta: metav1.ObjectMeta{Name: vapName},
+		},
+	)
+
+	// Poll-delete a canary ConfigMap until the VAP rejects the delete.
+	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		canary := newConfigMap("canary-vap-probe", tc.namespace)
+		if err := tc.client.Create(ctx, canary); err != nil && !errors.IsAlreadyExists(err) {
+			return false, err
+		}
+		if err := tc.client.Delete(ctx, canary); err != nil {
+			return true, nil
+		}
+		return false, nil
+	})
+}
+
+func (tc *testContext) aFinalizerIsAddedToConfigMap(finalizer, name string) error {
+	return pollMutateUpdate[corev1.ConfigMap](tc, types.NamespacedName{Namespace: tc.namespace, Name: name}, func(cm *corev1.ConfigMap) {
+		for _, f := range cm.Finalizers {
+			if f == finalizer {
+				return
+			}
+		}
+		cm.Finalizers = append(cm.Finalizers, finalizer)
+	})
+}
+
+func (tc *testContext) theFinalizerIsRemovedFromConfigMap(finalizer, name string) error {
+	return pollMutateUpdate[corev1.ConfigMap](tc, types.NamespacedName{Namespace: tc.namespace, Name: name}, func(cm *corev1.ConfigMap) {
+		var filtered []string
+		for _, f := range cm.Finalizers {
+			if f != finalizer {
+				filtered = append(filtered, f)
+			}
+		}
+		cm.Finalizers = filtered
+	})
+}
+
+func (tc *testContext) theCOSRIsDeleted() error {
+	return deleteObject[orbv1alpha1.ClusterObjectSetRevision](tc, types.NamespacedName{Name: tc.lastCreatedCOSRName()})
 }
 
 func (tc *testContext) theCOSRInGroupLifecycleStateIsSetTo(group string, revision uint32, state string) error {

@@ -48,6 +48,7 @@ func TestFeatures(t *testing.T) {
 			Paths:       []string{"features"},
 			Output:      colors.Colored(os.Stdout),
 			TestingT:    t,
+			Strict:      true,
 		},
 	}
 	if suite.Run() != 0 {

@@ -37,8 +37,10 @@ type testContext struct {
 	lastCreatedCOS string
 	cos            *cosBuilder
 
-	crds        []string
-	trackedUIDs map[string]types.UID
+	crds               []string
+	createdObjects     []metav1.PartialObjectMetadata
+	trackedConfigMapUIDs        map[string]types.UID
+	trackedCompletedAt *metav1.Time
 }
 
 type templateSpecBuilder struct {
@@ -73,7 +75,7 @@ func newTestContext(c client.Client) *testContext {
 		client:      c,
 		cosrs:       make(map[string]*orbv1alpha1.ClusterObjectSetRevision),
 		coss:        make(map[string]*orbv1alpha1.ClusterObjectSet),
-		trackedUIDs: make(map[string]types.UID),
+		trackedConfigMapUIDs: make(map[string]types.UID),
 	}
 }
 
@@ -106,6 +108,11 @@ func (tc *testContext) teardown(ctx context.Context) error {
 		crd := &apiextensionsv1.CustomResourceDefinition{}
 		crd.Name = name
 		_ = tc.client.Delete(ctx, crd)
+	}
+	for i := len(tc.createdObjects) - 1; i >= 0; i-- {
+		if err := tc.client.Delete(ctx, &tc.createdObjects[i]); err != nil && !errors.IsNotFound(err) {
+			return err
+		}
 	}
 
 	ns := &corev1.Namespace{}

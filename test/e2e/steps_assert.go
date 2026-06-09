@@ -36,6 +36,18 @@ func registerAssertSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the COSR should have condition "([^"]*)" with status "([^"]*)" and reason "([^"]*)"$`, tc.theCOSRShouldHaveConditionWithReason)
 	sc.Step(`^the COSR in group "([^"]*)" revision (\d+) should have condition "([^"]*)" with status "([^"]*)"$`, tc.theCOSRInGroupShouldHaveCondition)
 	sc.Step(`^revision (\d+) should have condition "([^"]*)" with status "([^"]*)" and reason "([^"]*)"$`, tc.revisionShouldHaveConditionWithReason)
+	sc.Step(`^revision (\d+) should have observed phase "([^"]*)" with status "([^"]*)"$`, tc.revisionShouldHaveObservedPhase)
+
+	// Phase status assert steps
+	sc.Step(`^the COSR should have observed phase "([^"]*)" with status "([^"]*)"$`, tc.theCOSRShouldHaveObservedPhase)
+	sc.Step(`^the COSR should have (\d+) observed phases$`, tc.theCOSRShouldHaveObservedPhaseCount)
+	sc.Step(`^observed phase "([^"]*)" should have (\d+) incomplete objects$`, tc.observedPhaseShouldHaveIncompleteObjectCount)
+	sc.Step(`^observed phase "([^"]*)" should have an incomplete object "([^"]*)"$`, tc.observedPhaseShouldHaveIncompleteObjectNamed)
+	sc.Step(`^the COSR should have no observed phases$`, tc.theCOSRShouldHaveNoObservedPhases)
+	sc.Step(`^the COSR should have completedAt set$`, tc.theCOSRShouldHaveCompletedAt)
+	sc.Step(`^the COSR should not have completedAt set$`, tc.theCOSRShouldNotHaveCompletedAt)
+	sc.Step(`^the COSR completedAt should be preserved$`, tc.theCOSRCompletedAtShouldBePreserved)
+	sc.Step(`^the COSR completedAt is tracked$`, tc.theCOSRCompletedAtIsTracked)
 
 	// COS assert steps
 	sc.Step(`^a COSR should exist with group "([^"]*)" and revision (\d+)$`, tc.aCOSRShouldExistWithGroupAndRevision)
@@ -71,7 +83,7 @@ func (tc *testContext) theConfigMapUIDisTracked(name string) error {
 	if err := tc.client.Get(context.Background(), key, cm); err != nil {
 		return fmt.Errorf("ConfigMap %q should exist: %w", name, err)
 	}
-	tc.trackedUIDs[name] = cm.UID
+	tc.trackedConfigMapUIDs[name] = cm.UID
 	return nil
 }
 
@@ -81,7 +93,7 @@ func (tc *testContext) theConfigMapShouldNotHaveBeenRecreated(name string) error
 	if err := tc.client.Get(context.Background(), key, cm); err != nil {
 		return fmt.Errorf("ConfigMap %q should exist: %w", name, err)
 	}
-	if tracked, ok := tc.trackedUIDs[name]; ok && cm.UID != tracked {
+	if tracked, ok := tc.trackedConfigMapUIDs[name]; ok && cm.UID != tracked {
 		return fmt.Errorf("ConfigMap %q was recreated: UID changed from %s to %s", name, tracked, cm.UID)
 	}
 	return nil
@@ -179,6 +191,23 @@ func (tc *testContext) revisionShouldHaveConditionWithReason(revision uint32, co
 				types.NamespacedName{Name: name},
 				cosrConditions, condType, metav1.ConditionStatus(status), reason,
 			)
+		}
+	}
+	return fmt.Errorf("revision %d not found", revision)
+}
+
+func (tc *testContext) revisionShouldHaveObservedPhase(revision uint32, phaseName, status string) error {
+	for name, cosr := range tc.cosrs {
+		if cosr.Spec.Revision == revision {
+			obj := &orbv1alpha1.ClusterObjectSetRevision{}
+			return pollForObjectMatching(tc, obj, types.NamespacedName{Name: name}, func() bool {
+				for _, op := range obj.Status.ObservedPhases {
+					if op.Name == phaseName && string(op.Status) == status {
+						return true
+					}
+				}
+				return false
+			})
 		}
 	}
 	return fmt.Errorf("revision %d not found", revision)
@@ -416,6 +445,121 @@ func (tc *testContext) theCOSShouldHaveActiveRevision(cosName string, revision u
 		}
 		return false
 	})
+}
+
+func (tc *testContext) theCOSRShouldHaveObservedPhase(phaseName, status string) error {
+	name := tc.lastCreatedCOSRName()
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: name}, func() bool {
+		for _, op := range cosr.Status.ObservedPhases {
+			if op.Name == phaseName && string(op.Status) == status {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+func (tc *testContext) theCOSRShouldHaveObservedPhaseCount(count int) error {
+	name := tc.lastCreatedCOSRName()
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: name}, func() bool {
+		return len(cosr.Status.ObservedPhases) == count
+	})
+}
+
+func (tc *testContext) observedPhaseShouldHaveIncompleteObjectCount(phaseName string, count int) error {
+	name := tc.lastCreatedCOSRName()
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: name}, func() bool {
+		for _, op := range cosr.Status.ObservedPhases {
+			if op.Name == phaseName {
+				return len(op.IncompleteObjects) == count
+			}
+		}
+		return false
+	})
+}
+
+func (tc *testContext) observedPhaseShouldHaveIncompleteObjectNamed(phaseName, objectName string) error {
+	name := tc.lastCreatedCOSRName()
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: name}, func() bool {
+		for _, op := range cosr.Status.ObservedPhases {
+			if op.Name == phaseName {
+				for _, obj := range op.IncompleteObjects {
+					if obj.Name == objectName {
+						return true
+					}
+				}
+			}
+		}
+		return false
+	})
+}
+
+func (tc *testContext) theCOSRShouldHaveCompletedAt() error {
+	name := tc.lastCreatedCOSRName()
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: name}, func() bool {
+		return cosr.Status.CompletedAt != nil
+	})
+}
+
+// Single Get, not poll: preceding poll-based assertions guarantee the controller
+// has reconciled. If completedAt is set at this point, that's a real bug.
+func (tc *testContext) theCOSRShouldNotHaveCompletedAt() error {
+	name := tc.lastCreatedCOSRName()
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	if err := tc.client.Get(context.Background(), types.NamespacedName{Name: name}, cosr); err != nil {
+		return err
+	}
+	if cosr.Status.CompletedAt != nil {
+		return fmt.Errorf("completedAt is set: %v", cosr.Status.CompletedAt)
+	}
+	return nil
+}
+
+func (tc *testContext) theCOSRShouldHaveNoObservedPhases() error {
+	name := tc.lastCreatedCOSRName()
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: name}, func() bool {
+		return len(cosr.Status.ObservedPhases) == 0
+	})
+}
+
+func (tc *testContext) theCOSRCompletedAtIsTracked() error {
+	name := tc.lastCreatedCOSRName()
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	if err := tc.client.Get(context.Background(), types.NamespacedName{Name: name}, cosr); err != nil {
+		return err
+	}
+	if cosr.Status.CompletedAt == nil {
+		return fmt.Errorf("completedAt is not set")
+	}
+	tc.trackedCompletedAt = cosr.Status.CompletedAt
+	return nil
+}
+
+// Single Get, not poll: preceding poll-based assertions guarantee the controller
+// has reconciled. completedAt and conditions are set in the same status update,
+// so if the condition has changed, completedAt is already in its final state.
+func (tc *testContext) theCOSRCompletedAtShouldBePreserved() error {
+	if tc.trackedCompletedAt == nil {
+		return fmt.Errorf("no tracked completedAt")
+	}
+	name := tc.lastCreatedCOSRName()
+	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
+	if err := tc.client.Get(context.Background(), types.NamespacedName{Name: name}, cosr); err != nil {
+		return err
+	}
+	if cosr.Status.CompletedAt == nil {
+		return fmt.Errorf("completedAt is nil")
+	}
+	if !cosr.Status.CompletedAt.Equal(tc.trackedCompletedAt) {
+		return fmt.Errorf("completedAt changed from %s to %s", tc.trackedCompletedAt, cosr.Status.CompletedAt)
+	}
+	return nil
 }
 
 func (tc *testContext) theCOSShouldBeAvailable(cosName string) error {
