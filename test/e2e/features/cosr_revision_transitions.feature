@@ -4,7 +4,7 @@ Feature: COSR multi-revision ownership handoffs within a group
     Given a COSR with group "test" and revision 1
     And a phase "install" with a ConfigMap "cm-shared"
     And the COSR is created and becomes Available
-    When a COSR with group "test" and revision 2 is created
+    When a COSR with group "test" and revision 2
     And the phase "install" has a ConfigMap "cm-shared"
     And the COSR is created
     Then revision 1 should have condition "Available" with status "False" and reason "Superseded"
@@ -14,7 +14,7 @@ Feature: COSR multi-revision ownership handoffs within a group
     And a phase "install" with a ConfigMap "cm-transfer"
     And the COSR is created and becomes Available
     And the ConfigMap "cm-transfer" UID is tracked
-    When a COSR with group "test" and revision 2 is created
+    When a COSR with group "test" and revision 2
     And the phase "install" has a ConfigMap "cm-transfer"
     And the COSR is created and becomes Available
     Then the ConfigMap "cm-transfer" should exist
@@ -24,7 +24,7 @@ Feature: COSR multi-revision ownership handoffs within a group
     Given a COSR with group "test" and revision 1
     And a phase "install" with a ConfigMap "cm-stuck"
     And the COSR is created and becomes Available
-    When a COSR with group "test" and revision 2 is created
+    When a COSR with group "test" and revision 2
     And a phase "install" with a gated ConfigMap "cm-stuck"
     And the COSR is created
     Then revision 1 should have condition "Available" with status "False" and reason "Superseded"
@@ -34,7 +34,7 @@ Feature: COSR multi-revision ownership handoffs within a group
     Given a COSR with group "test" and revision 1
     And a phase "install" with a ConfigMap "cm-gap"
     And the COSR is created and becomes Available
-    When a COSR with group "test" and revision 5 is created
+    When a COSR with group "test" and revision 5
     And the phase "install" has a ConfigMap "cm-gap"
     And the COSR is created and becomes Available
     Then revision 1 should have condition "Available" with status "False" and reason "Superseded"
@@ -43,7 +43,7 @@ Feature: COSR multi-revision ownership handoffs within a group
     Given a COSR with group "test" and revision 1
     And a phase "install" with a ConfigMap "cm-archive-test"
     And the COSR is created and becomes Available
-    When a COSR with group "test" and revision 2 is created
+    When a COSR with group "test" and revision 2
     And the phase "install" has a ConfigMap "cm-archive-test"
     And the COSR is created and becomes Available
     Then revision 1 should have condition "Available" with status "False" and reason "Superseded"
@@ -53,7 +53,7 @@ Feature: COSR multi-revision ownership handoffs within a group
     And a phase "install" with a ConfigMap "cm-old-only"
     And the phase "install" also has a ConfigMap "cm-shared"
     And the COSR is created and becomes Available
-    When a COSR with group "test" and revision 2 is created
+    When a COSR with group "test" and revision 2
     And the phase "install" has a ConfigMap "cm-shared"
     And the phase "install" also has a ConfigMap "cm-new-only"
     And the COSR is created and becomes Available
@@ -62,3 +62,16 @@ Feature: COSR multi-revision ownership handoffs within a group
     And the ConfigMap "cm-old-only" should have an owner reference
     And the ConfigMap "cm-shared" should exist
     And the ConfigMap "cm-new-only" should exist
+
+  Scenario: Superseded COSR should recreate its deleted unique object
+    Given a COSR with group "test" and revision 1
+    And a phase "install" with a ConfigMap "cm-old-only"
+    And the phase "install" also has a ConfigMap "cm-shared"
+    And the COSR is created and becomes Available
+    When a COSR with group "test" and revision 2
+    And the phase "install" has a ConfigMap "cm-shared"
+    And the phase "install" also has a ConfigMap "cm-new-only"
+    And the COSR is created and becomes Available
+    Then revision 1 should have condition "Available" with status "False" and reason "Superseded"
+    When the ConfigMap "cm-old-only" is deleted
+    Then the ConfigMap "cm-old-only" should be recreated

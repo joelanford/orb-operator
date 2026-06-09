@@ -100,7 +100,7 @@ Feature: COSR Active and Archived lifecycle behavior
     Given a COSR with group "chain-del" and revision 1
     And a phase "install" with a ConfigMap "cm-chain-del-1"
     And the COSR is created and becomes Available
-    When a COSR with group "chain-del" and revision 2 is created
+    When a COSR with group "chain-del" and revision 2
     And the phase "install" has a ConfigMap "cm-chain-del-2"
     And the COSR is created and becomes Available
     Then revision 1 should have condition "Available" with status "False" and reason "Superseded"

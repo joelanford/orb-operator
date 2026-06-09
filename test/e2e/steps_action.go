@@ -22,7 +22,6 @@ func registerActionSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the ConfigMap "([^"]*)" is deleted$`, tc.theConfigMapIsDeleted)
 	sc.Step(`^the COSR lifecycleState is set to "([^"]*)"$`, tc.theCOSRLifecycleStateIsSetTo)
 	sc.Step(`^setting the COSR lifecycleState to "([^"]*)" should fail$`, tc.settingCOSRLifecycleStateShouldFail)
-	sc.Step(`^a COSR with group "([^"]*)" and revision (\d+) is created$`, tc.aNewCOSRIsCreated)
 	sc.Step(`^revision (\d+) is archived$`, tc.revisionIsArchived)
 	sc.Step(`^creating the COSR should fail$`, tc.creatingTheCOSRShouldFail)
 	sc.Step(`^creating a COSR with zero phases should fail$`, tc.creatingCOSRWithZeroPhasesShouldFail)
@@ -217,10 +216,6 @@ func (tc *testContext) theCOSRInGroupLifecycleStateIsSetTo(group string, revisio
 
 func (tc *testContext) theCOSRInGroupIsDeleted(group string, revision uint32) error {
 	return deleteObject[orbv1alpha1.ClusterObjectSetRevision](tc, types.NamespacedName{Name: tc.cosrName(group, revision)})
-}
-
-func (tc *testContext) aNewCOSRIsCreated(group string, revision uint32) {
-	tc.resetCOSRBuilder(group, revision)
 }
 
 func (tc *testContext) revisionIsArchived(revision uint32) error {
