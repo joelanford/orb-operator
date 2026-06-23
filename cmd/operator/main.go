@@ -34,7 +34,7 @@ func init() {
 
 func main() {
 	cmd := newRootCommand()
-	if err := cmd.Execute(); err != nil {
+	if err := cmd.ExecuteContext(ctrl.SetupSignalHandler()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
