@@ -1,5 +1,5 @@
 ---
-status: ready
+status: complete
 ---
 # COSR Phase Status
 
@@ -9,7 +9,7 @@ Add status fields to `ClusterObjectSetRevisionStatus` that support three use cas
 
 ## Prerequisites
 
-- **Independent COSR reconciliation** (`specs/2026-06-09-cosr-independent-reconcile/`) — each COSR must reconcile independently with sibling awareness so that predecessors actively manage their unique objects and produce meaningful boxcutter results. Without this, predecessors are just marked `Superseded` with no phase status to report.
+- **Independent COSR reconciliation** (done) — each COSR reconciles independently with sibling awareness, producing meaningful boxcutter results for all active COSRs.
 
 ## Use Cases
 
@@ -23,7 +23,7 @@ Add status fields to `ClusterObjectSetRevisionStatus` that support three use cas
 
 **Problem:** The COS controller needs to detect whether a COSR is making forward progress toward Available=True, in order to implement Deployment-style progress deadline timeouts. Without a progress signal, the only option is a wall-clock timer from COSR creation, which can't distinguish "stuck" from "slow but progressing."
 
-**Need:** A granular progress signal that changes when the rollout moves forward (an unavailable object is resolved, a phase completes). The COS controller compares this signal between reconciles to decide whether to reset the deadline timer.
+**Need:** A granular progress signal that changes when the rollout moves forward (an incomplete object is resolved, a phase completes). The COS controller compares this signal between reconciles to decide whether to reset the deadline timer.
 
 ### 3. Distinguish rollout vs regression
 
@@ -39,11 +39,11 @@ Working backward from the use cases:
 
 **Use case 1 (diagnostics)** requires:
 - Per-phase status showing whether the phase is reconciling, complete, or unknown
-- For active phases, a list of unavailable objects with their failure messages
+- For active phases, a list of incomplete objects with their failure messages
 - Object identity (group, kind, name) so the user knows where to look
 
 **Use case 2 (progress deadline)** requires:
-- A signal that changes on forward progress — phase status transitions (Unknown → Reconciling → Complete) and the `unavailableObjects` list shrinking both serve this role.
+- A signal that changes on forward progress — phase status transitions (Unknown → Reconciling → Available) and the `incompleteObjects` list shrinking both serve this role.
 
 **Use case 3 (rollout vs regression)** requires:
 - A timestamp recording when the COSR first reached Available=True, set once and never cleared.
@@ -79,7 +79,7 @@ type ClusterObjectSetRevisionStatus struct {
 
 // PhaseStatus describes the current state of a phase in the rollout.
 //
-// +kubebuilder:validation:Enum=Reconciling;Complete;Unknown
+// +kubebuilder:validation:Enum=Reconciling;Available;Unknown;Superseded;TearingDown;TeardownComplete
 type PhaseStatus string
 
 const (
@@ -87,14 +87,23 @@ const (
     // this phase. Objects may or may not have failures.
     PhaseStatusReconciling PhaseStatus = "Reconciling"
 
-    // PhaseStatusComplete indicates all objects in this phase have been
+    // PhaseStatusAvailable indicates all objects in this phase have been
     // successfully reconciled and pass their assertions.
-    PhaseStatusComplete PhaseStatus = "Complete"
+    PhaseStatusAvailable PhaseStatus = "Available"
 
     // PhaseStatusUnknown indicates this phase was not evaluated during
     // the most recent reconcile. The controller has not yet reached it
     // or an earlier phase is incomplete.
     PhaseStatusUnknown PhaseStatus = "Unknown"
+
+    // PhaseStatusTearingDown indicates the controller is actively deleting
+    // objects in this phase. Objects still awaiting deletion are listed
+    // in incompleteObjects.
+    PhaseStatusTearingDown PhaseStatus = "TearingDown"
+
+    // PhaseStatusTeardownComplete indicates all objects in this phase have
+    // been deleted from the cluster.
+    PhaseStatusTeardownComplete PhaseStatus = "TeardownComplete"
 )
 
 type ObservedPhase struct {
@@ -106,14 +115,16 @@ type ObservedPhase struct {
     // +required
     Status PhaseStatus `json:"status"`
 
-    // unavailableObjects lists objects in this phase that are not
-    // successfully reconciled. This includes probe failures,
-    // collisions, creation/update errors, and any other condition
-    // that prevents the object from being complete. Each entry
-    // identifies the object and carries failure messages. Empty
-    // when status is Complete or Unknown.
+    // incompleteObjects lists objects in this phase that are not
+    // successfully reconciled. For Reconciling phases, this includes
+    // probe failures, collisions, creation/update errors, and any
+    // other condition that prevents the object from being complete.
+    // For TearingDown phases, this lists objects still awaiting
+    // deletion. Each entry identifies the object and carries failure
+    // messages. Empty when status is Available, TeardownComplete, or
+    // Unknown.
     // +optional
-    UnavailableObjects []ObjectStatus `json:"unavailableObjects,omitempty"`
+    IncompleteObjects []ObjectStatus `json:"incompleteObjects,omitempty"`
 }
 
 type ObjectStatus struct {
@@ -151,25 +162,36 @@ type ObjectStatus struct {
 | `completedAt` | | permanently satisfied gate | primary signal |
 | `observedPhases[].name` | which phase | | |
 | `observedPhases[].status` | phase state (includes Unknown for regressions) | phase-level progress | |
-| `observedPhases[].unavailableObjects` | what's broken | intra-phase progress (list shrinks) | |
+| `observedPhases[].incompleteObjects` | what's broken | intra-phase progress (list shrinks) | |
 
 Every field traces to at least one use case. No field is redundant.
 
 ### Design decisions
 
 - **All phases always listed** — every phase from the spec appears in `observedPhases`, even if the controller hasn't evaluated it yet. This gives users the full rollout plan at a glance and avoids confusion about whether a missing phase means "not yet reached" or "something is wrong."
-- **Three-state `status` enum** — `Reconciling` (controller is working on it), `Complete` (all objects reconciled), `Unknown` (not evaluated this reconcile). Status is derived entirely from the current reconcile — the controller never reads its own prior status to decide the new state.
-- **`unavailableObjects` covers all failure modes** — probe failures, collisions, creation/update errors, and validation errors. Only populated for `Reconciling` phases.
+- **Six-state `status` enum** — `Reconciling` (controller is working on it), `Available` (all objects reconciled), `Unknown` (not evaluated this reconcile), `Superseded` (objects adopted by a newer revision), `TearingDown` (actively deleting objects), `TeardownComplete` (all objects deleted). The teardown states provide visibility during archival and deletion. Status is derived entirely from the current reconcile — the controller never reads its own prior status to decide the new state.
+- **`incompleteObjects` covers all failure modes** — probe failures, collisions, creation/update errors, and validation errors for `Reconciling` phases; objects awaiting deletion for `TearingDown` phases.
 - **`completedAt` is write-once** — mirrors Deployment semantics where the progress deadline is permanently satisfied once the rollout succeeds. Prevents false timeouts on regressions.
 - **`listType=map` with `listMapKey=name`** — enables SSA-friendly merging by phase name.
 
 ### Mapping from boxcutter results
 
+#### Active reconciliation
+
 The COSR controller calls `engine.Reconcile()` and gets a `RevisionResult` with `GetPhases() []PhaseResult`. The spec's full phase list is used to produce `observedPhases`:
 
-- Phases returned by `GetPhases()` are either `Reconciling` or `Complete` based on `IsComplete()`
-- For `Reconciling` phases, `GetObjects()` is iterated: objects where `IsComplete()` is false become `ObjectStatus` entries with group/kind/name and messages from `ProbeResults()`, collision info, or reconcile errors. `GetValidationError()` is surfaced as an unavailable object message when present.
+- Phases returned by `GetPhases()` are either `Reconciling` or `Available` based on `IsComplete()`
+- For `Reconciling` phases, `GetObjects()` is iterated: objects where `IsComplete()` is false become `ObjectStatus` entries with group/kind/name and messages from `ProbeResults()`, collision info, or reconcile errors. `GetValidationError()` is surfaced as an incomplete object message when present.
 - Phases not returned by `GetPhases()` (beyond the first incomplete phase) are set to `Unknown`
+
+#### Teardown (archival and deletion)
+
+The COSR controller calls `engine.Teardown()` and gets a `RevisionTeardownResult` with `GetPhases() []PhaseTeardownResult`. The spec's full phase list is used to produce `observedPhases`:
+
+- Phases returned by `GetPhases()` are either `TeardownComplete` or `TearingDown` based on `IsComplete()`
+- For `TearingDown` phases, `Waiting()` is iterated: each `ObjectRef` becomes an `ObjectStatus` entry with "awaiting deletion" as the message
+- Phases not returned by `GetPhases()` are set to `Unknown`
+- Once teardown is fully complete, `observedPhases` is cleared
 
 ### COS status changes
 
