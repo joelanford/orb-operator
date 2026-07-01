@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cucumber/godog"
 	corev1 "k8s.io/api/core/v1"
@@ -9,6 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 )
@@ -40,6 +42,7 @@ func registerSetupSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^a standalone ConfigMap "([^"]*)" exists$`, tc.aStandaloneConfigMapExists)
 
 	sc.Step(`^a phase "([^"]*)" with an unregistered resource type$`, tc.aPhaseWithUnregisteredResourceType)
+	sc.Step(`^ConfigMap(?:\s+"([^"]*)")? operations are blocked$`, tc.configMapOpsAreBlocked)
 
 	sc.Step(`^an available COSR with group "([^"]*)" and revision (\d+)$`, tc.anAvailableCOSR)
 
@@ -376,6 +379,94 @@ func (tc *testContext) aPhaseWithUnregisteredResourceType(phaseName string) {
 				"name": "fake-resource",
 			},
 		},
+	})
+}
+
+func (tc *testContext) configMapOpsAreBlocked(cmName string) error {
+	ctx := context.Background()
+
+	vapName := tc.namespace + "-block-cm"
+	if cmName != "" {
+		vapName += "-" + cmName
+	}
+
+	writeExpr := "request.dryRun"
+	deleteExpr := "request.dryRun"
+	if cmName != "" {
+		writeExpr += " || !object.metadata.name.startsWith('" + cmName + "')"
+		deleteExpr += " || !oldObject.metadata.name.startsWith('" + cmName + "')"
+	}
+
+	vap := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "admissionregistration.k8s.io/v1",
+		"kind":       "ValidatingAdmissionPolicy",
+		"metadata":   map[string]interface{}{"name": vapName},
+		"spec": map[string]interface{}{
+			"failurePolicy": "Fail",
+			"matchConstraints": map[string]interface{}{
+				"resourceRules": []interface{}{map[string]interface{}{
+					"apiGroups":   []interface{}{""},
+					"apiVersions": []interface{}{"v1"},
+					"operations":  []interface{}{"CREATE", "UPDATE", "DELETE"},
+					"resources":   []interface{}{"configmaps"},
+				}},
+				"namespaceSelector": map[string]interface{}{
+					"matchLabels": map[string]interface{}{
+						"kubernetes.io/metadata.name": tc.namespace,
+					},
+				},
+			},
+			"validations": []interface{}{
+				map[string]interface{}{
+					"expression": "request.operation == 'DELETE' || " + writeExpr,
+					"message":    "e2e: configmap write blocked",
+				},
+				map[string]interface{}{
+					"expression": "request.operation != 'DELETE' || " + deleteExpr,
+					"message":    "e2e: configmap delete blocked",
+				},
+			},
+		},
+	}}
+	if err := tc.client.Create(ctx, vap); err != nil {
+		return fmt.Errorf("creating VAP: %w", err)
+	}
+
+	vapb := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "admissionregistration.k8s.io/v1",
+		"kind":       "ValidatingAdmissionPolicyBinding",
+		"metadata":   map[string]interface{}{"name": vapName},
+		"spec": map[string]interface{}{
+			"policyName":        vapName,
+			"validationActions": []interface{}{"Deny"},
+		},
+	}}
+	if err := tc.client.Create(ctx, vapb); err != nil {
+		return fmt.Errorf("creating VAPB: %w", err)
+	}
+
+	tc.createdObjects = append(tc.createdObjects,
+		metav1.PartialObjectMetadata{
+			TypeMeta:   metav1.TypeMeta{APIVersion: "admissionregistration.k8s.io/v1", Kind: "ValidatingAdmissionPolicy"},
+			ObjectMeta: metav1.ObjectMeta{Name: vapName},
+		},
+		metav1.PartialObjectMetadata{
+			TypeMeta:   metav1.TypeMeta{APIVersion: "admissionregistration.k8s.io/v1", Kind: "ValidatingAdmissionPolicyBinding"},
+			ObjectMeta: metav1.ObjectMeta{Name: vapName},
+		},
+	)
+
+	canaryName := "canary-vap-probe"
+	if cmName != "" {
+		canaryName = cmName + "-canary"
+	}
+	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		canary := newConfigMap(canaryName, tc.namespace)
+		if err := tc.client.Create(ctx, canary); err != nil {
+			return true, nil
+		}
+		_ = tc.client.Delete(ctx, canary)
+		return false, nil
 	})
 }
 

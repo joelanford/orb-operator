@@ -86,15 +86,15 @@ Feature: COSR phase status reports per-phase rollout state
     Then the COSR should not exist
 
   Scenario: Archived COSR reports teardown error in condition
-    Given ConfigMap deletes are blocked in the test namespace
-    And an available COSR with group "ps-td-err" and revision 1
+    Given an available COSR with group "ps-td-err" and revision 1
+    And ConfigMap operations are blocked
     When the COSR lifecycleState is set to "Archived"
     Then the COSR should have condition "Available" with status "Unknown" and reason "TeardownError"
     And the COSR should have no observed phases
 
   Scenario: Deleted COSR reports teardown error in condition
-    Given ConfigMap deletes are blocked in the test namespace
-    And an available COSR with group "ps-td-del-err" and revision 1
+    Given an available COSR with group "ps-td-del-err" and revision 1
+    And ConfigMap operations are blocked
     When the COSR is deleted
     Then the COSR should have condition "Available" with status "Unknown" and reason "TeardownError"
     And the COSR should have no observed phases

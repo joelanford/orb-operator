@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/discovery"
 	"pkg.package-operator.run/boxcutter"
 	"pkg.package-operator.run/boxcutter/machinery"
+	"pkg.package-operator.run/boxcutter/machinery/types"
 	"pkg.package-operator.run/boxcutter/managedcache"
 	"pkg.package-operator.run/boxcutter/ownerhandling"
 	"pkg.package-operator.run/boxcutter/probing"
@@ -200,7 +201,7 @@ func (r *COSRReconciler) doReconcileActive(ctx context.Context, cosr *orbv1alpha
 		setInternalErrorStatus(cosr, fmt.Sprintf("building revision: %v", err))
 		return fmt.Errorf("building revision: %w", err)
 	}
-	result, err := engine.Reconcile(ctx, rev)
+	result, err := engine.Reconcile(ctx, rev, types.WithAggregatePhaseReconcileErrors())
 	cosr.Status.ObservedPhases = observedPhasesFromReconcileResult(cosr.Spec.Phases, result)
 	if err != nil {
 		setCondition(cosr, metav1.ConditionUnknown, orbv1alpha1.ReasonReconcileError, fmt.Sprintf("reconcile failed: %v", err))
@@ -278,7 +279,7 @@ func (r *COSRReconciler) doTeardownCOSR(ctx context.Context, cosr *orbv1alpha1.C
 		return false, fmt.Errorf("building revision: %w", err)
 	}
 
-	result, teardownErr := engine.Teardown(ctx, rev)
+	result, teardownErr := engine.Teardown(ctx, rev, types.WithAggregatePhaseTeardownErrors())
 	setTeardownStatus(cosr, result, teardownErr)
 
 	if teardownErr != nil {

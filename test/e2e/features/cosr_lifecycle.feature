@@ -96,6 +96,19 @@ Feature: COSR Active and Archived lifecycle behavior
     Then the ConfigMap "cm-fin-remove" should not exist
     And the COSR with group "fin-remove" and revision 1 should not have finalizer "orb.operatorframework.io/cosr-finalizer"
 
+  Scenario: Teardown error on one object does not prevent tearing down other objects in the same phase
+    Given a COSR with group "test" and revision 1
+    And a phase "install" with a ConfigMap "cm-td-before"
+    And the phase "install" also has a ConfigMap "cm-td-blocked"
+    And the phase "install" also has a ConfigMap "cm-td-after"
+    And the COSR is created and becomes Available
+    And ConfigMap "cm-td-blocked" operations are blocked
+    When the COSR lifecycleState is set to "Archived"
+    Then the COSR should have condition "Available" with status "Unknown" and reason "TeardownError"
+    And the ConfigMap "cm-td-before" should not exist
+    And the ConfigMap "cm-td-blocked" should exist
+    And the ConfigMap "cm-td-after" should not exist
+
   Scenario: Deleting a lower-revision COSR in a chain tears down its managed objects
     Given a COSR with group "chain-del" and revision 1
     And a phase "install" with a ConfigMap "cm-chain-del-1"
