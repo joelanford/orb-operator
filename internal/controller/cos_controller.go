@@ -22,9 +22,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
+	cosrac "github.com/joelanford/orb-operator/applyconfigurations/api/v1alpha1"
 )
 
 const (
+	cosFieldOwner               = "cos-controller"
 	defaultRevisionHistoryLimit int32 = 5
 
 	labelTemplateHash = "orb.operatorframework.io/template-hash"
@@ -186,11 +188,15 @@ func (r *COSReconciler) archiveOlderRevisions(ctx context.Context, _ *orbv1alpha
 
 	for i := range ownedCOSRs[:len(ownedCOSRs)-1] {
 		cosr := &ownedCOSRs[i]
-		if cosr.Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived {
-			continue
-		}
-		cosr.Spec.LifecycleState = orbv1alpha1.LifecycleStateArchived
-		if err := r.client.Update(ctx, cosr); err != nil {
+		if _, err := applyCOSR(ctx, r.client, cosr, cosFieldOwner,
+			func(cosr *orbv1alpha1.ClusterObjectSetRevision) bool {
+				return cosr.Spec.LifecycleState != orbv1alpha1.LifecycleStateArchived
+			},
+			func(ac *cosrac.ClusterObjectSetRevisionApplyConfiguration) {
+				ac.WithSpec(cosrac.ClusterObjectSetRevisionSpec().
+					WithLifecycleState(orbv1alpha1.LifecycleStateArchived))
+			},
+		); err != nil {
 			return fmt.Errorf("archiving COSR %s: %w", cosr.Name, err)
 		}
 	}
