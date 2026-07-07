@@ -7,9 +7,10 @@ import (
 )
 
 var (
-	GroupVersion  = schema.GroupVersion{Group: "orb.operatorframework.io", Version: "v1alpha1"}
-	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
-	AddToScheme   = SchemeBuilder.AddToScheme
+	GroupVersion       = schema.GroupVersion{Group: "orb.operatorframework.io", Version: "v1alpha1"}
+	SchemeGroupVersion = GroupVersion
+	SchemeBuilder      = runtime.NewSchemeBuilder(addKnownTypes)
+	AddToScheme        = SchemeBuilder.AddToScheme
 )
 
 func addKnownTypes(s *runtime.Scheme) error {
