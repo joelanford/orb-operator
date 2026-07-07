@@ -3,22 +3,22 @@ package controller
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
 	"slices"
 
 	"k8s.io/apimachinery/pkg/api/equality"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	metav1ac "k8s.io/client-go/applyconfigurations/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -114,12 +114,22 @@ func (r *COSReconciler) reconcile(ctx context.Context, cos *orbv1alpha1.ClusterO
 	if latestOwned == nil || latestOwned.Labels[labelTemplateHash] != currentHash {
 		nextRevision := r.nextRevision(cosrList.Items)
 
-		cosr := buildCOSRFromTemplate(cos, nextRevision, currentHash)
-		if err := controllerutil.SetControllerReference(cos, cosr, r.scheme); err != nil {
-			return fmt.Errorf("setting controller reference: %w", err)
+		cosr, err := buildCOSRFromTemplate(cos, nextRevision, currentHash)
+		if err != nil {
+			return fmt.Errorf("building COSR from template: %w", err)
 		}
-		if err := r.client.Create(ctx, cosr); err != nil && !apierrors.IsAlreadyExists(err) {
+
+		cosrUnstructuredObj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(cosr)
+		if err != nil {
+			return fmt.Errorf("converting COSR to unstructured: %w", err)
+		}
+
+		u := &unstructured.Unstructured{Object: cosrUnstructuredObj}
+		if err := r.client.Create(ctx, u); err != nil {
 			return fmt.Errorf("creating COSR: %w", err)
+		}
+		if err := r.client.Apply(ctx, cosr, client.FieldOwner(cosFieldOwner), client.ForceOwnership); err != nil {
+			return fmt.Errorf("claiming field ownership for new COSR: %w", err)
 		}
 		return nil
 	}
@@ -157,23 +167,12 @@ func (r *COSReconciler) adoptAndFilterOwned(ctx context.Context, cos *orbv1alpha
 }
 
 func (r *COSReconciler) adoptCOSR(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, cosr *orbv1alpha1.ClusterObjectSetRevision) error {
-	gvks, _, err := r.scheme.ObjectKinds(cos)
-	if err != nil {
-		return fmt.Errorf("getting GVK for COS: %w", err)
-	}
-	gvk := gvks[0]
-	_, err = applyCOSR(ctx, r.client, cosr, cosFieldOwner,
+	_, err := applyCOSR(ctx, r.client, cosr, cosFieldOwner,
 		func(cosr *orbv1alpha1.ClusterObjectSetRevision) bool {
 			return true
 		},
 		func(ac *cosrac.ClusterObjectSetRevisionApplyConfiguration) {
-			ac.WithOwnerReferences(metav1ac.OwnerReference().
-				WithAPIVersion(gvk.GroupVersion().String()).
-				WithKind(gvk.Kind).
-				WithName(cos.Name).
-				WithUID(cos.UID).
-				WithController(true).
-				WithBlockOwnerDeletion(true))
+			setCOSControllerReference(cos, ac)
 		},
 	)
 	if err != nil {
@@ -219,30 +218,47 @@ func (r *COSReconciler) archiveOlderRevisions(ctx context.Context, _ *orbv1alpha
 	return nil
 }
 
-func buildCOSRFromTemplate(cos *orbv1alpha1.ClusterObjectSet, revision uint32, hash string) *orbv1alpha1.ClusterObjectSetRevision {
-	src := cos.Spec.Template.Spec
-	tmplSpec := orbv1alpha1.ClusterObjectSetTemplateSpec{}
-	src.DeepCopyInto(&tmplSpec)
-
+func buildCOSRFromTemplate(cos *orbv1alpha1.ClusterObjectSet, revision uint32, hash string) (*cosrac.ClusterObjectSetRevisionApplyConfiguration, error) {
 	labels := maps.Clone(cos.Spec.Template.Metadata.Labels)
 	if labels == nil {
 		labels = map[string]string{}
 	}
 	labels[labelTemplateHash] = hash
 
-	return &orbv1alpha1.ClusterObjectSetRevision{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        fmt.Sprintf("%s-%d", cos.Name, revision),
-			Labels:      labels,
-			Annotations: maps.Clone(cos.Spec.Template.Metadata.Annotations),
-		},
-		Spec: orbv1alpha1.ClusterObjectSetRevisionSpec{
-			Group:                        cos.Name,
-			Revision:                     revision,
-			LifecycleState:               orbv1alpha1.LifecycleStateActive,
-			ClusterObjectSetTemplateSpec: tmplSpec,
-		},
+	tmplSpecJSON, err := json.Marshal(cos.Spec.Template.Spec)
+	if err != nil {
+		return nil, err
 	}
+
+	var cosrSpec cosrac.ClusterObjectSetRevisionSpecApplyConfiguration
+	if err := json.Unmarshal(tmplSpecJSON, &cosrSpec); err != nil {
+		return nil, err
+	}
+
+	cosrSpec.WithGroup(cos.Name).
+		WithRevision(revision).
+		WithLifecycleState(orbv1alpha1.LifecycleStateActive)
+
+	name := fmt.Sprintf("%s-%d", cos.Name, revision)
+	cosr := cosrac.ClusterObjectSetRevision(name).
+		WithLabels(labels).
+		WithAnnotations(maps.Clone(cos.Spec.Template.Metadata.Annotations)).
+		WithSpec(&cosrSpec)
+
+	setCOSControllerReference(cos, cosr)
+	return cosr, nil
+}
+
+func setCOSControllerReference(cos *orbv1alpha1.ClusterObjectSet, cosr *cosrac.ClusterObjectSetRevisionApplyConfiguration) {
+	gvk := orbv1alpha1.GroupVersion.WithKind("ClusterObjectSet")
+	cosr.WithOwnerReferences(metav1ac.OwnerReference().
+		WithAPIVersion(gvk.GroupVersion().String()).
+		WithKind(gvk.Kind).
+		WithName(cos.Name).
+		WithUID(cos.UID).
+		WithController(true).
+		WithBlockOwnerDeletion(true),
+	)
 }
 
 func (r *COSReconciler) pruneArchivedCOSRs(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, cosrs []orbv1alpha1.ClusterObjectSetRevision) error {
