@@ -28,14 +28,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
+	cosrac "github.com/joelanford/orb-operator/applyconfigurations/api/v1alpha1"
 	"github.com/joelanford/orb-operator/internal/assertions"
 )
 
 const (
-	managedBy    = "orb-operator"
-	systemPrefix = "orb.operatorframework.io"
-	finalizerKey = "orb.operatorframework.io/cosr-finalizer"
-	groupIndex   = ".spec.group"
+	cosrFieldOwner = "cosr-controller"
+	managedBy      = "orb-operator"
+	systemPrefix   = "orb.operatorframework.io"
+	finalizerKey   = "orb.operatorframework.io/cosr-finalizer"
+	groupIndex     = ".spec.group"
 )
 
 type COSRReconciler struct {
@@ -114,7 +116,7 @@ func (r *COSRReconciler) reconcile(ctx context.Context, log logr.Logger, cosr *o
 	members := filterByControllerOwner(groupMembers, ownerKey)
 	chain := buildChain(members)
 
-	if err := r.ensureFinalizer(ctx, cosr); err != nil {
+	if applied, err := r.ensureFinalizer(ctx, cosr); applied || err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -164,15 +166,19 @@ func (ch revisionChain) siblingsOf(cosr *orbv1alpha1.ClusterObjectSetRevision) [
 	return siblings
 }
 
-func (r *COSRReconciler) ensureFinalizer(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) error {
-	if controllerutil.ContainsFinalizer(cosr, finalizerKey) {
-		return nil
+func (r *COSRReconciler) ensureFinalizer(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) (bool, error) {
+	applied, err := applyCOSR(ctx, r.client, cosr, cosrFieldOwner,
+		func(cosr *orbv1alpha1.ClusterObjectSetRevision) bool {
+			return !controllerutil.ContainsFinalizer(cosr, finalizerKey)
+		},
+		func(ac *cosrac.ClusterObjectSetRevisionApplyConfiguration) {
+			ac.WithFinalizers(finalizerKey)
+		},
+	)
+	if err != nil {
+		return false, fmt.Errorf("adding finalizer to %s: %w", cosr.Name, err)
 	}
-	controllerutil.AddFinalizer(cosr, finalizerKey)
-	if err := r.client.Update(ctx, cosr); err != nil {
-		return fmt.Errorf("adding finalizer to %s: %w", cosr.Name, err)
-	}
-	return nil
+	return applied, nil
 }
 
 func (r *COSRReconciler) reconcileActive(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision, siblings []*orbv1alpha1.ClusterObjectSetRevision) error {
@@ -510,16 +516,18 @@ func setCondition(cosr *orbv1alpha1.ClusterObjectSetRevision, status metav1.Cond
 	})
 }
 
-func removeFinalizer(ctx context.Context, c client.Client, obj client.Object, finalizer string) error {
-	if !controllerutil.ContainsFinalizer(obj, finalizer) {
-		return nil
-	}
-	patch := client.MergeFromWithOptions(obj.DeepCopyObject().(client.Object), client.MergeFromWithOptimisticLock{})
-	controllerutil.RemoveFinalizer(obj, finalizer)
-	if err := c.Patch(ctx, obj, patch); err != nil {
-		return fmt.Errorf("removing finalizer: %w", err)
-	}
-	return nil
+func removeFinalizer(ctx context.Context, c client.Client, cosr *orbv1alpha1.ClusterObjectSetRevision, finalizer string) error {
+	_, err := applyCOSR(ctx, c, cosr, cosrFieldOwner,
+		func(cosr *orbv1alpha1.ClusterObjectSetRevision) bool {
+			return controllerutil.ContainsFinalizer(cosr, finalizer)
+		},
+		func(ac *cosrac.ClusterObjectSetRevisionApplyConfiguration) {
+			ac.ObjectMetaApplyConfiguration.Finalizers = slices.DeleteFunc(ac.ObjectMetaApplyConfiguration.Finalizers, func(f string) bool {
+				return f == finalizer
+			})
+		},
+	)
+	return err
 }
 
 func mapCollisionProtection(cp orbv1alpha1.CollisionProtection) boxcutter.WithCollisionProtection {
