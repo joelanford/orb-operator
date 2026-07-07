@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	metav1ac "k8s.io/client-go/applyconfigurations/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -26,7 +27,7 @@ import (
 )
 
 const (
-	cosFieldOwner               = "cos-controller"
+	cosFieldOwner                     = "cos-controller"
 	defaultRevisionHistoryLimit int32 = 5
 
 	labelTemplateHash = "orb.operatorframework.io/template-hash"
@@ -140,28 +141,43 @@ func (r *COSReconciler) adoptAndFilterOwned(ctx context.Context, cos *orbv1alpha
 		cosr := &cosrs[i]
 		ref := metav1.GetControllerOf(cosr)
 
-		if ref == nil {
-			if err := r.adoptCOSR(ctx, cos, cosr); err != nil {
-				return nil, err
+		if ref != nil {
+			if ref.UID == cos.UID {
+				owned = append(owned, *cosr)
 			}
-			owned = append(owned, *cosr)
 			continue
 		}
 
-		if ref.UID == cos.UID {
-			owned = append(owned, *cosr)
+		if err := r.adoptCOSR(ctx, cos, cosr); err != nil {
+			return nil, err
 		}
+		owned = append(owned, *cosr)
 	}
 	return owned, nil
 }
 
 func (r *COSReconciler) adoptCOSR(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, cosr *orbv1alpha1.ClusterObjectSetRevision) error {
-	patch := client.MergeFromWithOptions(cosr.DeepCopy(), client.MergeFromWithOptimisticLock{})
-	if err := controllerutil.SetControllerReference(cos, cosr, r.scheme); err != nil {
-		return fmt.Errorf("adopting COSR %s: %w", cosr.Name, err)
+	gvks, _, err := r.scheme.ObjectKinds(cos)
+	if err != nil {
+		return fmt.Errorf("getting GVK for COS: %w", err)
 	}
-	if err := r.client.Patch(ctx, cosr, patch); err != nil {
-		return fmt.Errorf("patching adopted COSR %s: %w", cosr.Name, err)
+	gvk := gvks[0]
+	_, err = applyCOSR(ctx, r.client, cosr, cosFieldOwner,
+		func(cosr *orbv1alpha1.ClusterObjectSetRevision) bool {
+			return true
+		},
+		func(ac *cosrac.ClusterObjectSetRevisionApplyConfiguration) {
+			ac.WithOwnerReferences(metav1ac.OwnerReference().
+				WithAPIVersion(gvk.GroupVersion().String()).
+				WithKind(gvk.Kind).
+				WithName(cos.Name).
+				WithUID(cos.UID).
+				WithController(true).
+				WithBlockOwnerDeletion(true))
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("adopting COSR %s: %w", cosr.Name, err)
 	}
 	return nil
 }
