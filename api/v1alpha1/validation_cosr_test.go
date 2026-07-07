@@ -390,6 +390,62 @@ func TestCOSR_Status_ObjectStatus_Validation(t *testing.T) {
 	})
 }
 
+func TestCOSR_Spec_Group_Validation(t *testing.T) {
+	ctx := context.Background()
+
+	createWithGroup := func(cosrName, group string) error {
+		cosr := newCOSR(cosrName)
+		cosr.Spec.Group = group
+		return k8sClient.Create(ctx, cosr)
+	}
+	cleanup := func(t *testing.T, cosrName string) {
+		t.Helper()
+		t.Cleanup(func() {
+			cosr := newCOSR(cosrName)
+			require.NoError(t, k8sClient.Delete(ctx, cosr))
+		})
+	}
+
+	for _, tc := range []struct {
+		name  string
+		group string
+	}{
+		{"simple lowercase", "mygroup"},
+		{"with hyphens", "my-group"},
+		{"with digits", "group1"},
+		{"single char", "a"},
+		{"letter then digit", "a1"},
+		{"max 52 chars", "a" + strings.Repeat("b", 50) + "c"},
+	} {
+		t.Run(tc.name+" is accepted", func(t *testing.T) {
+			cosrName := fmt.Sprintf("grp-ok-%s", tc.group)
+			cleanup(t, cosrName)
+			require.NoError(t, createWithGroup(cosrName, tc.group))
+		})
+	}
+
+	for _, tc := range []struct {
+		name     string
+		cosrName string
+		group    string
+		msgSub   string
+	}{
+		{"empty", "grp-bad-empty", "", "should be at least 1"},
+		{"exceeds 52 chars", "grp-bad-long", strings.Repeat("a", 53), "may not be more than 52"},
+		{"starts with digit", "grp-bad-digit", "1group", "lowercase alphanumeric"},
+		{"starts with hyphen", "grp-bad-hyphen", "-group", "lowercase alphanumeric"},
+		{"ends with hyphen", "grp-bad-end", "group-", "lowercase alphanumeric"},
+		{"uppercase", "grp-bad-upper", "Group", "lowercase alphanumeric"},
+		{"contains underscore", "grp-bad-uscore", "my_group", "lowercase alphanumeric"},
+		{"contains dot", "grp-bad-dot", "my.group", "lowercase alphanumeric"},
+	} {
+		t.Run(tc.name+" is rejected", func(t *testing.T) {
+			requireStatusError(t, createWithGroup(tc.cosrName, tc.group),
+				"spec.group", tc.msgSub)
+		})
+	}
+}
+
 func TestCOSR_Spec_PhaseName_DNS1035Validation(t *testing.T) {
 	ctx := context.Background()
 

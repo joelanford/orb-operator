@@ -95,6 +95,10 @@ spec:
                 maxLength: 52
                 minLength: 1
                 type: string
+                x-kubernetes-validations:
+                - message: group must be lowercase alphanumeric or '-', starting with
+                    a letter, ending with an alphanumeric
+                  rule: self.matches('^[a-z]([a-z0-9-]*[a-z0-9])?$')
               lifecycleState:
                 description: |-
                   lifecycleState controls whether this revision is actively reconciling its

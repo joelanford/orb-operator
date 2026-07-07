@@ -69,6 +69,7 @@ type ClusterObjectSetRevisionSpec struct {
 	// must be at most 52 characters long.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=52
+	// +kubebuilder:validation:XValidation:rule="self.matches('^[a-z]([a-z0-9-]*[a-z0-9])?$')",message="group must be lowercase alphanumeric or '-', starting with a letter, ending with an alphanumeric"
 	// +required
 	Group string `json:"group"`
 

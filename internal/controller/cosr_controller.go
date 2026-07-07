@@ -32,7 +32,7 @@ import (
 )
 
 const (
-	fieldOwner   = "orb-operator"
+	managedBy    = "orb-operator"
 	systemPrefix = "orb.operatorframework.io"
 	finalizerKey = "orb.operatorframework.io/cosr-finalizer"
 	groupIndex   = ".spec.group"
@@ -325,9 +325,9 @@ func (r *COSRReconciler) engineForCOSR(ctx context.Context, cosr *orbv1alpha1.Cl
 	}
 	engine, err := boxcutter.NewRevisionEngine(boxcutter.RevisionEngineOptions{
 		Scheme:           r.scheme,
-		FieldOwner:       fieldOwner,
+		FieldOwner:       "cosr-group/" + cosr.Spec.Group,
 		SystemPrefix:     systemPrefix,
-		ManagedBy:        fieldOwner,
+		ManagedBy:        managedBy,
 		DiscoveryClient:  r.discoveryClient,
 		RestMapper:       r.restMapper,
 		Writer:           accessor,
