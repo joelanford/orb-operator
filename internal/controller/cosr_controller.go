@@ -3,6 +3,7 @@ package controller
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -517,17 +518,51 @@ func setCondition(cosr *orbv1alpha1.ClusterObjectSetRevision, status metav1.Cond
 }
 
 func removeFinalizer(ctx context.Context, c client.Client, cosr *orbv1alpha1.ClusterObjectSetRevision, finalizer string) error {
-	_, err := applyCOSR(ctx, c, cosr, cosrFieldOwner,
-		func(cosr *orbv1alpha1.ClusterObjectSetRevision) bool {
-			return controllerutil.ContainsFinalizer(cosr, finalizer)
-		},
-		func(ac *cosrac.ClusterObjectSetRevisionApplyConfiguration) {
-			ac.ObjectMetaApplyConfiguration.Finalizers = slices.DeleteFunc(ac.ObjectMetaApplyConfiguration.Finalizers, func(f string) bool {
-				return f == finalizer
-			})
-		},
-	)
-	return err
+	if !controllerutil.ContainsFinalizer(cosr, finalizer) {
+		return nil
+	}
+	patch := client.MergeFromWithOptions(cosr.DeepCopy(), client.MergeFromWithOptimisticLock{})
+	controllerutil.RemoveFinalizer(cosr, finalizer)
+	clearFinalizerFieldOwnership(cosr.ManagedFields, cosrFieldOwner, finalizer)
+	// IgnoreNotFound: managed object deletions during teardown can enqueue
+	// a new reconcile via WatchesRawSource. If that reconcile runs before
+	// the cache reflects the COSR deletion (triggered by this finalizer
+	// removal), it will attempt to patch an already-deleted object.
+	return client.IgnoreNotFound(c.Patch(ctx, cosr, patch))
+}
+
+func clearFinalizerFieldOwnership(managedFields []metav1.ManagedFieldsEntry, manager, finalizer string) {
+	key := "v:" + finalizer
+	for i := range managedFields {
+		e := &managedFields[i]
+		if e.Manager != manager || e.FieldsV1 == nil {
+			continue
+		}
+		var fields map[string]any
+		if err := json.Unmarshal(e.FieldsV1.GetRawBytes(), &fields); err != nil {
+			continue
+		}
+		fMeta, _ := fields["f:metadata"].(map[string]any)
+		if fMeta == nil {
+			continue
+		}
+		fFinalizers, _ := fMeta["f:finalizers"].(map[string]any)
+		if fFinalizers == nil {
+			continue
+		}
+		delete(fFinalizers, key)
+		if len(fFinalizers) == 0 {
+			delete(fMeta, "f:finalizers")
+		}
+		if len(fMeta) == 0 {
+			delete(fields, "f:metadata")
+		}
+		raw, err := json.Marshal(fields)
+		if err != nil {
+			continue
+		}
+		e.FieldsV1.SetRawBytes(raw)
+	}
 }
 
 func mapCollisionProtection(cp orbv1alpha1.CollisionProtection) boxcutter.WithCollisionProtection {
