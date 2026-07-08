@@ -134,6 +134,21 @@ func (r *COSReconciler) reconcile(ctx context.Context, cos *orbv1alpha1.ClusterO
 		return nil
 	}
 
+	desired, err := buildCOSRFromTemplate(cos, latestOwned.Spec.Revision, currentHash)
+	if err != nil {
+		return fmt.Errorf("building desired COSR apply config: %w", err)
+	}
+	existing, err := cosrac.ExtractClusterObjectSetRevision(latestOwned, cosFieldOwner)
+	if err != nil {
+		return fmt.Errorf("extracting COSR apply config: %w", err)
+	}
+	if !equality.Semantic.DeepEqual(existing, desired) {
+		ctrl.LoggerFrom(ctx).Info("fixing up COSR field owners")
+		if err := r.client.Apply(ctx, desired, client.FieldOwner(cosFieldOwner), client.ForceOwnership); err != nil {
+			return fmt.Errorf("applying COSR: %w", err)
+		}
+	}
+
 	if err := r.archiveOlderRevisions(ctx, cos, ownedCOSRs); err != nil {
 		return err
 	}
