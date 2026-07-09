@@ -51,6 +51,7 @@ func registerSetupSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^a COD named "([^"]*)" with revisionHistoryLimit (\d+)$`, tc.aCODNamedWithRevisionHistoryLimit)
 	sc.Step(`^an available COD named "([^"]*)"$`, tc.anAvailableCOD)
 	sc.Step(`^the COD template has (label|annotation) "([^"]*)" with value "([^"]*)"$`, tc.theCODTemplateHasMetadata)
+	sc.Step(`^the COD has progressDeadlineMinutes (\d+)$`, tc.theCODHasProgressDeadlineMinutes)
 }
 
 func (tc *testContext) aCOSNamedWithGroupAndRevision(name, group string, revision uint32) {
@@ -269,6 +270,10 @@ func (tc *testContext) theCODTemplateHasMetadata(kind, key, value string) {
 		}
 		tc.cod.annotations[key] = value
 	}
+}
+
+func (tc *testContext) theCODHasProgressDeadlineMinutes(minutes int32) {
+	tc.cod.progressDeadlineMinutes = &minutes
 }
 
 func newConfigMap(name, namespace string) *corev1.ConfigMap {

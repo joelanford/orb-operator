@@ -63,11 +63,12 @@ type cosBuilder struct {
 }
 
 type codBuilder struct {
-	name                 string
-	revisionHistoryLimit *int32
-	labels               map[string]string
-	annotations          map[string]string
-	tmpl                 *templateSpecBuilder
+	name                    string
+	revisionHistoryLimit    *int32
+	progressDeadlineMinutes *int32
+	labels                  map[string]string
+	annotations             map[string]string
+	tmpl                    *templateSpecBuilder
 }
 
 func newTestContext(c client.Client) *testContext {
@@ -163,7 +164,8 @@ func (tc *testContext) buildCOD() *orbv1alpha1.ClusterObjectDeployment {
 			Name: tc.cod.name,
 		},
 		Spec: orbv1alpha1.ClusterObjectDeploymentSpec{
-			RevisionHistoryLimit: tc.cod.revisionHistoryLimit,
+			RevisionHistoryLimit:    tc.cod.revisionHistoryLimit,
+			ProgressDeadlineMinutes: tc.cod.progressDeadlineMinutes,
 			Template: orbv1alpha1.ClusterObjectDeploymentTemplate{
 				Metadata: orbv1alpha1.ClusterObjectDeploymentTemplateMetadata{
 					Labels:      tc.cod.labels,
