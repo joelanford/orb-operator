@@ -1,58 +1,96 @@
 ---
-status: backlog
+status: in-progress
 ---
-# E2E Coverage Collection
+# Code Coverage Collection
 
 ## Summary
 
-Add coverage profiling to `make test-e2e-coverage` so we can measure which lines of operator code are exercised by the e2e test suite running against a real Kind cluster.
+Add coverage profiling to all test targets so we can measure which lines of operator code are exercised by unit tests, e2e tests, and both combined. `test-unit` and `test-e2e` each produce coverage as a side effect. A new `test-coverage` target merges them into a single report, and `test-all` calls it automatically.
 
-## Approach
+## Design
 
-Build the operator binary with `go build -cover`, deploy it into Kind with `GOCOVERDIR` pointing at a hostPath volume, run e2e tests, gracefully shut down the operator, and collect the coverage counter files.
+### Unit coverage (`test-unit`)
 
-### Key components
+`go test -coverprofile -coverpkg=./internal/...,./api/...` writes a text coverage profile directly. The `-coverpkg` flag ensures coverage is measured across all operator packages, not just the package under test. The profile is written to `_output/unit/coverage.out`. The `KUBEBUILDER_ASSETS` setup remains unchanged.
 
-1. **`.gitignore`** — add `/_output/` (coverage artifacts land there)
-2. **`deploy/operator.jsonnet`** — conditional coverage support:
-   - `GOCOVERDIR=/coverage` env var
-   - hostPath volume mount (`/tmp/e2e-coverage` on node → `/coverage` in container)
-   - `imagePullPolicy: Never` (image is loaded via `kind load`)
-   - `terminationGracePeriodSeconds: 120` (ensure clean shutdown)
-3. **`Makefile`** — `test-e2e-coverage` target:
-   - Cross-compile with `-cover`
-   - Build and load a coverage-instrumented container image
-   - Create Kind cluster, deploy, run e2e tests
-   - Scale to 0, wait for pod deletion, copy coverage files from node
-   - Convert with `go tool covdata textfmt`, report with `go tool cover -func`
+### E2E coverage (`test-e2e`)
 
-## Design notes
+Go's `-cover` flag on `go build` instruments the binary to write coverage counter files. The `.goreleaser.yml` config includes a templated `flags` entry that passes `{{ .Env.GO_BUILD_FLAGS }}` to `go build`. For e2e, `GO_BUILD_FLAGS='-cover -tags=cover -covermode=atomic'`.
 
-### Coverage counter flush requires clean process exit
+The flow:
 
-Go's `-cover` binary writes `covmeta.*` at startup and `covcounters.*` at process exit via an atexit handler. If the binary is SIGKILLed, panics, or calls `os.Exit` on a code path that bypasses atexit, only the metadata file is written and coverage reports 0.0%.
+1. Build with goreleaser: `GO_BUILD_FLAGS='-cover -tags=cover -covermode=atomic' go tool goreleaser release --snapshot --clean`
+2. Deploy to Kind with the `e2e` profile (adds `GOCOVERDIR=/coverage`, emptyDir volume, `imagePullPolicy: Never`)
+3. Run e2e tests
+4. Signal the operator to flush coverage: `docker exec <kind-node> pkill -USR1 -f '/orb-operator$'` (distroless has no `kill` binary, so signal is sent from the Kind node)
+5. Copy coverage files from the Kind node's kubelet volume path: `docker cp <kind-node>:/var/lib/kubelet/pods/<pod-uid>/volumes/kubernetes.io~empty-dir/coverage/. _output/e2e/covdata/` (distroless has no `tar`, so `kubectl cp` doesn't work either)
+6. Convert to text format with `go tool covdata textfmt` → `_output/e2e/coverage.out`
 
-**Mitigations:**
-- The operator binary must use `cmd.ExecuteContext(ctrl.SetupSignalHandler())` so SIGTERM triggers graceful manager shutdown and main returns normally. (Landed separately as a standalone fix.)
-- The Makefile uses `kubectl scale --replicas=0` + `kubectl wait --for=delete` to ensure the pod exits before collecting files. This sequence is correct — no race condition.
+#### SIGUSR1 coverage flush (`cmd/operator/covflush.go`)
 
-### Validate counter files before reporting
+A `covflush.go` file with `//go:build cover` registers a SIGUSR1 handler in an `init()` function. On signal, it calls `runtime/coverage.WriteCountersDir` and `runtime/coverage.WriteMetaDir` to flush coverage data to `GOCOVERDIR` without terminating the process.
 
-The current pipeline silently produces a valid-but-empty coverage profile (all 0.0%) when counter files are missing. The `covdata textfmt` step should check that `covcounters.*` files exist and fail loudly if they don't, to avoid misleading results.
+This requires `-covermode=atomic` (not the default `set`) because `WriteCountersDir` only supports atomic mode. The `-tags cover` flag activates the build-tagged file.
 
-### Integration tests are redundant with e2e
+The operator pod stays running after coverage collection regardless of test outcome, so pod logs remain available for debugging.
 
-Coverage analysis (2026-06-23) showed:
-- **Integration:** 318/755 statements (42.1%)
-- **E2E:** 546/755 statements (72.3%)
-- **Merged:** 547/755 statements (72.5%)
-- **Overlap:** 317 of integration's 318 covered statements are also covered by e2e
+#### Counter file validation
 
-The single exclusively-integration-covered statement is an error-return path in `reconcileArchived` (`cosr_controller.go:241-243`) that would be contrived to trigger in e2e. The envtest/setup-envtest machinery is not worth carrying for this. Integration tests for COS phase status were removed.
+Before running `covdata textfmt`, check that `covcounters.*` files exist in the collected directory. Fail loudly if they don't, to avoid silently producing a valid-but-empty 0.0% coverage profile.
 
-## TODOs
+### Merged coverage (`test-coverage`)
 
-- [ ] Add `/_output/` to `.gitignore`
-- [ ] Add conditional coverage support to `deploy/operator.jsonnet` (env, volume, imagePullPolicy, terminationGracePeriodSeconds)
-- [ ] Add `test-e2e-coverage` Makefile target
-- [ ] Add counter file validation before `covdata textfmt` step
+Concatenates the two text profiles from `_output/unit/coverage.out` and `_output/e2e/coverage.out` into `_output/merged/coverage.out` with a single `mode: set` header. Prints a summary with `go tool cover -func`.
+
+### `test-all` integration
+
+`test-all` depends on `test-coverage` (which depends on `test-unit` and `test-e2e`), so running `make test-all` produces the merged report automatically.
+
+### Goreleaser changes (`.goreleaser.yml`)
+
+Add a templated `flags` entry to the build config and a corresponding `env` entry with a default:
+
+```yaml
+env:
+  - CGO_ENABLED=0
+  - GOFLAGS={{ if index .Env "GO_BUILD_FLAGS" }}{{ .Env.GO_BUILD_FLAGS }}{{ end }}
+```
+
+The `GO_BUILD_FLAGS` env var is mapped to `GOFLAGS` in goreleaser's build subprocess environment. Go handles parsing the flags natively. When `GO_BUILD_FLAGS` is unset, `GOFLAGS` resolves to empty and goreleaser builds normally.
+
+Note: flags with values must use `=` syntax (e.g. `-tags=cover` not `-tags cover`) because `GOFLAGS` splits on spaces.
+
+### Jsonnet changes (`deploy/operator.jsonnet`)
+
+Add a `profiles` external variable (array of strings, default `[]`). The Makefile passes `--ext-code profiles='["e2e"]'` when deploying for e2e tests, or omits it for default deployment.
+
+When `"e2e"` is in the profiles array, `applyE2eProfile()` patches the deployment:
+- Set `imagePullPolicy: Never` (image is loaded via `kind load`)
+- Add `GOCOVERDIR: "/coverage"` env var to the operator container
+- Add an emptyDir volume mounted at `/coverage` in the container
+- Set `terminationGracePeriodSeconds: 120` to ensure clean shutdown
+
+The coverage volume and env are always present in e2e mode. They are harmless when the binary isn't built with `-cover` — nothing writes to the directory. This avoids a separate coverage flag; the Makefile's only decision is whether it's deploying for e2e.
+
+### Merging strategy
+
+`go test -coverprofile` produces text profiles. `go build -cover` + `GOCOVERDIR` produces covdata files, which are converted to text with `go tool covdata textfmt`. Both end up as text profiles in the same format (`mode: set` header + `file:line.col,line.col stmts count` lines).
+
+Merging is a simple concatenation with a single `mode: set` header. `go tool cover` handles duplicate blocks correctly by taking the max count per block. No covdata-level merge (`go tool covdata merge -pcombine`) is needed because there is no text→covdata converter — the text format is the common denominator.
+
+### Output layout
+
+```
+_output/
+├── unit/
+│   └── coverage.out          # text profile from go test -coverprofile
+├── e2e/
+│   ├── covdata/              # raw covmeta.* + covcounters.* files
+│   └── coverage.out          # text profile converted from covdata
+└── merged/
+    └── coverage.out          # concatenated text profile
+```
+
+### Historical context
+
+Coverage analysis (2026-06-23) showed integration tests (envtest) covered 318/755 statements (42.1%), while e2e covered 546/755 (72.3%). Merged was 547/755 (72.5%) — only 1 statement was exclusively covered by integration tests. The envtest integration tests were removed as redundant.
