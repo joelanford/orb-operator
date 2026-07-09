@@ -5,6 +5,7 @@ builds:
     binary: orb-operator
     env:
       - CGO_ENABLED=0
+      - GOFLAGS={{ if index .Env "GO_BUILD_FLAGS" }}{{ .Env.GO_BUILD_FLAGS }}{{ end }}
     goos:
       - linux
     goarch:

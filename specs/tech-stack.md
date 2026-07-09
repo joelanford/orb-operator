@@ -73,9 +73,10 @@ orb-operator/
 |---|---|
 | `make lint` | `go tool golangci-lint run ./...` |
 | `make lint-fix` | `go tool golangci-lint run --fix ./...` |
-| `make test-unit` | Run unit tests (all packages except `./test/...`) |
-| `make test-e2e` | Run godog BDD e2e tests (`./test/e2e/...`) |
-| `make test-all` | Run test-unit, test-e2e |
+| `make test-unit` | Run unit tests with coverage profile (`_output/unit/coverage.out`) |
+| `make test-e2e` | Build coverage-instrumented binary, run godog BDD e2e tests, collect coverage (`_output/e2e/coverage.out`) |
+| `make test-coverage` | Run test-unit + test-e2e, merge profiles (`_output/merged/coverage.out`), print summary |
+| `make test-all` | Alias for test-coverage |
 | `make build` | `go build ./...` (also called by `make verify`) |
 | `make tidy` | `go mod tidy` |
 | `make generate` | `go generate ./...` (controller-gen: CRDs, deepcopy) |

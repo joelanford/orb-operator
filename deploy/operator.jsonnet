@@ -1,5 +1,7 @@
 local image = std.extVar('image');
 local namespace = if std.extVar('namespace') != '' then std.extVar('namespace') else 'orb-operator-system';
+local profiles = std.extVar('profiles');
+local hasProfile(p) = std.member(profiles, p);
 
 local crds = [
   std.parseYaml(importstr 'crds/orb.operatorframework.io_clusterobjectdeployments.yaml')[0],
@@ -38,7 +40,29 @@ local crb = {
   }],
 };
 
-local deploy = {
+local applyE2eProfile(deploy) = deploy {
+  spec+: {
+    template+: {
+      spec+: {
+        terminationGracePeriodSeconds: 120,
+        volumes+: [{
+          name: 'coverage',
+          emptyDir: {},
+        }],
+        containers: [
+          c {
+            imagePullPolicy: 'Never',
+            env+: [{ name: 'GOCOVERDIR', value: '/coverage' }],
+            volumeMounts+: [{ name: 'coverage', mountPath: '/coverage' }],
+          }
+          for c in deploy.spec.template.spec.containers
+        ],
+      },
+    },
+  },
+};
+
+local baseDeploy = {
   apiVersion: 'apps/v1',
   kind: 'Deployment',
   metadata: {
@@ -74,6 +98,8 @@ local deploy = {
     },
   },
 };
+
+local deploy = if hasProfile('e2e') then applyE2eProfile(baseDeploy) else baseDeploy;
 
 local vapCOSName = {
   apiVersion: 'admissionregistration.k8s.io/v1',
