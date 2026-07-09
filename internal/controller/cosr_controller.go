@@ -7,14 +7,17 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/go-logr/logr"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/discovery"
 	"pkg.package-operator.run/boxcutter"
 	"pkg.package-operator.run/boxcutter/machinery"
@@ -318,6 +321,14 @@ func (r *COSRReconciler) releaseCOSR(ctx context.Context, cosr *orbv1alpha1.Clus
 	if err := removeFinalizer(ctx, r.client, cosr, finalizerKey); err != nil {
 		return fmt.Errorf("removing finalizer: %w", err)
 	}
+	// Wait for the informer cache to reflect the finalizer removal (or
+	// deletion) before returning. controller-runtime serializes reconciles
+	// per key, so blocking here ensures the next queued reconcile reads the
+	// updated state and exits early at the ContainsFinalizer check instead
+	// of re-acquiring the cache for a doomed COSR.
+	if err := waitForFinalizerRemoval(ctx, r.client, client.ObjectKeyFromObject(cosr)); err != nil {
+		return fmt.Errorf("waiting for cache to sync finalizer removal: %w", err)
+	}
 	return nil
 }
 
@@ -524,11 +535,17 @@ func removeFinalizer(ctx context.Context, c client.Client, cosr *orbv1alpha1.Clu
 	patch := client.MergeFromWithOptions(cosr.DeepCopy(), client.MergeFromWithOptimisticLock{})
 	controllerutil.RemoveFinalizer(cosr, finalizer)
 	clearFinalizerFieldOwnership(cosr.ManagedFields, cosrFieldOwner, finalizer)
-	// IgnoreNotFound: managed object deletions during teardown can enqueue
-	// a new reconcile via WatchesRawSource. If that reconcile runs before
-	// the cache reflects the COSR deletion (triggered by this finalizer
-	// removal), it will attempt to patch an already-deleted object.
-	return client.IgnoreNotFound(c.Patch(ctx, cosr, patch))
+	return c.Patch(ctx, cosr, patch)
+}
+
+func waitForFinalizerRemoval(ctx context.Context, c client.Client, key client.ObjectKey) error {
+	return wait.PollUntilContextTimeout(ctx, 50*time.Millisecond, 5*time.Second, true, func(ctx context.Context) (bool, error) {
+		var cosr orbv1alpha1.ClusterObjectSetRevision
+		if err := c.Get(ctx, key, &cosr); err != nil {
+			return apierrors.IsNotFound(err), client.IgnoreNotFound(err)
+		}
+		return !controllerutil.ContainsFinalizer(&cosr, finalizerKey), nil
+	})
 }
 
 func clearFinalizerFieldOwnership(managedFields []metav1.ManagedFieldsEntry, manager, finalizer string) {
