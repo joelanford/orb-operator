@@ -29,7 +29,7 @@ spec:
         description: |-
           ClusterObjectDeployment declares a set of Kubernetes objects that should be applied
           to the cluster and kept in the desired state. The controller creates
-          ClusterObjectSetRevision resources to track each unique template snapshot and
+          ClusterObjectSet resources to track each unique template snapshot and
           manages their lifecycle automatically.
         properties:
           apiVersion:
@@ -56,7 +56,7 @@ spec:
               revisionHistoryLimit:
                 description: |-
                   revisionHistoryLimit is the maximum number of archived
-                  ClusterObjectSetRevision resources to retain. Older archived revisions
+                  ClusterObjectSet resources to retain. Older archived revisions
                   beyond this limit are garbage collected by the controller. When omitted,
                   the platform chooses a reasonable default, which is subject to change over
                   time. The current default is 10. Set to 0 to disable revision history
@@ -66,13 +66,13 @@ spec:
                 type: integer
               template:
                 description: |-
-                  template defines the ClusterObjectSetRevision that the controller will
+                  template defines the ClusterObjectSet that the controller will
                   create whenever the template content changes.
                 properties:
                   metadata:
                     description: |-
                       metadata contains labels and annotations that are propagated to each
-                      ClusterObjectSetRevision created from this template.
+                      ClusterObjectSet created from this template.
                     properties:
                       annotations:
                         additionalProperties:
@@ -316,12 +316,12 @@ spec:
               activeRevisions:
                 description: |-
                   activeRevisions holds the currently active (non-archived)
-                  ClusterObjectSetRevision resources, including any revision just created
+                  ClusterObjectSet resources, including any revision just created
                   but not yet visible in the informer cache.
                 items:
                   description: |-
-                    ClusterObjectSetRevisionStatusSummary summarizes the state of a single active
-                    ClusterObjectSetRevision.
+                    ClusterObjectSetStatusSummary summarizes the state of a single active
+                    ClusterObjectSet.
                   properties:
                     conditions:
                       description: conditions reflects the Available condition of
@@ -386,7 +386,7 @@ spec:
                       - type
                       x-kubernetes-list-type: map
                     name:
-                      description: name is the metadata.name of the ClusterObjectSetRevision
+                      description: name is the metadata.name of the ClusterObjectSet
                         resource.
                       minLength: 1
                       type: string

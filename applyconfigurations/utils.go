@@ -32,14 +32,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ClusterObjectDeploymentTemplateMetadataApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectDeploymentTemplateSpec"):
 		return &apiv1alpha1.ClusterObjectDeploymentTemplateSpecApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectSetRevision"):
-		return &apiv1alpha1.ClusterObjectSetRevisionApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectSetRevisionSpec"):
-		return &apiv1alpha1.ClusterObjectSetRevisionSpecApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectSetRevisionStatus"):
-		return &apiv1alpha1.ClusterObjectSetRevisionStatusApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectSetRevisionStatusSummary"):
-		return &apiv1alpha1.ClusterObjectSetRevisionStatusSummaryApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectSet"):
+		return &apiv1alpha1.ClusterObjectSetApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectSetSpec"):
+		return &apiv1alpha1.ClusterObjectSetSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectSetStatus"):
+		return &apiv1alpha1.ClusterObjectSetStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectSetStatusSummary"):
+		return &apiv1alpha1.ClusterObjectSetStatusSummaryApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectSlice"):
 		return &apiv1alpha1.ClusterObjectSliceApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ConditionEqualAssertion"):

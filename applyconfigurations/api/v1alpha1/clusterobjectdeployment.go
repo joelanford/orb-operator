@@ -16,7 +16,7 @@ import (
 //
 // ClusterObjectDeployment declares a set of Kubernetes objects that should be applied
 // to the cluster and kept in the desired state. The controller creates
-// ClusterObjectSetRevision resources to track each unique template snapshot and
+// ClusterObjectSet resources to track each unique template snapshot and
 // manages their lifecycle automatically.
 type ClusterObjectDeploymentApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`

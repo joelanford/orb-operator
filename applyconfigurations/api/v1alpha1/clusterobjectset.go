@@ -11,10 +11,10 @@ import (
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// ClusterObjectSetRevisionApplyConfiguration represents a declarative configuration of the ClusterObjectSetRevision type for use
+// ClusterObjectSetApplyConfiguration represents a declarative configuration of the ClusterObjectSet type for use
 // with apply.
 //
-// ClusterObjectSetRevision represents an immutable snapshot of a set of
+// ClusterObjectSet represents an immutable snapshot of a set of
 // Kubernetes objects to apply and manage on the cluster. Revisions within the
 // same group form an ordered sequence.
 //
@@ -30,73 +30,73 @@ import (
 //
 // The group, revision number, phases, and collisionProtection fields are
 // immutable after creation. Only lifecycleState may be updated.
-type ClusterObjectSetRevisionApplyConfiguration struct {
+type ClusterObjectSetApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
 	// spec defines the desired state of this revision, including the objects to
 	// manage and their lifecycle configuration.
-	Spec *ClusterObjectSetRevisionSpecApplyConfiguration `json:"spec,omitempty"`
+	Spec *ClusterObjectSetSpecApplyConfiguration `json:"spec,omitempty"`
 	// status reports the observed state of this revision, including availability
 	// conditions.
-	Status *ClusterObjectSetRevisionStatusApplyConfiguration `json:"status,omitempty"`
+	Status *ClusterObjectSetStatusApplyConfiguration `json:"status,omitempty"`
 }
 
-// ClusterObjectSetRevision constructs a declarative configuration of the ClusterObjectSetRevision type for use with
+// ClusterObjectSet constructs a declarative configuration of the ClusterObjectSet type for use with
 // apply.
-func ClusterObjectSetRevision(name string) *ClusterObjectSetRevisionApplyConfiguration {
-	b := &ClusterObjectSetRevisionApplyConfiguration{}
+func ClusterObjectSet(name string) *ClusterObjectSetApplyConfiguration {
+	b := &ClusterObjectSetApplyConfiguration{}
 	b.WithName(name)
-	b.WithKind("ClusterObjectSetRevision")
+	b.WithKind("ClusterObjectSet")
 	b.WithAPIVersion("orb.operatorframework.io/v1alpha1")
 	return b
 }
 
-// ExtractClusterObjectSetRevisionFrom extracts the applied configuration owned by fieldManager from
-// clusterObjectSetRevision for the specified subresource. Pass an empty string for subresource to extract
+// ExtractClusterObjectSetFrom extracts the applied configuration owned by fieldManager from
+// clusterObjectSet for the specified subresource. Pass an empty string for subresource to extract
 // the main resource. Common subresources include "status", "scale", etc.
-// clusterObjectSetRevision must be a unmodified ClusterObjectSetRevision API object that was retrieved from the Kubernetes API.
-// ExtractClusterObjectSetRevisionFrom provides a way to perform a extract/modify-in-place/apply workflow.
+// clusterObjectSet must be a unmodified ClusterObjectSet API object that was retrieved from the Kubernetes API.
+// ExtractClusterObjectSetFrom provides a way to perform a extract/modify-in-place/apply workflow.
 // Note that an extracted apply configuration will contain fewer fields than what the fieldManager previously
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
-func ExtractClusterObjectSetRevisionFrom(clusterObjectSetRevision *apiv1alpha1.ClusterObjectSetRevision, fieldManager string, subresource string) (*ClusterObjectSetRevisionApplyConfiguration, error) {
-	b := &ClusterObjectSetRevisionApplyConfiguration{}
-	err := managedfields.ExtractInto(clusterObjectSetRevision, internal.Parser().Type("com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetRevision"), fieldManager, b, subresource)
+func ExtractClusterObjectSetFrom(clusterObjectSet *apiv1alpha1.ClusterObjectSet, fieldManager string, subresource string) (*ClusterObjectSetApplyConfiguration, error) {
+	b := &ClusterObjectSetApplyConfiguration{}
+	err := managedfields.ExtractInto(clusterObjectSet, internal.Parser().Type("com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSet"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
-	b.WithName(clusterObjectSetRevision.Name)
+	b.WithName(clusterObjectSet.Name)
 
-	b.WithKind("ClusterObjectSetRevision")
+	b.WithKind("ClusterObjectSet")
 	b.WithAPIVersion("orb.operatorframework.io/v1alpha1")
 	return b, nil
 }
 
-// ExtractClusterObjectSetRevision extracts the applied configuration owned by fieldManager from
-// clusterObjectSetRevision. If no managedFields are found in clusterObjectSetRevision for fieldManager, a
-// ClusterObjectSetRevisionApplyConfiguration is returned with only the Name, Namespace (if applicable),
+// ExtractClusterObjectSet extracts the applied configuration owned by fieldManager from
+// clusterObjectSet. If no managedFields are found in clusterObjectSet for fieldManager, a
+// ClusterObjectSetApplyConfiguration is returned with only the Name, Namespace (if applicable),
 // APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
-// clusterObjectSetRevision must be a unmodified ClusterObjectSetRevision API object that was retrieved from the Kubernetes API.
-// ExtractClusterObjectSetRevision provides a way to perform a extract/modify-in-place/apply workflow.
+// clusterObjectSet must be a unmodified ClusterObjectSet API object that was retrieved from the Kubernetes API.
+// ExtractClusterObjectSet provides a way to perform a extract/modify-in-place/apply workflow.
 // Note that an extracted apply configuration will contain fewer fields than what the fieldManager previously
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
-func ExtractClusterObjectSetRevision(clusterObjectSetRevision *apiv1alpha1.ClusterObjectSetRevision, fieldManager string) (*ClusterObjectSetRevisionApplyConfiguration, error) {
-	return ExtractClusterObjectSetRevisionFrom(clusterObjectSetRevision, fieldManager, "")
+func ExtractClusterObjectSet(clusterObjectSet *apiv1alpha1.ClusterObjectSet, fieldManager string) (*ClusterObjectSetApplyConfiguration, error) {
+	return ExtractClusterObjectSetFrom(clusterObjectSet, fieldManager, "")
 }
 
-// ExtractClusterObjectSetRevisionStatus extracts the applied configuration owned by fieldManager from
-// clusterObjectSetRevision for the status subresource.
-func ExtractClusterObjectSetRevisionStatus(clusterObjectSetRevision *apiv1alpha1.ClusterObjectSetRevision, fieldManager string) (*ClusterObjectSetRevisionApplyConfiguration, error) {
-	return ExtractClusterObjectSetRevisionFrom(clusterObjectSetRevision, fieldManager, "status")
+// ExtractClusterObjectSetStatus extracts the applied configuration owned by fieldManager from
+// clusterObjectSet for the status subresource.
+func ExtractClusterObjectSetStatus(clusterObjectSet *apiv1alpha1.ClusterObjectSet, fieldManager string) (*ClusterObjectSetApplyConfiguration, error) {
+	return ExtractClusterObjectSetFrom(clusterObjectSet, fieldManager, "status")
 }
 
-func (b ClusterObjectSetRevisionApplyConfiguration) IsApplyConfiguration() {}
+func (b ClusterObjectSetApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Kind field is set to the value of the last call.
-func (b *ClusterObjectSetRevisionApplyConfiguration) WithKind(value string) *ClusterObjectSetRevisionApplyConfiguration {
+func (b *ClusterObjectSetApplyConfiguration) WithKind(value string) *ClusterObjectSetApplyConfiguration {
 	b.TypeMetaApplyConfiguration.Kind = &value
 	return b
 }
@@ -104,7 +104,7 @@ func (b *ClusterObjectSetRevisionApplyConfiguration) WithKind(value string) *Clu
 // WithAPIVersion sets the APIVersion field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the APIVersion field is set to the value of the last call.
-func (b *ClusterObjectSetRevisionApplyConfiguration) WithAPIVersion(value string) *ClusterObjectSetRevisionApplyConfiguration {
+func (b *ClusterObjectSetApplyConfiguration) WithAPIVersion(value string) *ClusterObjectSetApplyConfiguration {
 	b.TypeMetaApplyConfiguration.APIVersion = &value
 	return b
 }
@@ -112,7 +112,7 @@ func (b *ClusterObjectSetRevisionApplyConfiguration) WithAPIVersion(value string
 // WithName sets the Name field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Name field is set to the value of the last call.
-func (b *ClusterObjectSetRevisionApplyConfiguration) WithName(value string) *ClusterObjectSetRevisionApplyConfiguration {
+func (b *ClusterObjectSetApplyConfiguration) WithName(value string) *ClusterObjectSetApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.Name = &value
 	return b
@@ -121,7 +121,7 @@ func (b *ClusterObjectSetRevisionApplyConfiguration) WithName(value string) *Clu
 // WithGenerateName sets the GenerateName field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the GenerateName field is set to the value of the last call.
-func (b *ClusterObjectSetRevisionApplyConfiguration) WithGenerateName(value string) *ClusterObjectSetRevisionApplyConfiguration {
+func (b *ClusterObjectSetApplyConfiguration) WithGenerateName(value string) *ClusterObjectSetApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.GenerateName = &value
 	return b
@@ -130,7 +130,7 @@ func (b *ClusterObjectSetRevisionApplyConfiguration) WithGenerateName(value stri
 // WithNamespace sets the Namespace field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Namespace field is set to the value of the last call.
-func (b *ClusterObjectSetRevisionApplyConfiguration) WithNamespace(value string) *ClusterObjectSetRevisionApplyConfiguration {
+func (b *ClusterObjectSetApplyConfiguration) WithNamespace(value string) *ClusterObjectSetApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.Namespace = &value
 	return b
@@ -139,7 +139,7 @@ func (b *ClusterObjectSetRevisionApplyConfiguration) WithNamespace(value string)
 // WithUID sets the UID field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the UID field is set to the value of the last call.
-func (b *ClusterObjectSetRevisionApplyConfiguration) WithUID(value types.UID) *ClusterObjectSetRevisionApplyConfiguration {
+func (b *ClusterObjectSetApplyConfiguration) WithUID(value types.UID) *ClusterObjectSetApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.UID = &value
 	return b
@@ -148,7 +148,7 @@ func (b *ClusterObjectSetRevisionApplyConfiguration) WithUID(value types.UID) *C
 // WithResourceVersion sets the ResourceVersion field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ResourceVersion field is set to the value of the last call.
-func (b *ClusterObjectSetRevisionApplyConfiguration) WithResourceVersion(value string) *ClusterObjectSetRevisionApplyConfiguration {
+func (b *ClusterObjectSetApplyConfiguration) WithResourceVersion(value string) *ClusterObjectSetApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.ResourceVersion = &value
 	return b
@@ -157,7 +157,7 @@ func (b *ClusterObjectSetRevisionApplyConfiguration) WithResourceVersion(value s
 // WithGeneration sets the Generation field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Generation field is set to the value of the last call.
-func (b *ClusterObjectSetRevisionApplyConfiguration) WithGeneration(value int64) *ClusterObjectSetRevisionApplyConfiguration {
+func (b *ClusterObjectSetApplyConfiguration) WithGeneration(value int64) *ClusterObjectSetApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.Generation = &value
 	return b
@@ -166,7 +166,7 @@ func (b *ClusterObjectSetRevisionApplyConfiguration) WithGeneration(value int64)
 // WithCreationTimestamp sets the CreationTimestamp field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the CreationTimestamp field is set to the value of the last call.
-func (b *ClusterObjectSetRevisionApplyConfiguration) WithCreationTimestamp(value metav1.Time) *ClusterObjectSetRevisionApplyConfiguration {
+func (b *ClusterObjectSetApplyConfiguration) WithCreationTimestamp(value metav1.Time) *ClusterObjectSetApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.CreationTimestamp = &value
 	return b
@@ -175,7 +175,7 @@ func (b *ClusterObjectSetRevisionApplyConfiguration) WithCreationTimestamp(value
 // WithDeletionTimestamp sets the DeletionTimestamp field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the DeletionTimestamp field is set to the value of the last call.
-func (b *ClusterObjectSetRevisionApplyConfiguration) WithDeletionTimestamp(value metav1.Time) *ClusterObjectSetRevisionApplyConfiguration {
+func (b *ClusterObjectSetApplyConfiguration) WithDeletionTimestamp(value metav1.Time) *ClusterObjectSetApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.DeletionTimestamp = &value
 	return b
@@ -184,7 +184,7 @@ func (b *ClusterObjectSetRevisionApplyConfiguration) WithDeletionTimestamp(value
 // WithDeletionGracePeriodSeconds sets the DeletionGracePeriodSeconds field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the DeletionGracePeriodSeconds field is set to the value of the last call.
-func (b *ClusterObjectSetRevisionApplyConfiguration) WithDeletionGracePeriodSeconds(value int64) *ClusterObjectSetRevisionApplyConfiguration {
+func (b *ClusterObjectSetApplyConfiguration) WithDeletionGracePeriodSeconds(value int64) *ClusterObjectSetApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.DeletionGracePeriodSeconds = &value
 	return b
@@ -194,7 +194,7 @@ func (b *ClusterObjectSetRevisionApplyConfiguration) WithDeletionGracePeriodSeco
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, the entries provided by each call will be put on the Labels field,
 // overwriting an existing map entries in Labels field with the same key.
-func (b *ClusterObjectSetRevisionApplyConfiguration) WithLabels(entries map[string]string) *ClusterObjectSetRevisionApplyConfiguration {
+func (b *ClusterObjectSetApplyConfiguration) WithLabels(entries map[string]string) *ClusterObjectSetApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	if b.ObjectMetaApplyConfiguration.Labels == nil && len(entries) > 0 {
 		b.ObjectMetaApplyConfiguration.Labels = make(map[string]string, len(entries))
@@ -209,7 +209,7 @@ func (b *ClusterObjectSetRevisionApplyConfiguration) WithLabels(entries map[stri
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, the entries provided by each call will be put on the Annotations field,
 // overwriting an existing map entries in Annotations field with the same key.
-func (b *ClusterObjectSetRevisionApplyConfiguration) WithAnnotations(entries map[string]string) *ClusterObjectSetRevisionApplyConfiguration {
+func (b *ClusterObjectSetApplyConfiguration) WithAnnotations(entries map[string]string) *ClusterObjectSetApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	if b.ObjectMetaApplyConfiguration.Annotations == nil && len(entries) > 0 {
 		b.ObjectMetaApplyConfiguration.Annotations = make(map[string]string, len(entries))
@@ -223,7 +223,7 @@ func (b *ClusterObjectSetRevisionApplyConfiguration) WithAnnotations(entries map
 // WithOwnerReferences adds the given value to the OwnerReferences field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the OwnerReferences field.
-func (b *ClusterObjectSetRevisionApplyConfiguration) WithOwnerReferences(values ...*v1.OwnerReferenceApplyConfiguration) *ClusterObjectSetRevisionApplyConfiguration {
+func (b *ClusterObjectSetApplyConfiguration) WithOwnerReferences(values ...*v1.OwnerReferenceApplyConfiguration) *ClusterObjectSetApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	for i := range values {
 		if values[i] == nil {
@@ -237,7 +237,7 @@ func (b *ClusterObjectSetRevisionApplyConfiguration) WithOwnerReferences(values 
 // WithFinalizers adds the given value to the Finalizers field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Finalizers field.
-func (b *ClusterObjectSetRevisionApplyConfiguration) WithFinalizers(values ...string) *ClusterObjectSetRevisionApplyConfiguration {
+func (b *ClusterObjectSetApplyConfiguration) WithFinalizers(values ...string) *ClusterObjectSetApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	for i := range values {
 		b.ObjectMetaApplyConfiguration.Finalizers = append(b.ObjectMetaApplyConfiguration.Finalizers, values[i])
@@ -245,7 +245,7 @@ func (b *ClusterObjectSetRevisionApplyConfiguration) WithFinalizers(values ...st
 	return b
 }
 
-func (b *ClusterObjectSetRevisionApplyConfiguration) ensureObjectMetaApplyConfigurationExists() {
+func (b *ClusterObjectSetApplyConfiguration) ensureObjectMetaApplyConfigurationExists() {
 	if b.ObjectMetaApplyConfiguration == nil {
 		b.ObjectMetaApplyConfiguration = &v1.ObjectMetaApplyConfiguration{}
 	}
@@ -254,7 +254,7 @@ func (b *ClusterObjectSetRevisionApplyConfiguration) ensureObjectMetaApplyConfig
 // WithSpec sets the Spec field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Spec field is set to the value of the last call.
-func (b *ClusterObjectSetRevisionApplyConfiguration) WithSpec(value *ClusterObjectSetRevisionSpecApplyConfiguration) *ClusterObjectSetRevisionApplyConfiguration {
+func (b *ClusterObjectSetApplyConfiguration) WithSpec(value *ClusterObjectSetSpecApplyConfiguration) *ClusterObjectSetApplyConfiguration {
 	b.Spec = value
 	return b
 }
@@ -262,29 +262,29 @@ func (b *ClusterObjectSetRevisionApplyConfiguration) WithSpec(value *ClusterObje
 // WithStatus sets the Status field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Status field is set to the value of the last call.
-func (b *ClusterObjectSetRevisionApplyConfiguration) WithStatus(value *ClusterObjectSetRevisionStatusApplyConfiguration) *ClusterObjectSetRevisionApplyConfiguration {
+func (b *ClusterObjectSetApplyConfiguration) WithStatus(value *ClusterObjectSetStatusApplyConfiguration) *ClusterObjectSetApplyConfiguration {
 	b.Status = value
 	return b
 }
 
 // GetKind retrieves the value of the Kind field in the declarative configuration.
-func (b *ClusterObjectSetRevisionApplyConfiguration) GetKind() *string {
+func (b *ClusterObjectSetApplyConfiguration) GetKind() *string {
 	return b.TypeMetaApplyConfiguration.Kind
 }
 
 // GetAPIVersion retrieves the value of the APIVersion field in the declarative configuration.
-func (b *ClusterObjectSetRevisionApplyConfiguration) GetAPIVersion() *string {
+func (b *ClusterObjectSetApplyConfiguration) GetAPIVersion() *string {
 	return b.TypeMetaApplyConfiguration.APIVersion
 }
 
 // GetName retrieves the value of the Name field in the declarative configuration.
-func (b *ClusterObjectSetRevisionApplyConfiguration) GetName() *string {
+func (b *ClusterObjectSetApplyConfiguration) GetName() *string {
 	b.ensureObjectMetaApplyConfigurationExists()
 	return b.ObjectMetaApplyConfiguration.Name
 }
 
 // GetNamespace retrieves the value of the Namespace field in the declarative configuration.
-func (b *ClusterObjectSetRevisionApplyConfiguration) GetNamespace() *string {
+func (b *ClusterObjectSetApplyConfiguration) GetNamespace() *string {
 	b.ensureObjectMetaApplyConfigurationExists()
 	return b.ObjectMetaApplyConfiguration.Namespace
 }

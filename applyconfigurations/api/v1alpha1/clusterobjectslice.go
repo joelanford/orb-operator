@@ -15,7 +15,7 @@ import (
 // with apply.
 //
 // ClusterObjectSlice is a placeholder resource reserved for future use as a
-// mechanism to split large ClusterObjectSetRevision phase content across
+// mechanism to split large ClusterObjectSet phase content across
 // multiple objects.
 type ClusterObjectSliceApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`

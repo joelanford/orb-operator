@@ -16,9 +16,9 @@ type ClusterObjectDeploymentStatusApplyConfiguration struct {
 	// active revision's managed objects satisfy their assertions.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 	// activeRevisions holds the currently active (non-archived)
-	// ClusterObjectSetRevision resources, including any revision just created
+	// ClusterObjectSet resources, including any revision just created
 	// but not yet visible in the informer cache.
-	ActiveRevisions []ClusterObjectSetRevisionStatusSummaryApplyConfiguration `json:"activeRevisions,omitempty"`
+	ActiveRevisions []ClusterObjectSetStatusSummaryApplyConfiguration `json:"activeRevisions,omitempty"`
 }
 
 // ClusterObjectDeploymentStatusApplyConfiguration constructs a declarative configuration of the ClusterObjectDeploymentStatus type for use with
@@ -43,7 +43,7 @@ func (b *ClusterObjectDeploymentStatusApplyConfiguration) WithConditions(values 
 // WithActiveRevisions adds the given value to the ActiveRevisions field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the ActiveRevisions field.
-func (b *ClusterObjectDeploymentStatusApplyConfiguration) WithActiveRevisions(values ...*ClusterObjectSetRevisionStatusSummaryApplyConfiguration) *ClusterObjectDeploymentStatusApplyConfiguration {
+func (b *ClusterObjectDeploymentStatusApplyConfiguration) WithActiveRevisions(values ...*ClusterObjectSetStatusSummaryApplyConfiguration) *ClusterObjectDeploymentStatusApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithActiveRevisions")

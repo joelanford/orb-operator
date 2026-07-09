@@ -4,16 +4,16 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.21.0
-  name: clusterobjectsetrevisions.orb.operatorframework.io
+  name: clusterobjectsets.orb.operatorframework.io
 spec:
   group: orb.operatorframework.io
   names:
-    kind: ClusterObjectSetRevision
-    listKind: ClusterObjectSetRevisionList
-    plural: clusterobjectsetrevisions
+    kind: ClusterObjectSet
+    listKind: ClusterObjectSetList
+    plural: clusterobjectsets
     shortNames:
-    - cosr
-    singular: clusterobjectsetrevision
+    - cos
+    singular: clusterobjectset
   scope: Cluster
   versions:
   - additionalPrinterColumns:
@@ -36,7 +36,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          ClusterObjectSetRevision represents an immutable snapshot of a set of
+          ClusterObjectSet represents an immutable snapshot of a set of
           Kubernetes objects to apply and manage on the cluster. Revisions within the
           same group form an ordered sequence.
 

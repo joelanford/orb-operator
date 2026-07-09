@@ -12,7 +12,7 @@
 | `sigs.k8s.io/controller-runtime` | Controller framework, manager, reconciler, envtest |
 | `k8s.io/client-go` | Kubernetes API client |
 | `k8s.io/apimachinery` | API types, runtime objects, scheme |
-| `package-operator/boxcutter` | Object management primitives for the COSR controller |
+| `package-operator/boxcutter` | Object management primitives for the COS controller |
 | `github.com/spf13/cobra` | CLI framework for the operator binary |
 | `github.com/spf13/pflag` | Flag parsing |
 | `k8s.io/klog/v2` | Logging implementation |
@@ -39,11 +39,11 @@ All build-time Go tools are declared as `tool` directives in go.mod and invoked 
 ```
 orb-operator/
 ├── api/
-│   └── v1alpha1/           # CRD types (COD, COSR, ClusterObjectSlice)
+│   └── v1alpha1/           # CRD types (COD, COS, ClusterObjectSlice)
 ├── cmd/
 │   └── operator/           # cobra entrypoint
 ├── internal/
-│   ├── controller/         # reconcilers (COD, COSR)
+│   ├── controller/         # reconcilers (COD, COS)
 │   ├── handler/            # object management (boxcutter integration)
 │   └── assertions/         # assertion evaluation logic
 ├── deploy/

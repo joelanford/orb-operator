@@ -32,35 +32,35 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
-	cosrac "github.com/joelanford/orb-operator/applyconfigurations/api/v1alpha1"
+	cosac "github.com/joelanford/orb-operator/applyconfigurations/api/v1alpha1"
 	"github.com/joelanford/orb-operator/internal/assertions"
 )
 
 const (
-	cosrFieldOwner = "cosr-controller"
-	managedBy      = "orb-operator"
-	systemPrefix   = "orb.operatorframework.io"
-	finalizerKey   = "orb.operatorframework.io/cosr-finalizer"
-	groupIndex     = ".spec.group"
+	cosFieldOwner = "cos-controller"
+	managedBy     = "orb-operator"
+	systemPrefix  = "orb.operatorframework.io"
+	finalizerKey  = "orb.operatorframework.io/cos-finalizer"
+	groupIndex    = ".spec.group"
 )
 
-type COSRReconciler struct {
+type COSReconciler struct {
 	client          client.Client
 	scheme          *runtime.Scheme
 	restMapper      meta.RESTMapper
 	discoveryClient discovery.OpenAPIV3SchemaInterface
-	accessManager   managedcache.ObjectBoundAccessManager[*orbv1alpha1.ClusterObjectSetRevision]
+	accessManager   managedcache.ObjectBoundAccessManager[*orbv1alpha1.ClusterObjectSet]
 	ownerStrategy   boxcutter.OwnerStrategy
 }
 
-func NewCOSRReconciler(
+func NewCOSReconciler(
 	c client.Client,
 	scheme *runtime.Scheme,
 	restMapper meta.RESTMapper,
 	discoveryClient discovery.OpenAPIV3SchemaInterface,
-	accessManager managedcache.ObjectBoundAccessManager[*orbv1alpha1.ClusterObjectSetRevision],
-) *COSRReconciler {
-	return &COSRReconciler{
+	accessManager managedcache.ObjectBoundAccessManager[*orbv1alpha1.ClusterObjectSet],
+) *COSReconciler {
+	return &COSReconciler{
 		client:          c,
 		scheme:          scheme,
 		restMapper:      restMapper,
@@ -73,32 +73,32 @@ func NewCOSRReconciler(
 func SetupIndexes(mgr ctrl.Manager) error {
 	return mgr.GetFieldIndexer().IndexField(
 		context.Background(),
-		&orbv1alpha1.ClusterObjectSetRevision{},
+		&orbv1alpha1.ClusterObjectSet{},
 		groupIndex,
 		func(obj client.Object) []string {
-			cosr := obj.(*orbv1alpha1.ClusterObjectSetRevision)
-			return []string{cosr.Spec.Group}
+			cos := obj.(*orbv1alpha1.ClusterObjectSet)
+			return []string{cos.Spec.Group}
 		},
 	)
 }
 
-func (r *COSRReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *COSReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		Named("cosr").
-		For(&orbv1alpha1.ClusterObjectSetRevision{}).
+		Named("cos").
+		For(&orbv1alpha1.ClusterObjectSet{}).
 		WatchesRawSource(
 			r.accessManager.Source(
-				handler.EnqueueRequestForOwner(r.scheme, mgr.GetRESTMapper(), &orbv1alpha1.ClusterObjectSetRevision{}, handler.OnlyControllerOwner()),
+				handler.EnqueueRequestForOwner(r.scheme, mgr.GetRESTMapper(), &orbv1alpha1.ClusterObjectSet{}, handler.OnlyControllerOwner()),
 			),
 		).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 4}).
 		Complete(r)
 }
 
-func (r *COSRReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *COSReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
 
-	existing := &orbv1alpha1.ClusterObjectSetRevision{}
+	existing := &orbv1alpha1.ClusterObjectSet{}
 	if err := r.client.Get(ctx, req.NamespacedName, existing); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -106,37 +106,37 @@ func (r *COSRReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	return r.reconcile(ctx, log, existing)
 }
 
-func (r *COSRReconciler) reconcile(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (ctrl.Result, error) {
-	if !cosr.DeletionTimestamp.IsZero() || cosr.Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived {
-		return r.teardownAndRelease(ctx, log, cosr)
+func (r *COSReconciler) reconcile(ctx context.Context, log logr.Logger, cos *orbv1alpha1.ClusterObjectSet) (ctrl.Result, error) {
+	if !cos.DeletionTimestamp.IsZero() || cos.Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived {
+		return r.teardownAndRelease(ctx, log, cos)
 	}
 
-	groupMembers, err := r.listGroupMembers(ctx, cosr.Spec.Group)
+	groupMembers, err := r.listGroupMembers(ctx, cos.Spec.Group)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	ownerKey := controllerOwnerKeyOf(cosr)
+	ownerKey := controllerOwnerKeyOf(cos)
 	members := filterByControllerOwner(groupMembers, ownerKey)
 	chain := buildChain(members)
 
-	if applied, err := r.ensureFinalizer(ctx, cosr); applied || err != nil {
+	if applied, err := r.ensureFinalizer(ctx, cos); applied || err != nil {
 		return ctrl.Result{}, err
 	}
 
-	siblings := chain.siblingsOf(cosr)
-	return ctrl.Result{}, r.reconcileActive(ctx, log, cosr, siblings)
+	siblings := chain.siblingsOf(cos)
+	return ctrl.Result{}, r.reconcileActive(ctx, log, cos, siblings)
 }
 
 type revisionChain struct {
-	latestActive *orbv1alpha1.ClusterObjectSetRevision
-	predecessors []*orbv1alpha1.ClusterObjectSetRevision
-	archived     []*orbv1alpha1.ClusterObjectSetRevision
-	deleted      []*orbv1alpha1.ClusterObjectSetRevision
+	latestActive *orbv1alpha1.ClusterObjectSet
+	predecessors []*orbv1alpha1.ClusterObjectSet
+	archived     []*orbv1alpha1.ClusterObjectSet
+	deleted      []*orbv1alpha1.ClusterObjectSet
 }
 
-func buildChain(members []orbv1alpha1.ClusterObjectSetRevision) revisionChain {
-	slices.SortFunc(members, func(a, b orbv1alpha1.ClusterObjectSetRevision) int {
+func buildChain(members []orbv1alpha1.ClusterObjectSet) revisionChain {
+	slices.SortFunc(members, func(a, b orbv1alpha1.ClusterObjectSet) int {
 		return cmp.Compare(b.Spec.Revision, a.Spec.Revision)
 	})
 
@@ -157,69 +157,69 @@ func buildChain(members []orbv1alpha1.ClusterObjectSetRevision) revisionChain {
 	return ch
 }
 
-func (ch revisionChain) siblingsOf(cosr *orbv1alpha1.ClusterObjectSetRevision) []*orbv1alpha1.ClusterObjectSetRevision {
-	var siblings []*orbv1alpha1.ClusterObjectSetRevision
-	if ch.latestActive != nil && ch.latestActive.Name != cosr.Name {
+func (ch revisionChain) siblingsOf(cos *orbv1alpha1.ClusterObjectSet) []*orbv1alpha1.ClusterObjectSet {
+	var siblings []*orbv1alpha1.ClusterObjectSet
+	if ch.latestActive != nil && ch.latestActive.Name != cos.Name {
 		siblings = append(siblings, ch.latestActive)
 	}
 	for _, p := range ch.predecessors {
-		if p.Name != cosr.Name {
+		if p.Name != cos.Name {
 			siblings = append(siblings, p)
 		}
 	}
 	return siblings
 }
 
-func (r *COSRReconciler) ensureFinalizer(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) (bool, error) {
-	applied, err := applyCOSR(ctx, r.client, cosr, cosrFieldOwner,
-		func(cosr *orbv1alpha1.ClusterObjectSetRevision) bool {
-			return !controllerutil.ContainsFinalizer(cosr, finalizerKey)
+func (r *COSReconciler) ensureFinalizer(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet) (bool, error) {
+	applied, err := applyCOS(ctx, r.client, cos, cosFieldOwner,
+		func(cos *orbv1alpha1.ClusterObjectSet) bool {
+			return !controllerutil.ContainsFinalizer(cos, finalizerKey)
 		},
-		func(ac *cosrac.ClusterObjectSetRevisionApplyConfiguration) {
+		func(ac *cosac.ClusterObjectSetApplyConfiguration) {
 			ac.WithFinalizers(finalizerKey)
 		},
 	)
 	if err != nil {
-		return false, fmt.Errorf("adding finalizer to %s: %w", cosr.Name, err)
+		return false, fmt.Errorf("adding finalizer to %s: %w", cos.Name, err)
 	}
 	return applied, nil
 }
 
-func (r *COSRReconciler) reconcileActive(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision, siblings []*orbv1alpha1.ClusterObjectSetRevision) error {
-	log.Info("reconciling active COSR")
+func (r *COSReconciler) reconcileActive(ctx context.Context, log logr.Logger, cos *orbv1alpha1.ClusterObjectSet, siblings []*orbv1alpha1.ClusterObjectSet) error {
+	log.Info("reconciling active COS")
 
-	existing := cosr.DeepCopy()
-	reconcileErr := r.doReconcileActive(ctx, cosr, siblings)
+	existing := cos.DeepCopy()
+	reconcileErr := r.doReconcileActive(ctx, cos, siblings)
 
-	if !equality.Semantic.DeepEqual(existing.Status, cosr.Status) {
-		if err := r.client.Status().Update(ctx, cosr); err != nil {
-			return errors.Join(reconcileErr, fmt.Errorf("updating status for %s: %w", cosr.Name, err))
+	if !equality.Semantic.DeepEqual(existing.Status, cos.Status) {
+		if err := r.client.Status().Update(ctx, cos); err != nil {
+			return errors.Join(reconcileErr, fmt.Errorf("updating status for %s: %w", cos.Name, err))
 		}
 	}
 	return reconcileErr
 }
 
-func (r *COSRReconciler) doReconcileActive(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision, siblings []*orbv1alpha1.ClusterObjectSetRevision) error {
-	engine, err := r.engineForCOSR(ctx, cosr)
+func (r *COSReconciler) doReconcileActive(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, siblings []*orbv1alpha1.ClusterObjectSet) error {
+	engine, err := r.engineForCOS(ctx, cos)
 	if err != nil {
-		setInternalErrorStatus(cosr, fmt.Sprintf("engine setup: %v", err))
+		setInternalErrorStatus(cos, fmt.Sprintf("engine setup: %v", err))
 		return err
 	}
 
-	rev, err := r.buildRevisionWithSiblings(cosr, siblings)
+	rev, err := r.buildRevisionWithSiblings(cos, siblings)
 	if err != nil {
-		setInternalErrorStatus(cosr, fmt.Sprintf("building revision: %v", err))
+		setInternalErrorStatus(cos, fmt.Sprintf("building revision: %v", err))
 		return fmt.Errorf("building revision: %w", err)
 	}
 	result, err := engine.Reconcile(ctx, rev, types.WithAggregatePhaseReconcileErrors())
-	cosr.Status.ObservedPhases = observedPhasesFromReconcileResult(cosr.Spec.Phases, result)
+	cos.Status.ObservedPhases = observedPhasesFromReconcileResult(cos.Spec.Phases, result)
 	if err != nil {
-		setCondition(cosr, metav1.ConditionUnknown, orbv1alpha1.ReasonReconcileError, fmt.Sprintf("reconcile failed: %v", err))
+		setCondition(cos, metav1.ConditionUnknown, orbv1alpha1.ReasonReconcileError, fmt.Sprintf("reconcile failed: %v", err))
 		return fmt.Errorf("reconciling: %w", err)
 	}
 
 	if verr := result.GetValidationError(); verr != nil {
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonInvalidRevision, verr.Error())
+		setCondition(cos, metav1.ConditionFalse, orbv1alpha1.ReasonInvalidRevision, verr.Error())
 		return nil
 	}
 
@@ -228,39 +228,39 @@ func (r *COSRReconciler) doReconcileActive(ctx context.Context, cosr *orbv1alpha
 	// sibling" from "all objects healthy under this revision."
 	switch {
 	case result.HasProgressed():
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, "all objects adopted by a newer revision")
+		setCondition(cos, metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded, "all objects adopted by a newer revision")
 	case result.IsComplete():
-		if cosr.Status.CompletedAt == nil {
+		if cos.Status.CompletedAt == nil {
 			now := metav1.Now()
-			cosr.Status.CompletedAt = &now
+			cos.Status.CompletedAt = &now
 		}
-		setCondition(cosr, metav1.ConditionTrue, orbv1alpha1.ReasonAvailable, "all phases complete")
+		setCondition(cos, metav1.ConditionTrue, orbv1alpha1.ReasonAvailable, "all phases complete")
 	default:
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, "phases not yet complete")
+		setCondition(cos, metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, "phases not yet complete")
 	}
 	return nil
 }
 
-func (r *COSRReconciler) teardownAndRelease(ctx context.Context, log logr.Logger, cosr *orbv1alpha1.ClusterObjectSetRevision) (ctrl.Result, error) {
-	if !controllerutil.ContainsFinalizer(cosr, finalizerKey) {
+func (r *COSReconciler) teardownAndRelease(ctx context.Context, log logr.Logger, cos *orbv1alpha1.ClusterObjectSet) (ctrl.Result, error) {
+	if !controllerutil.ContainsFinalizer(cos, finalizerKey) {
 		return ctrl.Result{}, nil
 	}
 
-	// The VAP "cosr-orphan-finalizer-ordering" guarantees the "orphan" finalizer
+	// The VAP "cos-orphan-finalizer-ordering" guarantees the "orphan" finalizer
 	// cannot be removed while our finalizer is still present. When the "orphan"
 	// finalizer is set, skip teardown but still release the finalizer so the
 	// deletion can proceed.
-	if !cosr.DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(cosr, "orphan") {
+	if !cos.DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(cos, "orphan") {
 		log.Info("orphan finalizer present, skipping teardown")
-		return ctrl.Result{}, r.releaseCOSR(ctx, cosr)
+		return ctrl.Result{}, r.releaseCOS(ctx, cos)
 	}
 
-	existing := cosr.DeepCopy()
-	requeue, reconcileErr := r.doTeardownCOSR(ctx, cosr)
+	existing := cos.DeepCopy()
+	requeue, reconcileErr := r.doTeardownCOS(ctx, cos)
 
-	if !equality.Semantic.DeepEqual(existing.Status, cosr.Status) {
-		if err := r.client.Status().Update(ctx, cosr); err != nil {
-			return ctrl.Result{}, errors.Join(reconcileErr, fmt.Errorf("updating status for %s: %w", cosr.Name, err))
+	if !equality.Semantic.DeepEqual(existing.Status, cos.Status) {
+		if err := r.client.Status().Update(ctx, cos); err != nil {
+			return ctrl.Result{}, errors.Join(reconcileErr, fmt.Errorf("updating status for %s: %w", cos.Name, err))
 		}
 	}
 	if reconcileErr != nil {
@@ -270,27 +270,27 @@ func (r *COSRReconciler) teardownAndRelease(ctx context.Context, log logr.Logger
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	if err := r.releaseCOSR(ctx, cosr); err != nil {
+	if err := r.releaseCOS(ctx, cos); err != nil {
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
 }
 
-func (r *COSRReconciler) doTeardownCOSR(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) (bool, error) {
-	engine, err := r.engineForCOSR(ctx, cosr)
+func (r *COSReconciler) doTeardownCOS(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet) (bool, error) {
+	engine, err := r.engineForCOS(ctx, cos)
 	if err != nil {
-		setInternalErrorStatus(cosr, fmt.Sprintf("engine setup: %v", err))
+		setInternalErrorStatus(cos, fmt.Sprintf("engine setup: %v", err))
 		return false, fmt.Errorf("engine setup: %w", err)
 	}
 
-	rev, err := r.buildRevision(cosr)
+	rev, err := r.buildRevision(cos)
 	if err != nil {
-		setInternalErrorStatus(cosr, fmt.Sprintf("building revision: %v", err))
+		setInternalErrorStatus(cos, fmt.Sprintf("building revision: %v", err))
 		return false, fmt.Errorf("building revision: %w", err)
 	}
 
 	result, teardownErr := engine.Teardown(ctx, rev, types.WithAggregatePhaseTeardownErrors())
-	setTeardownStatus(cosr, result, teardownErr)
+	setTeardownStatus(cos, result, teardownErr)
 
 	if teardownErr != nil {
 		return false, fmt.Errorf("teardown: %w", teardownErr)
@@ -301,49 +301,49 @@ func (r *COSRReconciler) doTeardownCOSR(ctx context.Context, cosr *orbv1alpha1.C
 	return false, nil
 }
 
-func setTeardownStatus(cosr *orbv1alpha1.ClusterObjectSetRevision, result machinery.RevisionTeardownResult, teardownErr error) {
-	cosr.Status.ObservedPhases = observedPhasesFromTeardownResult(cosr.Spec.Phases, result)
+func setTeardownStatus(cos *orbv1alpha1.ClusterObjectSet, result machinery.RevisionTeardownResult, teardownErr error) {
+	cos.Status.ObservedPhases = observedPhasesFromTeardownResult(cos.Spec.Phases, result)
 	switch {
 	case teardownErr != nil:
-		setCondition(cosr, metav1.ConditionUnknown, orbv1alpha1.ReasonTeardownError,
+		setCondition(cos, metav1.ConditionUnknown, orbv1alpha1.ReasonTeardownError,
 			fmt.Sprintf("teardown failed: %v", teardownErr))
 	case result != nil && !result.IsComplete():
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, "teardown in progress")
+		setCondition(cos, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, "teardown in progress")
 	default:
-		setCondition(cosr, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, "teardown complete")
+		setCondition(cos, metav1.ConditionFalse, orbv1alpha1.ReasonArchived, "teardown complete")
 	}
 }
 
-func (r *COSRReconciler) releaseCOSR(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) error {
-	if err := r.accessManager.FreeWithUser(ctx, cosr, cosr); err != nil {
+func (r *COSReconciler) releaseCOS(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet) error {
+	if err := r.accessManager.FreeWithUser(ctx, cos, cos); err != nil {
 		return fmt.Errorf("freeing access manager: %w", err)
 	}
-	if err := removeFinalizer(ctx, r.client, cosr, finalizerKey); err != nil {
+	if err := removeFinalizer(ctx, r.client, cos, finalizerKey); err != nil {
 		return fmt.Errorf("removing finalizer: %w", err)
 	}
 	// Wait for the informer cache to reflect the finalizer removal (or
 	// deletion) before returning. controller-runtime serializes reconciles
 	// per key, so blocking here ensures the next queued reconcile reads the
 	// updated state and exits early at the ContainsFinalizer check instead
-	// of re-acquiring the cache for a doomed COSR.
-	if err := waitForFinalizerRemoval(ctx, r.client, client.ObjectKeyFromObject(cosr)); err != nil {
+	// of re-acquiring the cache for a doomed COS.
+	if err := waitForFinalizerRemoval(ctx, r.client, client.ObjectKeyFromObject(cos)); err != nil {
 		return fmt.Errorf("waiting for cache to sync finalizer removal: %w", err)
 	}
 	return nil
 }
 
-func (r *COSRReconciler) engineForCOSR(ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) (*boxcutter.RevisionEngine, error) {
-	usedFor, err := r.managedObjectsForCOSR(cosr)
+func (r *COSReconciler) engineForCOS(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet) (*boxcutter.RevisionEngine, error) {
+	usedFor, err := r.managedObjectsForCOS(cos)
 	if err != nil {
 		return nil, fmt.Errorf("listing managed objects: %w", err)
 	}
-	accessor, err := r.accessManager.GetWithUser(ctx, cosr, cosr, usedFor)
+	accessor, err := r.accessManager.GetWithUser(ctx, cos, cos, usedFor)
 	if err != nil {
 		return nil, fmt.Errorf("getting accessor: %w", err)
 	}
 	engine, err := boxcutter.NewRevisionEngine(boxcutter.RevisionEngineOptions{
 		Scheme:           r.scheme,
-		FieldOwner:       "cosr-group/" + cosr.Spec.Group,
+		FieldOwner:       "cos-group/" + cos.Spec.Group,
 		SystemPrefix:     systemPrefix,
 		ManagedBy:        managedBy,
 		DiscoveryClient:  r.discoveryClient,
@@ -358,10 +358,10 @@ func (r *COSRReconciler) engineForCOSR(ctx context.Context, cosr *orbv1alpha1.Cl
 	return engine, nil
 }
 
-func (r *COSRReconciler) managedObjectsForCOSR(cosr *orbv1alpha1.ClusterObjectSetRevision) ([]client.Object, error) {
+func (r *COSReconciler) managedObjectsForCOS(cos *orbv1alpha1.ClusterObjectSet) ([]client.Object, error) {
 	seen := map[schema.GroupVersionKind]struct{}{}
 	var objects []client.Object
-	for _, p := range cosr.Spec.Phases {
+	for _, p := range cos.Spec.Phases {
 		for _, o := range p.Objects {
 			obj, err := objectFromRawExtension(o.Object)
 			if err != nil {
@@ -378,17 +378,17 @@ func (r *COSRReconciler) managedObjectsForCOSR(cosr *orbv1alpha1.ClusterObjectSe
 	return objects, nil
 }
 
-func (r *COSRReconciler) buildRevision(cosr *orbv1alpha1.ClusterObjectSetRevision) (boxcutter.Revision, error) {
-	return r.buildRevisionWithSiblings(cosr, nil)
+func (r *COSReconciler) buildRevision(cos *orbv1alpha1.ClusterObjectSet) (boxcutter.Revision, error) {
+	return r.buildRevisionWithSiblings(cos, nil)
 }
 
-func (r *COSRReconciler) buildRevisionWithSiblings(
-	cosr *orbv1alpha1.ClusterObjectSetRevision,
-	siblings []*orbv1alpha1.ClusterObjectSetRevision,
+func (r *COSReconciler) buildRevisionWithSiblings(
+	cos *orbv1alpha1.ClusterObjectSet,
+	siblings []*orbv1alpha1.ClusterObjectSet,
 ) (boxcutter.Revision, error) {
-	phases := make([]boxcutter.Phase, 0, len(cosr.Spec.Phases))
+	phases := make([]boxcutter.Phase, 0, len(cos.Spec.Phases))
 
-	for _, p := range cosr.Spec.Phases {
+	for _, p := range cos.Spec.Phases {
 		objects := make([]client.Object, 0, len(p.Objects))
 		var phaseReconcileOpts []boxcutter.PhaseReconcileOption
 
@@ -426,7 +426,7 @@ func (r *COSRReconciler) buildRevisionWithSiblings(
 			}
 		}
 
-		phase := boxcutter.NewPhaseWithOwner(p.Name, objects, cosr, r.ownerStrategy)
+		phase := boxcutter.NewPhaseWithOwner(p.Name, objects, cos, r.ownerStrategy)
 		if len(phaseReconcileOpts) > 0 {
 			phase.WithReconcileOptions(phaseReconcileOpts...)
 		}
@@ -435,8 +435,8 @@ func (r *COSRReconciler) buildRevisionWithSiblings(
 
 	var reconcileOpts []boxcutter.RevisionReconcileOption
 
-	if cosr.Spec.CollisionProtection != nil {
-		reconcileOpts = append(reconcileOpts, mapCollisionProtection(*cosr.Spec.CollisionProtection))
+	if cos.Spec.CollisionProtection != nil {
+		reconcileOpts = append(reconcileOpts, mapCollisionProtection(*cos.Spec.CollisionProtection))
 	} else {
 		reconcileOpts = append(reconcileOpts, mapCollisionProtection(orbv1alpha1.CollisionProtectionPrevent))
 	}
@@ -450,10 +450,10 @@ func (r *COSRReconciler) buildRevisionWithSiblings(
 	}
 
 	rev := boxcutter.NewRevisionWithOwner(
-		cosr.Name,
-		int64(cosr.Spec.Revision),
+		cos.Name,
+		int64(cos.Spec.Revision),
 		phases,
-		cosr,
+		cos,
 		r.ownerStrategy,
 	)
 	if len(reconcileOpts) > 0 {
@@ -462,12 +462,12 @@ func (r *COSRReconciler) buildRevisionWithSiblings(
 	return rev, nil
 }
 
-func (r *COSRReconciler) listGroupMembers(ctx context.Context, group string) ([]orbv1alpha1.ClusterObjectSetRevision, error) {
-	var list orbv1alpha1.ClusterObjectSetRevisionList
+func (r *COSReconciler) listGroupMembers(ctx context.Context, group string) ([]orbv1alpha1.ClusterObjectSet, error) {
+	var list orbv1alpha1.ClusterObjectSetList
 	if err := r.client.List(ctx, &list, client.MatchingFields{groupIndex: group}); err != nil {
 		return nil, fmt.Errorf("listing group members: %w", err)
 	}
-	slices.SortFunc(list.Items, func(a, b orbv1alpha1.ClusterObjectSetRevision) int {
+	slices.SortFunc(list.Items, func(a, b orbv1alpha1.ClusterObjectSet) int {
 		return cmp.Compare(a.Spec.Revision, b.Spec.Revision)
 	})
 	return list.Items, nil
@@ -478,16 +478,16 @@ type controllerOwnerKey struct {
 	Name string
 }
 
-func controllerOwnerKeyOf(cosr *orbv1alpha1.ClusterObjectSetRevision) controllerOwnerKey {
-	ref := metav1.GetControllerOf(cosr)
+func controllerOwnerKeyOf(cos *orbv1alpha1.ClusterObjectSet) controllerOwnerKey {
+	ref := metav1.GetControllerOf(cos)
 	if ref == nil {
 		return controllerOwnerKey{}
 	}
 	return controllerOwnerKey{Kind: ref.Kind, Name: ref.Name}
 }
 
-func filterByControllerOwner(members []orbv1alpha1.ClusterObjectSetRevision, key controllerOwnerKey) []orbv1alpha1.ClusterObjectSetRevision {
-	var result []orbv1alpha1.ClusterObjectSetRevision
+func filterByControllerOwner(members []orbv1alpha1.ClusterObjectSet, key controllerOwnerKey) []orbv1alpha1.ClusterObjectSet {
+	var result []orbv1alpha1.ClusterObjectSet
 	for _, m := range members {
 		if controllerOwnerKeyOf(&m) == key {
 			result = append(result, m)
@@ -513,38 +513,38 @@ func objectFromRawExtension(raw runtime.RawExtension) (*unstructured.Unstructure
 	return u, nil
 }
 
-func setInternalErrorStatus(cosr *orbv1alpha1.ClusterObjectSetRevision, message string) {
-	cosr.Status.ObservedPhases = nil
-	setCondition(cosr, metav1.ConditionUnknown, orbv1alpha1.ReasonInternalError, message)
+func setInternalErrorStatus(cos *orbv1alpha1.ClusterObjectSet, message string) {
+	cos.Status.ObservedPhases = nil
+	setCondition(cos, metav1.ConditionUnknown, orbv1alpha1.ReasonInternalError, message)
 }
 
-func setCondition(cosr *orbv1alpha1.ClusterObjectSetRevision, status metav1.ConditionStatus, reason, message string) {
-	meta.SetStatusCondition(&cosr.Status.Conditions, metav1.Condition{
+func setCondition(cos *orbv1alpha1.ClusterObjectSet, status metav1.ConditionStatus, reason, message string) {
+	meta.SetStatusCondition(&cos.Status.Conditions, metav1.Condition{
 		Type:               orbv1alpha1.ConditionTypeAvailable,
 		Status:             status,
 		Reason:             reason,
 		Message:            message,
-		ObservedGeneration: cosr.Generation,
+		ObservedGeneration: cos.Generation,
 	})
 }
 
-func removeFinalizer(ctx context.Context, c client.Client, cosr *orbv1alpha1.ClusterObjectSetRevision, finalizer string) error {
-	if !controllerutil.ContainsFinalizer(cosr, finalizer) {
+func removeFinalizer(ctx context.Context, c client.Client, cos *orbv1alpha1.ClusterObjectSet, finalizer string) error {
+	if !controllerutil.ContainsFinalizer(cos, finalizer) {
 		return nil
 	}
-	patch := client.MergeFromWithOptions(cosr.DeepCopy(), client.MergeFromWithOptimisticLock{})
-	controllerutil.RemoveFinalizer(cosr, finalizer)
-	clearFinalizerFieldOwnership(cosr.ManagedFields, cosrFieldOwner, finalizer)
-	return c.Patch(ctx, cosr, patch)
+	patch := client.MergeFromWithOptions(cos.DeepCopy(), client.MergeFromWithOptimisticLock{})
+	controllerutil.RemoveFinalizer(cos, finalizer)
+	clearFinalizerFieldOwnership(cos.ManagedFields, cosFieldOwner, finalizer)
+	return c.Patch(ctx, cos, patch)
 }
 
 func waitForFinalizerRemoval(ctx context.Context, c client.Client, key client.ObjectKey) error {
 	return wait.PollUntilContextTimeout(ctx, 50*time.Millisecond, 5*time.Second, true, func(ctx context.Context) (bool, error) {
-		var cosr orbv1alpha1.ClusterObjectSetRevision
-		if err := c.Get(ctx, key, &cosr); err != nil {
+		var cos orbv1alpha1.ClusterObjectSet
+		if err := c.Get(ctx, key, &cos); err != nil {
 			return apierrors.IsNotFound(err), client.IgnoreNotFound(err)
 		}
-		return !controllerutil.ContainsFinalizer(&cosr, finalizerKey), nil
+		return !controllerutil.ContainsFinalizer(&cos, finalizerKey), nil
 	})
 }
 

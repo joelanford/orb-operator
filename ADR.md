@@ -39,7 +39,7 @@ The extension object management architecture uses five cooperating API resources
                     └──┬───────┬──┘
              manages   │       │   manages
           ┌────────────▼─┐   ┌─▼────────────┐
-          │ COSR         │   │ COSR         │
+          │ COS         │   │ COS         │
           │ rev: 1       │   │ rev: 2       │
           │ state:Active │   │ state:Active │
           └──┬───────────┘   └───────────┬──┘
@@ -72,16 +72,16 @@ The extension object management architecture uses five cooperating API resources
 
 The ClusterExtension controller is the only component that interacts with catalogs and performs resolution. Everything below this layer is catalog-agnostic.
 
-### Layer 2: Orchestration — ClusterObjectDeployment and ClusterObjectSetRevision
+### Layer 2: Orchestration — ClusterObjectDeployment and ClusterObjectSet
 
-**ClusterObjectDeployment (COD)** is a mutable, cluster-scoped resource analogous to a Deployment. It declares a template for ClusterObjectSetRevisions. When its spec changes, the COD controller stamps out a new COSR from the template.
+**ClusterObjectDeployment (COD)** is a mutable, cluster-scoped resource analogous to a Deployment. It declares a template for ClusterObjectSets. When its spec changes, the COD controller stamps out a new COS from the template.
 
 Spec fields:
 - `progressDeadlineMinutes` — deadline for rollout progress
-- `template.metadata` — labels and annotations propagated to stamped-out COSRs (analogous to `Deployment.spec.template.metadata`). Callers attach arbitrary metadata here (package name, bundle version, service account info) without the COD API needing to know about those concerns.
-- `template.spec` — the COSR spec template (phases, collisionProtection, per-object assertions)
+- `template.metadata` — labels and annotations propagated to stamped-out COSs (analogous to `Deployment.spec.template.metadata`). Callers attach arbitrary metadata here (package name, bundle version, service account info) without the COD API needing to know about those concerns.
+- `template.spec` — the COS spec template (phases, collisionProtection, per-object assertions)
 
-**ClusterObjectSetRevision (COSR)** is a point-in-time snapshot analogous to a ReplicaSet. COSRs with the same `group` form a revision chain ordered by `revision`. The COSR controller manages object ownership handoffs within a group.
+**ClusterObjectSet (COS)** is a point-in-time snapshot analogous to a ReplicaSet. COSs with the same `group` form a revision chain ordered by `revision`. The COS controller manages object ownership handoffs within a group.
 
 Immutable spec fields:
 - `group` — identifies the revision chain
@@ -92,22 +92,22 @@ Immutable spec fields:
 Mutable spec field:
 - `lifecycleState` — `Active` or `Archived` (one-way transition)
 
-COSRs can be created by the COD controller or directly by users and other controllers. The `group` and `revision` fields give the COSR controller everything it needs to manage handoffs regardless of who created the COSR.
+COSs can be created by the COD controller or directly by users and other controllers. The `group` and `revision` fields give the COS controller everything it needs to manage handoffs regardless of who created the COS.
 
 ### Layer 3: Content — ClusterObjectSlice
 
 **ClusterObjectSlice** is a cluster-scoped resource that carries embedded Kubernetes object definitions. It replaces the use of Secrets as an external storage mechanism for object manifests.
 
-COSRs reference ClusterObjectSlices rather than embedding all object manifests directly. This solves the etcd size limit problem: a single COSR stays small (just references), while the actual manifests are distributed across one or more ClusterObjectSlice resources.
+COSs reference ClusterObjectSlices rather than embedding all object manifests directly. This solves the etcd size limit problem: a single COS stays small (just references), while the actual manifests are distributed across one or more ClusterObjectSlice resources.
 
-The caller (e.g. the ClusterExtension controller) creates ClusterObjectSlices. The COD and COSR controllers only resolve refs — they never create, own, or manage ClusterObjectSlices.
+The caller (e.g. the ClusterExtension controller) creates ClusterObjectSlices. The COD and COS controllers only resolve refs — they never create, own, or manage ClusterObjectSlices.
 
 ### Object Lifecycle During Revision Transitions
 
 When transitioning from revision N to revision N+1 within a group:
 
-1. A new COSR is created with `revision: N+1` and `lifecycleState: Active`.
-2. Both COSRs are active simultaneously. The COSR controller begins transferring object ownership from revision N to revision N+1 as objects in the new revision become ready.
+1. A new COS is created with `revision: N+1` and `lifecycleState: Active`.
+2. Both COSs are active simultaneously. The COS controller begins transferring object ownership from revision N to revision N+1 as objects in the new revision become ready.
 3. Phases roll out sequentially — each phase waits for all its objects to pass their inline assertions before the next phase begins.
 4. Once the new revision succeeds, the old revision's `lifecycleState` is set to `Archived`.
 5. Archival removes the old revision from the owner list of all managed objects. Objects that did not transition to the new revision are deleted.
@@ -127,7 +127,7 @@ Several resource kinds have built-in assertions (e.g. CRD checks `Established=Tr
 
 ### Collision Protection
 
-Collision protection controls whether a COSR can adopt pre-existing objects. It is configured at three levels, with the most specific taking precedence: **object > phase > spec**.
+Collision protection controls whether a COS can adopt pre-existing objects. It is configured at three levels, with the most specific taking precedence: **object > phase > spec**.
 
 - **Prevent** — only manages objects the revision created itself
 - **IfNoController** — can adopt pre-existing objects not owned by another controller
@@ -135,12 +135,12 @@ Collision protection controls whether a COSR can adopt pre-existing objects. It 
 
 ### Labels and Annotations
 
-The COD and COSR APIs define no domain-specific labels. Caller-specific metadata (package name, bundle version, service account info) is passed through `template.metadata` on the COD, which propagates it to COSRs. This keeps the orchestration layer decoupled from the resolution layer.
+The COD and COS APIs define no domain-specific labels. Caller-specific metadata (package name, bundle version, service account info) is passed through `template.metadata` on the COD, which propagates it to COSs. This keeps the orchestration layer decoupled from the resolution layer.
 
 ## Consequences
 
-- **COD and COSR are independently useful.** Any controller or user can create COSRs directly (without a COD) to manage phased rollouts of arbitrary Kubernetes resources. The `group` and `revision` fields are sufficient for the COSR controller to manage handoffs.
+- **COD and COS are independently useful.** Any controller or user can create COSs directly (without a COD) to manage phased rollouts of arbitrary Kubernetes resources. The `group` and `revision` fields are sufficient for the COS controller to manage handoffs.
 - **The ClusterExtension controller simplifies.** It resolves a bundle, creates ClusterObjectSlices with the content, and creates or updates a COD. It no longer directly manages revision numbers, Secret ownership, or object application.
 - **ClusterObjectSlice replaces Secrets for content storage.** Object manifests are stored in purpose-built ClusterObjectSlice resources instead of being packed into Secrets. This provides a clearer API contract and avoids overloading the Secret type.
-- **Template metadata is the extension point.** The COD `template.metadata` field is the seam between the resolution layer (which knows about packages and bundles) and the orchestration layer (which does not). Any future metadata needs from callers are satisfied by adding labels/annotations to the template, not by extending the COD/COSR spec.
-- **Single ownership is enforced.** Each Kubernetes resource is managed by at most one COSR at a time within a group. Ownership transfers are coordinated by the COSR controller during revision transitions.
+- **Template metadata is the extension point.** The COD `template.metadata` field is the seam between the resolution layer (which knows about packages and bundles) and the orchestration layer (which does not). Any future metadata needs from callers are satisfied by adding labels/annotations to the template, not by extending the COD/COS spec.
+- **Single ownership is enforced.** Each Kubernetes resource is managed by at most one COS at a time within a group. Ownership transfers are coordinated by the COS controller during revision transitions.

@@ -7,12 +7,12 @@ import (
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// ClusterObjectSetRevisionStatusApplyConfiguration represents a declarative configuration of the ClusterObjectSetRevisionStatus type for use
+// ClusterObjectSetStatusApplyConfiguration represents a declarative configuration of the ClusterObjectSetStatus type for use
 // with apply.
 //
-// ClusterObjectSetRevisionStatus reports the observed state of a
-// ClusterObjectSetRevision.
-type ClusterObjectSetRevisionStatusApplyConfiguration struct {
+// ClusterObjectSetStatus reports the observed state of a
+// ClusterObjectSet.
+type ClusterObjectSetStatusApplyConfiguration struct {
 	// conditions represent the latest available observations of the revision's
 	// state. The "Available" condition indicates whether all managed objects in
 	// this revision satisfy their assertions.
@@ -30,16 +30,16 @@ type ClusterObjectSetRevisionStatusApplyConfiguration struct {
 	ObservedPhases []ObservedPhaseApplyConfiguration `json:"observedPhases,omitempty"`
 }
 
-// ClusterObjectSetRevisionStatusApplyConfiguration constructs a declarative configuration of the ClusterObjectSetRevisionStatus type for use with
+// ClusterObjectSetStatusApplyConfiguration constructs a declarative configuration of the ClusterObjectSetStatus type for use with
 // apply.
-func ClusterObjectSetRevisionStatus() *ClusterObjectSetRevisionStatusApplyConfiguration {
-	return &ClusterObjectSetRevisionStatusApplyConfiguration{}
+func ClusterObjectSetStatus() *ClusterObjectSetStatusApplyConfiguration {
+	return &ClusterObjectSetStatusApplyConfiguration{}
 }
 
 // WithConditions adds the given value to the Conditions field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Conditions field.
-func (b *ClusterObjectSetRevisionStatusApplyConfiguration) WithConditions(values ...*v1.ConditionApplyConfiguration) *ClusterObjectSetRevisionStatusApplyConfiguration {
+func (b *ClusterObjectSetStatusApplyConfiguration) WithConditions(values ...*v1.ConditionApplyConfiguration) *ClusterObjectSetStatusApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithConditions")
@@ -52,7 +52,7 @@ func (b *ClusterObjectSetRevisionStatusApplyConfiguration) WithConditions(values
 // WithCompletedAt sets the CompletedAt field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the CompletedAt field is set to the value of the last call.
-func (b *ClusterObjectSetRevisionStatusApplyConfiguration) WithCompletedAt(value metav1.Time) *ClusterObjectSetRevisionStatusApplyConfiguration {
+func (b *ClusterObjectSetStatusApplyConfiguration) WithCompletedAt(value metav1.Time) *ClusterObjectSetStatusApplyConfiguration {
 	b.CompletedAt = &value
 	return b
 }
@@ -60,7 +60,7 @@ func (b *ClusterObjectSetRevisionStatusApplyConfiguration) WithCompletedAt(value
 // WithObservedPhases adds the given value to the ObservedPhases field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the ObservedPhases field.
-func (b *ClusterObjectSetRevisionStatusApplyConfiguration) WithObservedPhases(values ...*ObservedPhaseApplyConfiguration) *ClusterObjectSetRevisionStatusApplyConfiguration {
+func (b *ClusterObjectSetStatusApplyConfiguration) WithObservedPhases(values ...*ObservedPhaseApplyConfiguration) *ClusterObjectSetStatusApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithObservedPhases")

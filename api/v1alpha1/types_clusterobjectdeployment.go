@@ -4,7 +4,7 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // ClusterObjectDeployment declares a set of Kubernetes objects that should be applied
 // to the cluster and kept in the desired state. The controller creates
-// ClusterObjectSetRevision resources to track each unique template snapshot and
+// ClusterObjectSet resources to track each unique template snapshot and
 // manages their lifecycle automatically.
 //
 // +kubebuilder:object:root=true
@@ -29,7 +29,7 @@ type ClusterObjectDeployment struct {
 // ClusterObjectDeploymentSpec defines the desired state of a ClusterObjectDeployment.
 type ClusterObjectDeploymentSpec struct {
 	// revisionHistoryLimit is the maximum number of archived
-	// ClusterObjectSetRevision resources to retain. Older archived revisions
+	// ClusterObjectSet resources to retain. Older archived revisions
 	// beyond this limit are garbage collected by the controller. When omitted,
 	// the platform chooses a reasonable default, which is subject to change over
 	// time. The current default is 10. Set to 0 to disable revision history
@@ -38,17 +38,17 @@ type ClusterObjectDeploymentSpec struct {
 	// +optional
 	RevisionHistoryLimit *int32 `json:"revisionHistoryLimit,omitempty"`
 
-	// template defines the ClusterObjectSetRevision that the controller will
+	// template defines the ClusterObjectSet that the controller will
 	// create whenever the template content changes.
 	// +required
 	Template ClusterObjectDeploymentTemplate `json:"template"`
 }
 
 // ClusterObjectDeploymentTemplate defines the template used to stamp out
-// ClusterObjectSetRevision resources.
+// ClusterObjectSet resources.
 type ClusterObjectDeploymentTemplate struct {
 	// metadata contains labels and annotations that are propagated to each
-	// ClusterObjectSetRevision created from this template.
+	// ClusterObjectSet created from this template.
 	// +optional
 	Metadata ClusterObjectDeploymentTemplateMetadata `json:"metadata,omitempty"`
 
@@ -92,18 +92,18 @@ type ClusterObjectDeploymentStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// activeRevisions holds the currently active (non-archived)
-	// ClusterObjectSetRevision resources, including any revision just created
+	// ClusterObjectSet resources, including any revision just created
 	// but not yet visible in the informer cache.
 	// +listType=map
 	// +listMapKey=name
 	// +optional
-	ActiveRevisions []ClusterObjectSetRevisionStatusSummary `json:"activeRevisions,omitempty"`
+	ActiveRevisions []ClusterObjectSetStatusSummary `json:"activeRevisions,omitempty"`
 }
 
-// ClusterObjectSetRevisionStatusSummary summarizes the state of a single active
-// ClusterObjectSetRevision.
-type ClusterObjectSetRevisionStatusSummary struct {
-	// name is the metadata.name of the ClusterObjectSetRevision resource.
+// ClusterObjectSetStatusSummary summarizes the state of a single active
+// ClusterObjectSet.
+type ClusterObjectSetStatusSummary struct {
+	// name is the metadata.name of the ClusterObjectSet resource.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:Required
 	// +required

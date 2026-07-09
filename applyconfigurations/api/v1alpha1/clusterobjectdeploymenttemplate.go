@@ -6,10 +6,10 @@ package v1alpha1
 // with apply.
 //
 // ClusterObjectDeploymentTemplate defines the template used to stamp out
-// ClusterObjectSetRevision resources.
+// ClusterObjectSet resources.
 type ClusterObjectDeploymentTemplateApplyConfiguration struct {
 	// metadata contains labels and annotations that are propagated to each
-	// ClusterObjectSetRevision created from this template.
+	// ClusterObjectSet created from this template.
 	Metadata *ClusterObjectDeploymentTemplateMetadataApplyConfiguration `json:"metadata,omitempty"`
 	// spec defines the phases, objects, and configuration for each revision
 	// created from this template.

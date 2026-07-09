@@ -5,7 +5,7 @@ status: idea
 
 ## Summary
 
-Two issues in boxcutter's validation pipeline prevent orb-operator from surfacing structured phase/object-level validation errors in COSR status. Both cause validation errors to escape as unstructured Go errors instead of being captured in the `PhaseValidationError` / `RevisionValidationError` hierarchy.
+Two issues in boxcutter's validation pipeline prevent orb-operator from surfacing structured phase/object-level validation errors in COS status. Both cause validation errors to escape as unstructured Go errors instead of being captured in the `PhaseValidationError` / `RevisionValidationError` hierarchy.
 
 ## Issue 1: `ObjectValidationError` pointer/value type mismatch in `PhaseValidator`
 
@@ -45,10 +45,10 @@ Once fixed and bumped, add to `test/e2e/features/cosr_phase_status.feature`:
 
 ```gherkin
 Scenario: Object validation error surfaces in incomplete objects
-  Given a COSR with group "ps-valobj" and revision 1
+  Given a COS with group "ps-valobj" and revision 1
   And a phase "install" with a ConfigMap "INVALID-CM"
-  When the COSR is created
-  Then the COSR should have observed phase "install" with status "Reconciling"
+  When the COS is created
+  Then the COS should have observed phase "install" with status "Reconciling"
   And observed phase "install" should have an incomplete object "INVALID-CM"
   And incomplete object "INVALID-CM" in phase "install" should have a message containing "validation error"
 ```
@@ -77,7 +77,7 @@ return err  // ← plain error escapes
 
 ### Impact
 
-A COSR containing an object with a non-existent GVK gets `Available=Unknown` with `Reason=ReconcileError` and no `ObservedPhases`. The error message in the condition is informative, but no structured phase/object status is available.
+A COS containing an object with a non-existent GVK gets `Available=Unknown` with `Reason=ReconcileError` and no `ObservedPhases`. The error message in the condition is informative, but no structured phase/object status is available.
 
 ### Fix
 
@@ -95,11 +95,11 @@ The existing reconcile-error e2e scenario currently uses an invalid existing GVK
 Once this fix lands and the dependency is bumped, add a new scenario for the non-existent GVK case:
 
 ```gherkin
-Scenario: COSR reports validation error for unregistered resource type
-  Given a COSR with group "test" and revision 1
+Scenario: COS reports validation error for unregistered resource type
+  Given a COS with group "test" and revision 1
   And a phase "install" with an unregistered resource type
-  When the COSR is created
-  Then the COSR should have observed phase "install" with status "Reconciling"
+  When the COS is created
+  Then the COS should have observed phase "install" with status "Reconciling"
   And observed phase "install" should have an incomplete object "fake-resource"
 ```
 

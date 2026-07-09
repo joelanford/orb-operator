@@ -6,28 +6,28 @@ import (
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// ClusterObjectSetRevisionStatusSummaryApplyConfiguration represents a declarative configuration of the ClusterObjectSetRevisionStatusSummary type for use
+// ClusterObjectSetStatusSummaryApplyConfiguration represents a declarative configuration of the ClusterObjectSetStatusSummary type for use
 // with apply.
 //
-// ClusterObjectSetRevisionStatusSummary summarizes the state of a single active
-// ClusterObjectSetRevision.
-type ClusterObjectSetRevisionStatusSummaryApplyConfiguration struct {
-	// name is the metadata.name of the ClusterObjectSetRevision resource.
+// ClusterObjectSetStatusSummary summarizes the state of a single active
+// ClusterObjectSet.
+type ClusterObjectSetStatusSummaryApplyConfiguration struct {
+	// name is the metadata.name of the ClusterObjectSet resource.
 	Name *string `json:"name,omitempty"`
 	// conditions reflects the Available condition of the revision.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 }
 
-// ClusterObjectSetRevisionStatusSummaryApplyConfiguration constructs a declarative configuration of the ClusterObjectSetRevisionStatusSummary type for use with
+// ClusterObjectSetStatusSummaryApplyConfiguration constructs a declarative configuration of the ClusterObjectSetStatusSummary type for use with
 // apply.
-func ClusterObjectSetRevisionStatusSummary() *ClusterObjectSetRevisionStatusSummaryApplyConfiguration {
-	return &ClusterObjectSetRevisionStatusSummaryApplyConfiguration{}
+func ClusterObjectSetStatusSummary() *ClusterObjectSetStatusSummaryApplyConfiguration {
+	return &ClusterObjectSetStatusSummaryApplyConfiguration{}
 }
 
 // WithName sets the Name field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Name field is set to the value of the last call.
-func (b *ClusterObjectSetRevisionStatusSummaryApplyConfiguration) WithName(value string) *ClusterObjectSetRevisionStatusSummaryApplyConfiguration {
+func (b *ClusterObjectSetStatusSummaryApplyConfiguration) WithName(value string) *ClusterObjectSetStatusSummaryApplyConfiguration {
 	b.Name = &value
 	return b
 }
@@ -35,7 +35,7 @@ func (b *ClusterObjectSetRevisionStatusSummaryApplyConfiguration) WithName(value
 // WithConditions adds the given value to the Conditions field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Conditions field.
-func (b *ClusterObjectSetRevisionStatusSummaryApplyConfiguration) WithConditions(values ...*v1.ConditionApplyConfiguration) *ClusterObjectSetRevisionStatusSummaryApplyConfiguration {
+func (b *ClusterObjectSetStatusSummaryApplyConfiguration) WithConditions(values ...*v1.ConditionApplyConfiguration) *ClusterObjectSetStatusSummaryApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithConditions")

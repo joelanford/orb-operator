@@ -1,12 +1,12 @@
-Feature: COD stamps out a COSR from its template
+Feature: COD stamps out a COS from its template
 
-  Scenario: COD creates a COSR with correct group and revision
+  Scenario: COD creates a COS with correct group and revision
     Given a COD named "stamp-basic"
     And a phase "install" with a ConfigMap "cm-stamp"
     When the COD is created
-    Then the COSR with group "stamp-basic" and revision 1 should have lifecycleState "Active"
+    Then the COS with group "stamp-basic" and revision 1 should have lifecycleState "Active"
 
-  Scenario: Stamped COSR spec matches complex template without root collisionProtection
+  Scenario: Stamped COS spec matches complex template without root collisionProtection
     Given a COD named "stamp-no-cp"
     And a phase "crds" with a CRD "testwidgets"
     And the phase "crds" collisionProtection is "None"
@@ -16,17 +16,17 @@ Feature: COD stamps out a COSR from its template
     And the last object collisionProtection is "IfNoController"
     And a phase "post" with a ConfigMap "cm-post"
     When the COD is created
-    Then a COSR should exist with group "stamp-no-cp" and revision 1
-    And the stamped COSR spec for "stamp-no-cp" revision 1 should match the COD template spec
+    Then a COS should exist with group "stamp-no-cp" and revision 1
+    And the stamped COS spec for "stamp-no-cp" revision 1 should match the COD template spec
 
-  Scenario: Stamped COSR spec matches complex template with root collisionProtection
+  Scenario: Stamped COS spec matches complex template with root collisionProtection
     Given a COD named "stamp-with-cp"
-    And the COSR collisionProtection is "Prevent"
+    And the COS collisionProtection is "Prevent"
     And a phase "crds" with a CRD "testgadgets"
     And a phase "deploy" with a ConfigMap "cm-cp-deploy"
     And the last object has assertion celExpression "has(self.data)"
     And the phase "deploy" collisionProtection is "IfNoController"
     And the phase "deploy" also has a ConfigMap "cm-cp-extra"
     When the COD is created
-    Then a COSR should exist with group "stamp-with-cp" and revision 1
-    And the stamped COSR spec for "stamp-with-cp" revision 1 should match the COD template spec
+    Then a COS should exist with group "stamp-with-cp" and revision 1
+    And the stamped COS spec for "stamp-with-cp" revision 1 should match the COD template spec

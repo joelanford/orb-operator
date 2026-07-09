@@ -1,7 +1,7 @@
-Feature: COSR creates managed objects across multiple phases
+Feature: COS creates managed objects across multiple phases
 
   Scenario: CRDs in phase 1, instances of each CRD in phases 2, 3, and 4
-    Given a COSR with group "test" and revision 1
+    Given a COS with group "test" and revision 1
     # Phase 1: create 3 CRDs with explicit Established assertions
     And a phase "crds" with a CRD "widgets" with assertion conditionEqual type "Established" status "True"
     And the phase "crds" also has a CRD "gadgets"
@@ -20,7 +20,7 @@ Feature: COSR creates managed objects across multiple phases
     And a phase "batch-3" with a "widgets" named "w3"
     And the phase "batch-3" also has a "gadgets" named "g3"
     And the phase "batch-3" also has a "doodads" named "d3"
-    When the COSR is created
+    When the COS is created
     # CRDs exist
     Then the CRD "widgets" should exist
     And the CRD "gadgets" should exist

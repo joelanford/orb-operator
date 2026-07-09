@@ -16,8 +16,8 @@ import (
 )
 
 func registerSetupSteps(sc *godog.ScenarioContext, tc *testContext) {
-	sc.Step(`^a COSR named "([^"]*)" with group "([^"]*)" and revision (\d+)$`, tc.aCOSRNamedWithGroupAndRevision)
-	sc.Step(`^a COSR with group "([^"]*)" and revision (\d+)$`, tc.aCOSRWithGroupAndRevision)
+	sc.Step(`^a COS named "([^"]*)" with group "([^"]*)" and revision (\d+)$`, tc.aCOSNamedWithGroupAndRevision)
+	sc.Step(`^a COS with group "([^"]*)" and revision (\d+)$`, tc.aCOSWithGroupAndRevision)
 	sc.Step(`^(?:a|the) phase "([^"]*)" (?:with|has) a ConfigMap "([^"]*)"$`, tc.aPhaseWithConfigMap)
 	sc.Step(`^(?:a|the) phase "([^"]*)" (?:with|has) a gated ConfigMap "([^"]*)"$`, tc.aPhaseWithGatedConfigMap)
 	sc.Step(`^the phase "([^"]*)" also has a ConfigMap "([^"]*)"$`, tc.phaseAlsoHasConfigMap)
@@ -36,7 +36,7 @@ func registerSetupSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the last object has assertion fieldsEqual fieldA "([^"]*)" fieldB "([^"]*)"$`, tc.lastObjectHasFieldsEqualAssertion)
 	sc.Step(`^the last object has assertion fieldValue path "([^"]*)" value "([^"]*)"$`, tc.lastObjectHasFieldValueAssertion)
 	sc.Step(`^the last object has assertion celExpression "([^"]*)"$`, tc.lastObjectHasCELAssertion)
-	sc.Step(`^the COSR collisionProtection is "([^"]*)"$`, tc.theCOSRCollisionProtectionIs)
+	sc.Step(`^the COS collisionProtection is "([^"]*)"$`, tc.theCOSCollisionProtectionIs)
 	sc.Step(`^the phase "([^"]*)" collisionProtection is "([^"]*)"$`, tc.thePhaseCollisionProtectionIs)
 	sc.Step(`^the last object collisionProtection is "([^"]*)"$`, tc.theLastObjectCollisionProtectionIs)
 	sc.Step(`^a standalone ConfigMap "([^"]*)" exists$`, tc.aStandaloneConfigMapExists)
@@ -44,7 +44,7 @@ func registerSetupSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^a phase "([^"]*)" with an unregistered resource type$`, tc.aPhaseWithUnregisteredResourceType)
 	sc.Step(`^ConfigMap(?:\s+"([^"]*)")? operations are blocked$`, tc.configMapOpsAreBlocked)
 
-	sc.Step(`^an available COSR with group "([^"]*)" and revision (\d+)$`, tc.anAvailableCOSR)
+	sc.Step(`^an available COS with group "([^"]*)" and revision (\d+)$`, tc.anAvailableCOS)
 
 	// COD setup steps
 	sc.Step(`^a COD named "([^"]*)"$`, tc.aCODNamed)
@@ -53,23 +53,23 @@ func registerSetupSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the COD template has (label|annotation) "([^"]*)" with value "([^"]*)"$`, tc.theCODTemplateHasMetadata)
 }
 
-func (tc *testContext) aCOSRNamedWithGroupAndRevision(name, group string, revision uint32) {
-	tc.resetCOSRBuilder(group, revision)
-	tc.cosr.nameOverride = name
+func (tc *testContext) aCOSNamedWithGroupAndRevision(name, group string, revision uint32) {
+	tc.resetCOSBuilder(group, revision)
+	tc.cos.nameOverride = name
 }
 
-func (tc *testContext) anAvailableCOSR(group string, revision uint32) error {
-	tc.resetCOSRBuilder(group, revision)
+func (tc *testContext) anAvailableCOS(group string, revision uint32) error {
+	tc.resetCOSBuilder(group, revision)
 	tc.addPhase("install")
 	tc.addConfigMapToPhase("cm-"+group, false)
-	if err := tc.createCOSR(context.Background()); err != nil {
+	if err := tc.createCOS(context.Background()); err != nil {
 		return err
 	}
-	return tc.pollForCOSRCondition(context.Background(), tc.lastCreatedCOSRName(), "Available", metav1.ConditionTrue)
+	return tc.pollForCOSCondition(context.Background(), tc.lastCreatedCOSName(), "Available", metav1.ConditionTrue)
 }
 
-func (tc *testContext) aCOSRWithGroupAndRevision(group string, revision uint32) {
-	tc.resetCOSRBuilder(group, revision)
+func (tc *testContext) aCOSWithGroupAndRevision(group string, revision uint32) {
+	tc.resetCOSBuilder(group, revision)
 }
 
 func (tc *testContext) addConfigMapToPhase(name string, gated bool) {
@@ -214,7 +214,7 @@ func (tc *testContext) lastObjectHasCELAssertion(expr string) {
 	})
 }
 
-func (tc *testContext) theCOSRCollisionProtectionIs(cp string) {
+func (tc *testContext) theCOSCollisionProtectionIs(cp string) {
 	v := orbv1alpha1.CollisionProtection(cp)
 	tc.tmpl.collisionProtection = &v
 }

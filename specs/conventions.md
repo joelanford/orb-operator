@@ -21,13 +21,13 @@
 ### Examples
 
 ```
-feat: add ClusterObjectSetRevision reconciler
+feat: add ClusterObjectSet reconciler
 ```
 
 ```
 fix: handle missing ClusterObjectSlice ref during phase rollout
 
-The COSR controller panicked when a phase referenced a
+The COS controller panicked when a phase referenced a
 ClusterObjectSlice that had been deleted. Now it sets a condition
 and requeues.
 ```
@@ -38,7 +38,7 @@ refactor: extract assertion evaluation into dedicated package
 
 ## Pull Requests
 
-- **Title:** conventional commit format matching the primary change (e.g. `feat: add COSR ownership handoff`)
+- **Title:** conventional commit format matching the primary change (e.g. `feat: add COS ownership handoff`)
 - **Body template:**
   ```
   ## Summary

@@ -81,7 +81,7 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         list:
           elementType:
-            namedType: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetRevisionStatusSummary
+            namedType: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetStatusSummary
           elementRelationship: associative
           keys:
           - name
@@ -127,7 +127,7 @@ var schemaYAML = typed.YAMLObject(`types:
           elementType:
             namedType: com.github.joelanford.orb-operator.api.v1alpha1.Phase
           elementRelationship: atomic
-- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetRevision
+- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSet
   map:
     fields:
     - name: apiVersion
@@ -141,11 +141,11 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
     - name: spec
       type:
-        namedType: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetRevisionSpec
+        namedType: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetSpec
     - name: status
       type:
-        namedType: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetRevisionStatus
-- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetRevisionSpec
+        namedType: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetStatus
+- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetSpec
   map:
     fields:
     - name: collisionProtection
@@ -166,7 +166,7 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: revision
       type:
         scalar: numeric
-- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetRevisionStatus
+- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetStatus
   map:
     fields:
     - name: completedAt
@@ -188,7 +188,7 @@ var schemaYAML = typed.YAMLObject(`types:
           elementRelationship: associative
           keys:
           - name
-- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetRevisionStatusSummary
+- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetStatusSummary
   map:
     fields:
     - name: conditions

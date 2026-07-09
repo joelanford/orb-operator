@@ -1,5 +1,5 @@
 apiVersion: orb.operatorframework.io/v1alpha1
-kind: ClusterObjectSetRevision
+kind: ClusterObjectSet
 metadata:
   name: sample-group-5
   labels:

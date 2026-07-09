@@ -13,81 +13,81 @@ import (
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 )
 
-func TestCOSR_Status_CompletedAt_ImmutableOnceSet(t *testing.T) {
+func TestCOS_Status_CompletedAt_ImmutableOnceSet(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("setting completedAt on a new COSR succeeds", func(t *testing.T) {
-		cosr := newCOSR("completed-at-set")
-		createCOSR(t, ctx, cosr)
+	t.Run("setting completedAt on a new COS succeeds", func(t *testing.T) {
+		cos := newCOS("completed-at-set")
+		createCOS(t, ctx, cos)
 
 		now := metav1.Now()
-		cosr.Status.CompletedAt = &now
-		require.NoError(t, k8sClient.Status().Update(ctx, cosr))
+		cos.Status.CompletedAt = &now
+		require.NoError(t, k8sClient.Status().Update(ctx, cos))
 	})
 
 	t.Run("clearing completedAt after it has been set is rejected", func(t *testing.T) {
-		cosr := newCOSR("completed-at-clear")
-		createCOSR(t, ctx, cosr)
+		cos := newCOS("completed-at-clear")
+		createCOS(t, ctx, cos)
 
 		now := metav1.Now()
-		cosr.Status.CompletedAt = &now
-		require.NoError(t, k8sClient.Status().Update(ctx, cosr))
+		cos.Status.CompletedAt = &now
+		require.NoError(t, k8sClient.Status().Update(ctx, cos))
 
-		cosr.Status.CompletedAt = nil
-		requireStatusError(t, k8sClient.Status().Update(ctx, cosr),
+		cos.Status.CompletedAt = nil
+		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
 			"status", "completedAt is immutable once set")
 	})
 
 	t.Run("completedAt remains unset when never written", func(t *testing.T) {
-		cosr := newCOSR("completed-at-unset")
-		createCOSR(t, ctx, cosr)
+		cos := newCOS("completed-at-unset")
+		createCOS(t, ctx, cos)
 
-		cosr.Status.Conditions = []metav1.Condition{{
+		cos.Status.Conditions = []metav1.Condition{{
 			Type:               "Available",
 			Status:             metav1.ConditionFalse,
 			Reason:             "Testing",
 			LastTransitionTime: metav1.Now(),
 		}}
-		require.NoError(t, k8sClient.Status().Update(ctx, cosr))
-		assert.Nil(t, cosr.Status.CompletedAt)
+		require.NoError(t, k8sClient.Status().Update(ctx, cos))
+		assert.Nil(t, cos.Status.CompletedAt)
 	})
 }
 
-func TestCOSR_Status_ObservedPhase_Validation(t *testing.T) {
+func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("valid observed phase succeeds", func(t *testing.T) {
-		cosr := newCOSR("op-valid")
-		createCOSR(t, ctx, cosr)
+		cos := newCOS("op-valid")
+		createCOS(t, ctx, cos)
 
-		cosr.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
+		cos.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
 			Name:   "install",
 			Status: orbv1alpha1.PhaseStatusReconciling,
 		}}
-		require.NoError(t, k8sClient.Status().Update(ctx, cosr))
+		require.NoError(t, k8sClient.Status().Update(ctx, cos))
 	})
 
 	t.Run("empty phase name is rejected", func(t *testing.T) {
-		cosr := newCOSR("op-empty-name")
-		createCOSR(t, ctx, cosr)
+		cos := newCOS("op-empty-name")
+		createCOS(t, ctx, cos)
 
-		cosr.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
+		cos.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
 			Name:   "",
 			Status: orbv1alpha1.PhaseStatusUnknown,
 		}}
-		requireStatusError(t, k8sClient.Status().Update(ctx, cosr),
+		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
 			"status.observedPhases[0].name", "should be at least 1 chars long")
 	})
 
 	t.Run("phase name exceeding 63 chars is rejected", func(t *testing.T) {
-		cosr := newCOSR("op-long-name")
-		createCOSR(t, ctx, cosr)
+		cos := newCOS("op-long-name")
+		createCOS(t, ctx, cos)
 
-		cosr.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
+		cos.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
 			Name:   strings.Repeat("a", 64),
 			Status: orbv1alpha1.PhaseStatusUnknown,
 		}}
-		requireStatusError(t, k8sClient.Status().Update(ctx, cosr),
+		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
 			"status.observedPhases[0].name", "may not be more than 63")
 	})
 
@@ -100,57 +100,57 @@ func TestCOSR_Status_ObservedPhase_Validation(t *testing.T) {
 		orbv1alpha1.PhaseStatusTeardownComplete,
 	} {
 		t.Run(fmt.Sprintf("phase status %q is accepted", status), func(t *testing.T) {
-			cosr := newCOSR(fmt.Sprintf("op-status-%s", strings.ToLower(string(status))))
-			createCOSR(t, ctx, cosr)
+			cos := newCOS(fmt.Sprintf("op-status-%s", strings.ToLower(string(status))))
+			createCOS(t, ctx, cos)
 
-			cosr.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
+			cos.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
 				Name:   "install",
 				Status: status,
 			}}
-			require.NoError(t, k8sClient.Status().Update(ctx, cosr))
+			require.NoError(t, k8sClient.Status().Update(ctx, cos))
 		})
 	}
 
 	t.Run("invalid phase status enum is rejected", func(t *testing.T) {
-		cosr := newCOSR("op-bad-status")
-		createCOSR(t, ctx, cosr)
+		cos := newCOS("op-bad-status")
+		createCOS(t, ctx, cos)
 
-		cosr.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
+		cos.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
 			Name:   "install",
 			Status: orbv1alpha1.PhaseStatus("Invalid"),
 		}}
-		requireStatusError(t, k8sClient.Status().Update(ctx, cosr),
+		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
 			"status.observedPhases[0].status", "Unsupported value")
 	})
 
 	t.Run("phase error at 1024 chars succeeds", func(t *testing.T) {
-		cosr := newCOSR("op-max-err")
-		createCOSR(t, ctx, cosr)
+		cos := newCOS("op-max-err")
+		createCOS(t, ctx, cos)
 
-		cosr.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
+		cos.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
 			Name:   "install",
 			Status: orbv1alpha1.PhaseStatusReconciling,
 			Error:  strings.Repeat("e", 1024),
 		}}
-		require.NoError(t, k8sClient.Status().Update(ctx, cosr))
+		require.NoError(t, k8sClient.Status().Update(ctx, cos))
 	})
 
 	t.Run("phase error exceeding 1024 chars is rejected", func(t *testing.T) {
-		cosr := newCOSR("op-long-err")
-		createCOSR(t, ctx, cosr)
+		cos := newCOS("op-long-err")
+		createCOS(t, ctx, cos)
 
-		cosr.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
+		cos.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
 			Name:   "install",
 			Status: orbv1alpha1.PhaseStatusReconciling,
 			Error:  strings.Repeat("e", 1025),
 		}}
-		requireStatusError(t, k8sClient.Status().Update(ctx, cosr),
+		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
 			"status.observedPhases[0].error", "may not be more than 1024")
 	})
 
 	t.Run("observedPhases exceeding 20 is rejected", func(t *testing.T) {
-		cosr := newCOSR("op-too-many-phases")
-		createCOSR(t, ctx, cosr)
+		cos := newCOS("op-too-many-phases")
+		createCOS(t, ctx, cos)
 
 		phases := make([]orbv1alpha1.ObservedPhase, 21)
 		for i := range phases {
@@ -159,14 +159,14 @@ func TestCOSR_Status_ObservedPhase_Validation(t *testing.T) {
 				Status: orbv1alpha1.PhaseStatusUnknown,
 			}
 		}
-		cosr.Status.ObservedPhases = phases
-		requireStatusError(t, k8sClient.Status().Update(ctx, cosr),
+		cos.Status.ObservedPhases = phases
+		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
 			"status.observedPhases", "must have at most 20 items")
 	})
 
 	t.Run("incompleteObjects at max (50) succeeds", func(t *testing.T) {
-		cosr := newCOSR("op-max-objects")
-		createCOSR(t, ctx, cosr)
+		cos := newCOS("op-max-objects")
+		createCOS(t, ctx, cos)
 
 		objects := make([]orbv1alpha1.ObjectStatus, 50)
 		for i := range objects {
@@ -176,17 +176,17 @@ func TestCOSR_Status_ObservedPhase_Validation(t *testing.T) {
 				Name:    "cm",
 			}
 		}
-		cosr.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
+		cos.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
 			Name:              "install",
 			Status:            orbv1alpha1.PhaseStatusReconciling,
 			IncompleteObjects: objects,
 		}}
-		require.NoError(t, k8sClient.Status().Update(ctx, cosr))
+		require.NoError(t, k8sClient.Status().Update(ctx, cos))
 	})
 
 	t.Run("incompleteObjects exceeding 50 is rejected", func(t *testing.T) {
-		cosr := newCOSR("op-too-many-obj")
-		createCOSR(t, ctx, cosr)
+		cos := newCOS("op-too-many-obj")
+		createCOS(t, ctx, cos)
 
 		objects := make([]orbv1alpha1.ObjectStatus, 51)
 		for i := range objects {
@@ -196,29 +196,29 @@ func TestCOSR_Status_ObservedPhase_Validation(t *testing.T) {
 				Name:    "cm",
 			}
 		}
-		cosr.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
+		cos.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
 			Name:              "install",
 			Status:            orbv1alpha1.PhaseStatusReconciling,
 			IncompleteObjects: objects,
 		}}
-		requireStatusError(t, k8sClient.Status().Update(ctx, cosr),
+		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
 			"status.observedPhases[0].incompleteObjects", "must have at most 50 items")
 	})
 }
 
-func TestCOSR_Status_ObjectStatus_Validation(t *testing.T) {
+func TestCOS_Status_ObjectStatus_Validation(t *testing.T) {
 	ctx := context.Background()
 
 	setObjectStatus := func(t *testing.T, name string, os orbv1alpha1.ObjectStatus) error {
 		t.Helper()
-		cosr := newCOSR(name)
-		createCOSR(t, ctx, cosr)
-		cosr.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
+		cos := newCOS(name)
+		createCOS(t, ctx, cos)
+		cos.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
 			Name:              "install",
 			Status:            orbv1alpha1.PhaseStatusReconciling,
 			IncompleteObjects: []orbv1alpha1.ObjectStatus{os},
 		}}
-		return k8sClient.Status().Update(ctx, cosr)
+		return k8sClient.Status().Update(ctx, cos)
 	}
 
 	objField := func(f string) string {
@@ -390,19 +390,19 @@ func TestCOSR_Status_ObjectStatus_Validation(t *testing.T) {
 	})
 }
 
-func TestCOSR_Spec_Group_Validation(t *testing.T) {
+func TestCOS_Spec_Group_Validation(t *testing.T) {
 	ctx := context.Background()
 
-	createWithGroup := func(cosrName, group string) error {
-		cosr := newCOSR(cosrName)
-		cosr.Spec.Group = group
-		return k8sClient.Create(ctx, cosr)
+	createWithGroup := func(cosName, group string) error {
+		cos := newCOS(cosName)
+		cos.Spec.Group = group
+		return k8sClient.Create(ctx, cos)
 	}
-	cleanup := func(t *testing.T, cosrName string) {
+	cleanup := func(t *testing.T, cosName string) {
 		t.Helper()
 		t.Cleanup(func() {
-			cosr := newCOSR(cosrName)
-			require.NoError(t, k8sClient.Delete(ctx, cosr))
+			cos := newCOS(cosName)
+			require.NoError(t, k8sClient.Delete(ctx, cos))
 		})
 	}
 
@@ -418,17 +418,17 @@ func TestCOSR_Spec_Group_Validation(t *testing.T) {
 		{"max 52 chars", "a" + strings.Repeat("b", 50) + "c"},
 	} {
 		t.Run(tc.name+" is accepted", func(t *testing.T) {
-			cosrName := fmt.Sprintf("grp-ok-%s", tc.group)
-			cleanup(t, cosrName)
-			require.NoError(t, createWithGroup(cosrName, tc.group))
+			cosName := fmt.Sprintf("grp-ok-%s", tc.group)
+			cleanup(t, cosName)
+			require.NoError(t, createWithGroup(cosName, tc.group))
 		})
 	}
 
 	for _, tc := range []struct {
-		name     string
-		cosrName string
-		group    string
-		msgSub   string
+		name    string
+		cosName string
+		group   string
+		msgSub  string
 	}{
 		{"empty", "grp-bad-empty", "", "should be at least 1"},
 		{"exceeds 52 chars", "grp-bad-long", strings.Repeat("a", 53), "may not be more than 52"},
@@ -440,25 +440,25 @@ func TestCOSR_Spec_Group_Validation(t *testing.T) {
 		{"contains dot", "grp-bad-dot", "my.group", "lowercase alphanumeric"},
 	} {
 		t.Run(tc.name+" is rejected", func(t *testing.T) {
-			requireStatusError(t, createWithGroup(tc.cosrName, tc.group),
+			requireStatusError(t, createWithGroup(tc.cosName, tc.group),
 				"spec.group", tc.msgSub)
 		})
 	}
 }
 
-func TestCOSR_Spec_PhaseName_DNS1035Validation(t *testing.T) {
+func TestCOS_Spec_PhaseName_DNS1035Validation(t *testing.T) {
 	ctx := context.Background()
 
-	createWithPhaseName := func(cosrName, phaseName string) error {
-		cosr := newCOSR(cosrName)
-		cosr.Spec.Phases[0].Name = phaseName
-		return k8sClient.Create(ctx, cosr)
+	createWithPhaseName := func(cosName, phaseName string) error {
+		cos := newCOS(cosName)
+		cos.Spec.Phases[0].Name = phaseName
+		return k8sClient.Create(ctx, cos)
 	}
-	cleanup := func(t *testing.T, cosrName string) {
+	cleanup := func(t *testing.T, cosName string) {
 		t.Helper()
 		t.Cleanup(func() {
-			cosr := newCOSR(cosrName)
-			require.NoError(t, k8sClient.Delete(ctx, cosr))
+			cos := newCOS(cosName)
+			require.NoError(t, k8sClient.Delete(ctx, cos))
 		})
 	}
 
@@ -474,18 +474,18 @@ func TestCOSR_Spec_PhaseName_DNS1035Validation(t *testing.T) {
 		{"max 63 chars", "a" + strings.Repeat("b", 61) + "c"},
 	} {
 		t.Run(tc.name+" is accepted", func(t *testing.T) {
-			cosrName := fmt.Sprintf("pn-ok-%s", tc.phaseName)
-			if len(cosrName) > 63 {
-				cosrName = cosrName[:63]
+			cosName := fmt.Sprintf("pn-ok-%s", tc.phaseName)
+			if len(cosName) > 63 {
+				cosName = cosName[:63]
 			}
-			cleanup(t, cosrName)
-			require.NoError(t, createWithPhaseName(cosrName, tc.phaseName))
+			cleanup(t, cosName)
+			require.NoError(t, createWithPhaseName(cosName, tc.phaseName))
 		})
 	}
 
 	for _, tc := range []struct {
 		name      string
-		cosrName  string
+		cosName   string
 		phaseName string
 	}{
 		{"starts with digit", "pn-bad-digit", "1phase"},
@@ -496,7 +496,7 @@ func TestCOSR_Spec_PhaseName_DNS1035Validation(t *testing.T) {
 		{"contains dot", "pn-bad-dot", "my.phase"},
 	} {
 		t.Run(tc.name+" is rejected", func(t *testing.T) {
-			err := createWithPhaseName(tc.cosrName, tc.phaseName)
+			err := createWithPhaseName(tc.cosName, tc.phaseName)
 			requireStatusError(t, err,
 				"spec.phases[0].name", "must be a valid DNS-1035 label")
 		})

@@ -6,13 +6,13 @@ import (
 	apiv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 )
 
-// ClusterObjectSetRevisionSpecApplyConfiguration represents a declarative configuration of the ClusterObjectSetRevisionSpec type for use
+// ClusterObjectSetSpecApplyConfiguration represents a declarative configuration of the ClusterObjectSetSpec type for use
 // with apply.
 //
-// ClusterObjectSetRevisionSpec defines the desired state of a
-// ClusterObjectSetRevision. All fields except lifecycleState are immutable
+// ClusterObjectSetSpec defines the desired state of a
+// ClusterObjectSet. All fields except lifecycleState are immutable
 // after creation.
-type ClusterObjectSetRevisionSpecApplyConfiguration struct {
+type ClusterObjectSetSpecApplyConfiguration struct {
 	// group is a label-safe identifier that links related revisions together.
 	// All revisions sharing the same group form an ordered sequence. The value
 	// must be at most 52 characters long.
@@ -30,16 +30,16 @@ type ClusterObjectSetRevisionSpecApplyConfiguration struct {
 	ClusterObjectDeploymentTemplateSpecApplyConfiguration `json:",inline"`
 }
 
-// ClusterObjectSetRevisionSpecApplyConfiguration constructs a declarative configuration of the ClusterObjectSetRevisionSpec type for use with
+// ClusterObjectSetSpecApplyConfiguration constructs a declarative configuration of the ClusterObjectSetSpec type for use with
 // apply.
-func ClusterObjectSetRevisionSpec() *ClusterObjectSetRevisionSpecApplyConfiguration {
-	return &ClusterObjectSetRevisionSpecApplyConfiguration{}
+func ClusterObjectSetSpec() *ClusterObjectSetSpecApplyConfiguration {
+	return &ClusterObjectSetSpecApplyConfiguration{}
 }
 
 // WithGroup sets the Group field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Group field is set to the value of the last call.
-func (b *ClusterObjectSetRevisionSpecApplyConfiguration) WithGroup(value string) *ClusterObjectSetRevisionSpecApplyConfiguration {
+func (b *ClusterObjectSetSpecApplyConfiguration) WithGroup(value string) *ClusterObjectSetSpecApplyConfiguration {
 	b.Group = &value
 	return b
 }
@@ -47,7 +47,7 @@ func (b *ClusterObjectSetRevisionSpecApplyConfiguration) WithGroup(value string)
 // WithRevision sets the Revision field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Revision field is set to the value of the last call.
-func (b *ClusterObjectSetRevisionSpecApplyConfiguration) WithRevision(value uint32) *ClusterObjectSetRevisionSpecApplyConfiguration {
+func (b *ClusterObjectSetSpecApplyConfiguration) WithRevision(value uint32) *ClusterObjectSetSpecApplyConfiguration {
 	b.Revision = &value
 	return b
 }
@@ -55,7 +55,7 @@ func (b *ClusterObjectSetRevisionSpecApplyConfiguration) WithRevision(value uint
 // WithLifecycleState sets the LifecycleState field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the LifecycleState field is set to the value of the last call.
-func (b *ClusterObjectSetRevisionSpecApplyConfiguration) WithLifecycleState(value apiv1alpha1.LifecycleState) *ClusterObjectSetRevisionSpecApplyConfiguration {
+func (b *ClusterObjectSetSpecApplyConfiguration) WithLifecycleState(value apiv1alpha1.LifecycleState) *ClusterObjectSetSpecApplyConfiguration {
 	b.LifecycleState = &value
 	return b
 }
@@ -63,7 +63,7 @@ func (b *ClusterObjectSetRevisionSpecApplyConfiguration) WithLifecycleState(valu
 // WithCollisionProtection sets the CollisionProtection field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the CollisionProtection field is set to the value of the last call.
-func (b *ClusterObjectSetRevisionSpecApplyConfiguration) WithCollisionProtection(value apiv1alpha1.CollisionProtection) *ClusterObjectSetRevisionSpecApplyConfiguration {
+func (b *ClusterObjectSetSpecApplyConfiguration) WithCollisionProtection(value apiv1alpha1.CollisionProtection) *ClusterObjectSetSpecApplyConfiguration {
 	b.ClusterObjectDeploymentTemplateSpecApplyConfiguration.CollisionProtection = &value
 	return b
 }
@@ -71,7 +71,7 @@ func (b *ClusterObjectSetRevisionSpecApplyConfiguration) WithCollisionProtection
 // WithPhases adds the given value to the Phases field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Phases field.
-func (b *ClusterObjectSetRevisionSpecApplyConfiguration) WithPhases(values ...*PhaseApplyConfiguration) *ClusterObjectSetRevisionSpecApplyConfiguration {
+func (b *ClusterObjectSetSpecApplyConfiguration) WithPhases(values ...*PhaseApplyConfiguration) *ClusterObjectSetSpecApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithPhases")

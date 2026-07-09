@@ -60,12 +60,12 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func newCOSR(name string) *orbv1alpha1.ClusterObjectSetRevision {
-	return &orbv1alpha1.ClusterObjectSetRevision{
+func newCOS(name string) *orbv1alpha1.ClusterObjectSet {
+	return &orbv1alpha1.ClusterObjectSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: orbv1alpha1.ClusterObjectSetRevisionSpec{
+		Spec: orbv1alpha1.ClusterObjectSetSpec{
 			Group:          "test",
 			Revision:       1,
 			LifecycleState: orbv1alpha1.LifecycleStateActive,
@@ -81,11 +81,11 @@ func newCOSR(name string) *orbv1alpha1.ClusterObjectSetRevision {
 	}
 }
 
-func createCOSR(t *testing.T, ctx context.Context, cosr *orbv1alpha1.ClusterObjectSetRevision) {
+func createCOS(t *testing.T, ctx context.Context, cos *orbv1alpha1.ClusterObjectSet) {
 	t.Helper()
-	require.NoError(t, k8sClient.Create(ctx, cosr))
+	require.NoError(t, k8sClient.Create(ctx, cos))
 	t.Cleanup(func() {
-		require.NoError(t, k8sClient.Delete(ctx, cosr))
+		require.NoError(t, k8sClient.Delete(ctx, cos))
 	})
 }
 

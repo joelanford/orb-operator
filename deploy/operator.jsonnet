@@ -3,7 +3,7 @@ local namespace = if std.extVar('namespace') != '' then std.extVar('namespace') 
 
 local crds = [
   std.parseYaml(importstr 'crds/orb.operatorframework.io_clusterobjectdeployments.yaml')[0],
-  std.parseYaml(importstr 'crds/orb.operatorframework.io_clusterobjectsetrevisions.yaml')[0],
+  std.parseYaml(importstr 'crds/orb.operatorframework.io_clusterobjectsets.yaml')[0],
   std.parseYaml(importstr 'crds/orb.operatorframework.io_clusterobjectslices.yaml')[0],
 ];
 
@@ -75,16 +75,16 @@ local deploy = {
   },
 };
 
-local vapCOSRName = {
+local vapCOSName = {
   apiVersion: 'admissionregistration.k8s.io/v1',
   kind: 'ValidatingAdmissionPolicy',
-  metadata: { name: 'cosr-name-must-match-group-revision' },
+  metadata: { name: 'cos-name-must-match-group-revision' },
   spec: {
     matchConstraints: {
       resourceRules: [{
         apiGroups: ['orb.operatorframework.io'],
         apiVersions: ['v1alpha1'],
-        resources: ['clusterobjectsetrevisions'],
+        resources: ['clusterobjectsets'],
         operations: ['CREATE'],
       }],
     },
@@ -95,27 +95,27 @@ local vapCOSRName = {
   },
 };
 
-local vapCOSRNameBinding = {
+local vapCOSNameBinding = {
   apiVersion: 'admissionregistration.k8s.io/v1',
   kind: 'ValidatingAdmissionPolicyBinding',
-  metadata: { name: 'cosr-name-must-match-group-revision' },
+  metadata: { name: 'cos-name-must-match-group-revision' },
   spec: {
-    policyName: vapCOSRName.metadata.name,
+    policyName: vapCOSName.metadata.name,
     validationActions: ['Deny'],
   },
 };
 
-local vapCOSROrphanFinalizer = {
+local vapCOSOrphanFinalizer = {
   apiVersion: 'admissionregistration.k8s.io/v1',
   kind: 'ValidatingAdmissionPolicy',
-  metadata: { name: 'cosr-orphan-finalizer-ordering' },
+  metadata: { name: 'cos-orphan-finalizer-ordering' },
   spec: {
     failurePolicy: 'Fail',
     matchConstraints: {
       resourceRules: [{
         apiGroups: ['orb.operatorframework.io'],
         apiVersions: ['v1alpha1'],
-        resources: ['clusterobjectsetrevisions'],
+        resources: ['clusterobjectsets'],
         operations: ['UPDATE'],
       }],
     },
@@ -124,20 +124,20 @@ local vapCOSROrphanFinalizer = {
         !(
           oldObject.metadata.?finalizers.orValue([]).exists(f, f == 'orphan') &&
           !object.metadata.?finalizers.orValue([]).exists(f, f == 'orphan') &&
-          object.metadata.?finalizers.orValue([]).exists(f, f == 'orb.operatorframework.io/cosr-finalizer')
+          object.metadata.?finalizers.orValue([]).exists(f, f == 'orb.operatorframework.io/cos-finalizer')
         )
       |||,
-      message: 'cannot remove orphan finalizer while cosr-finalizer is still present',
+      message: 'cannot remove orphan finalizer while cos-finalizer is still present',
     }],
   },
 };
 
-local vapCOSROrphanFinalizerBinding = {
+local vapCOSOrphanFinalizerBinding = {
   apiVersion: 'admissionregistration.k8s.io/v1',
   kind: 'ValidatingAdmissionPolicyBinding',
-  metadata: { name: 'cosr-orphan-finalizer-ordering' },
+  metadata: { name: 'cos-orphan-finalizer-ordering' },
   spec: {
-    policyName: vapCOSROrphanFinalizer.metadata.name,
+    policyName: vapCOSOrphanFinalizer.metadata.name,
     validationActions: ['Deny'],
   },
 };
@@ -193,5 +193,5 @@ local svc = {
 {
   apiVersion: 'v1',
   kind: 'List',
-  items: crds + [vapCOSRName, vapCOSRNameBinding, vapCOSROrphanFinalizer, vapCOSROrphanFinalizerBinding, vapCODNameLength, vapCODNameLengthBinding, ns, sa, crb, deploy, svc],
+  items: crds + [vapCOSName, vapCOSNameBinding, vapCOSOrphanFinalizer, vapCOSOrphanFinalizerBinding, vapCODNameLength, vapCODNameLengthBinding, ns, sa, crb, deploy, svc],
 }

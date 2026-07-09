@@ -48,7 +48,7 @@ Coverage analysis (2026-06-23) showed:
 - **Merged:** 547/755 statements (72.5%)
 - **Overlap:** 317 of integration's 318 covered statements are also covered by e2e
 
-The single exclusively-integration-covered statement is an error-return path in `reconcileArchived` (`cosr_controller.go:241-243`) that would be contrived to trigger in e2e. The envtest/setup-envtest machinery is not worth carrying for this. Integration tests for COSR phase status were removed.
+The single exclusively-integration-covered statement is an error-return path in `reconcileArchived` (`cosr_controller.go:241-243`) that would be contrived to trigger in e2e. The envtest/setup-envtest machinery is not worth carrying for this. Integration tests for COS phase status were removed.
 
 ## TODOs
 

@@ -8,13 +8,13 @@ package v1alpha1
 // ClusterObjectDeploymentSpec defines the desired state of a ClusterObjectDeployment.
 type ClusterObjectDeploymentSpecApplyConfiguration struct {
 	// revisionHistoryLimit is the maximum number of archived
-	// ClusterObjectSetRevision resources to retain. Older archived revisions
+	// ClusterObjectSet resources to retain. Older archived revisions
 	// beyond this limit are garbage collected by the controller. When omitted,
 	// the platform chooses a reasonable default, which is subject to change over
 	// time. The current default is 10. Set to 0 to disable revision history
 	// entirely.
 	RevisionHistoryLimit *int32 `json:"revisionHistoryLimit,omitempty"`
-	// template defines the ClusterObjectSetRevision that the controller will
+	// template defines the ClusterObjectSet that the controller will
 	// create whenever the template content changes.
 	Template *ClusterObjectDeploymentTemplateApplyConfiguration `json:"template,omitempty"`
 }

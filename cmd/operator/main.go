@@ -80,9 +80,9 @@ func run(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("creating discovery client: %w", err)
 	}
 
-	accessManager := managedcache.NewObjectBoundAccessManager[*orbv1alpha1.ClusterObjectSetRevision](
+	accessManager := managedcache.NewObjectBoundAccessManager[*orbv1alpha1.ClusterObjectSet](
 		ctrl.Log.WithName("managed-cache"),
-		func(_ context.Context, _ *orbv1alpha1.ClusterObjectSetRevision, c *rest.Config, opts cache.Options) (*rest.Config, cache.Options, error) {
+		func(_ context.Context, _ *orbv1alpha1.ClusterObjectSet, c *rest.Config, opts cache.Options) (*rest.Config, cache.Options, error) {
 			opts.Scheme = scheme
 			opts.Mapper = mgr.GetRESTMapper()
 			return c, opts, nil
@@ -101,15 +101,15 @@ func run(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("setting up indexes: %w", err)
 	}
 
-	cosrReconciler := controller.NewCOSRReconciler(
+	cosReconciler := controller.NewCOSReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		mgr.GetRESTMapper(),
 		discoveryClient,
 		accessManager,
 	)
-	if err := cosrReconciler.SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("setting up COSR controller: %w", err)
+	if err := cosReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("setting up COS controller: %w", err)
 	}
 
 	codReconciler := controller.NewCODReconciler(mgr.GetClient(), mgr.GetScheme())

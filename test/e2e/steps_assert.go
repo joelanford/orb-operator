@@ -30,43 +30,43 @@ func registerAssertSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the CRD "([^"]*)" should exist$`, tc.theCRDShouldExist)
 	sc.Step(`^the "([^"]*)" named "([^"]*)" should exist$`, tc.theCRShouldExist)
 	sc.Step(`^the ConfigMap "([^"]*)" should (have|not have) an owner reference$`, tc.theConfigMapOwnerRefCheck)
-	sc.Step(`^the ConfigMap "([^"]*)" should have a controller owner reference to COSR with group "([^"]*)" and revision (\d+)$`, tc.theConfigMapShouldBeOwnedByCOSR)
-	sc.Step(`^the COSR should not exist$`, tc.theCOSRShouldNotExist)
-	sc.Step(`^the COSR should have condition "([^"]*)" with status "([^"]*)"$`, tc.theCOSRShouldHaveCondition)
-	sc.Step(`^the COSR should have condition "([^"]*)" with status "([^"]*)" and reason "([^"]*)"$`, tc.theCOSRShouldHaveConditionWithReason)
-	sc.Step(`^the COSR in group "([^"]*)" revision (\d+) should have condition "([^"]*)" with status "([^"]*)"$`, tc.theCOSRInGroupShouldHaveCondition)
+	sc.Step(`^the ConfigMap "([^"]*)" should have a controller owner reference to COS with group "([^"]*)" and revision (\d+)$`, tc.theConfigMapShouldBeOwnedByCOS)
+	sc.Step(`^the COS should not exist$`, tc.theCOSShouldNotExist)
+	sc.Step(`^the COS should have condition "([^"]*)" with status "([^"]*)"$`, tc.theCOSShouldHaveCondition)
+	sc.Step(`^the COS should have condition "([^"]*)" with status "([^"]*)" and reason "([^"]*)"$`, tc.theCOSShouldHaveConditionWithReason)
+	sc.Step(`^the COS in group "([^"]*)" revision (\d+) should have condition "([^"]*)" with status "([^"]*)"$`, tc.theCOSInGroupShouldHaveCondition)
 	sc.Step(`^revision (\d+) should have condition "([^"]*)" with status "([^"]*)" and reason "([^"]*)"$`, tc.revisionShouldHaveConditionWithReason)
 	sc.Step(`^revision (\d+) should have observed phase "([^"]*)" with status "([^"]*)"$`, tc.revisionShouldHaveObservedPhase)
 
 	// Phase status assert steps
-	sc.Step(`^the COSR should have observed phase "([^"]*)" with status "([^"]*)"$`, tc.theCOSRShouldHaveObservedPhase)
-	sc.Step(`^the COSR should have (\d+) observed phases$`, tc.theCOSRShouldHaveObservedPhaseCount)
+	sc.Step(`^the COS should have observed phase "([^"]*)" with status "([^"]*)"$`, tc.theCOSShouldHaveObservedPhase)
+	sc.Step(`^the COS should have (\d+) observed phases$`, tc.theCOSShouldHaveObservedPhaseCount)
 	sc.Step(`^observed phase "([^"]*)" should have (\d+) incomplete objects$`, tc.observedPhaseShouldHaveIncompleteObjectCount)
 	sc.Step(`^observed phase "([^"]*)" should have an incomplete object "([^"]*)"$`, tc.observedPhaseShouldHaveIncompleteObjectNamed)
-	sc.Step(`^the COSR should have no observed phases$`, tc.theCOSRShouldHaveNoObservedPhases)
-	sc.Step(`^the COSR should have completedAt set$`, tc.theCOSRShouldHaveCompletedAt)
-	sc.Step(`^the COSR should not have completedAt set$`, tc.theCOSRShouldNotHaveCompletedAt)
-	sc.Step(`^the COSR completedAt should be preserved$`, tc.theCOSRCompletedAtShouldBePreserved)
-	sc.Step(`^the COSR completedAt is tracked$`, tc.theCOSRCompletedAtIsTracked)
+	sc.Step(`^the COS should have no observed phases$`, tc.theCOSShouldHaveNoObservedPhases)
+	sc.Step(`^the COS should have completedAt set$`, tc.theCOSShouldHaveCompletedAt)
+	sc.Step(`^the COS should not have completedAt set$`, tc.theCOSShouldNotHaveCompletedAt)
+	sc.Step(`^the COS completedAt should be preserved$`, tc.theCOSCompletedAtShouldBePreserved)
+	sc.Step(`^the COS completedAt is tracked$`, tc.theCOSCompletedAtIsTracked)
 
 	// COD assert steps
-	sc.Step(`^a COSR should exist with group "([^"]*)" and revision (\d+)$`, tc.aCOSRShouldExistWithGroupAndRevision)
-	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should have lifecycleState "([^"]*)"$`, tc.cosrShouldHaveLifecycleState)
-	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should have collisionProtection "([^"]*)"$`, tc.cosrShouldHaveCollisionProtection)
-	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should have (\d+) phases$`, tc.cosrShouldHavePhaseCount)
-	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should have (label|annotation) "([^"]*)" with value "([^"]*)"$`, tc.cosrShouldHaveMetadata)
-	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should not have label "([^"]*)" with value "([^"]*)"$`, tc.cosrShouldNotHaveLabelValue)
-	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should be named "([^"]*)"$`, tc.cosrShouldBeNamed)
-	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should have a controller owner reference to COD "([^"]*)"$`, tc.cosrShouldHaveControllerOwnerRef)
-	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should not exist$`, tc.cosrShouldNotExist)
-	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should not have an owner reference$`, tc.cosrShouldNotHaveOwnerRef)
-	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) should not have finalizer "([^"]*)"$`, tc.cosrShouldNotHaveFinalizer)
-	sc.Step(`^the COSR count for COD "([^"]*)" should be (\d+)$`, tc.cosrCountForCODShouldBe)
+	sc.Step(`^a COS should exist with group "([^"]*)" and revision (\d+)$`, tc.aCOSShouldExistWithGroupAndRevision)
+	sc.Step(`^the COS with group "([^"]*)" and revision (\d+) should have lifecycleState "([^"]*)"$`, tc.cosShouldHaveLifecycleState)
+	sc.Step(`^the COS with group "([^"]*)" and revision (\d+) should have collisionProtection "([^"]*)"$`, tc.cosShouldHaveCollisionProtection)
+	sc.Step(`^the COS with group "([^"]*)" and revision (\d+) should have (\d+) phases$`, tc.cosShouldHavePhaseCount)
+	sc.Step(`^the COS with group "([^"]*)" and revision (\d+) should have (label|annotation) "([^"]*)" with value "([^"]*)"$`, tc.cosShouldHaveMetadata)
+	sc.Step(`^the COS with group "([^"]*)" and revision (\d+) should not have label "([^"]*)" with value "([^"]*)"$`, tc.cosShouldNotHaveLabelValue)
+	sc.Step(`^the COS with group "([^"]*)" and revision (\d+) should be named "([^"]*)"$`, tc.cosShouldBeNamed)
+	sc.Step(`^the COS with group "([^"]*)" and revision (\d+) should have a controller owner reference to COD "([^"]*)"$`, tc.cosShouldHaveControllerOwnerRef)
+	sc.Step(`^the COS with group "([^"]*)" and revision (\d+) should not exist$`, tc.cosShouldNotExist)
+	sc.Step(`^the COS with group "([^"]*)" and revision (\d+) should not have an owner reference$`, tc.cosShouldNotHaveOwnerRef)
+	sc.Step(`^the COS with group "([^"]*)" and revision (\d+) should not have finalizer "([^"]*)"$`, tc.cosShouldNotHaveFinalizer)
+	sc.Step(`^the COS count for COD "([^"]*)" should be (\d+)$`, tc.cosCountForCODShouldBe)
 	sc.Step(`^the COD "([^"]*)" should be Available$`, tc.theCODShouldBeAvailable)
 	sc.Step(`^the COD "([^"]*)" should have condition "([^"]*)" with status "([^"]*)" and reason "([^"]*)"$`, tc.theCODShouldHaveConditionWithReason)
 	sc.Step(`^the COD "([^"]*)" should become available without becoming unavailable$`, tc.theCODShouldBecomeAvailableWithoutBecomingUnavailable)
 	sc.Step(`^the COD "([^"]*)" should have active revision (\d+)$`, tc.theCODShouldHaveActiveRevision)
-	sc.Step(`^the stamped COSR spec for "([^"]*)" revision (\d+) should match the COD template spec$`, tc.stampedCOSRSpecShouldMatchTemplate)
+	sc.Step(`^the stamped COS spec for "([^"]*)" revision (\d+) should match the COD template spec$`, tc.stampedCOSSpecShouldMatchTemplate)
 }
 
 func (tc *testContext) theConfigMapExistenceCheck(name, expectation string) error {
@@ -148,48 +148,48 @@ func (tc *testContext) theConfigMapOwnerRefCheck(name, haveOrNotHave string) err
 	return nil
 }
 
-func (tc *testContext) theConfigMapShouldBeOwnedByCOSR(name, group string, revision uint32) error {
-	expectedOwner := tc.cosrName(group, revision)
+func (tc *testContext) theConfigMapShouldBeOwnedByCOS(name, group string, revision uint32) error {
+	expectedOwner := tc.cosName(group, revision)
 	cm := &corev1.ConfigMap{}
 	return pollForObjectMatching(tc, cm, types.NamespacedName{Namespace: tc.namespace, Name: name}, func() bool {
 		ref := metav1.GetControllerOf(cm)
-		return ref != nil && ref.Kind == "ClusterObjectSetRevision" && ref.Name == expectedOwner
+		return ref != nil && ref.Kind == "ClusterObjectSet" && ref.Name == expectedOwner
 	})
 }
 
-func (tc *testContext) theCOSRShouldNotExist() error {
-	name := tc.lastCreatedCOSRName()
-	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
-	return tc.pollForObjectAbsence(context.Background(), types.NamespacedName{Name: name}, cosr)
+func (tc *testContext) theCOSShouldNotExist() error {
+	name := tc.lastCreatedCOSName()
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	return tc.pollForObjectAbsence(context.Background(), types.NamespacedName{Name: name}, cos)
 }
 
-func (tc *testContext) theCOSRShouldHaveCondition(condType, status string) error {
-	name := tc.lastCreatedCOSRName()
-	return tc.pollForCOSRCondition(context.Background(), name, condType, metav1.ConditionStatus(status))
+func (tc *testContext) theCOSShouldHaveCondition(condType, status string) error {
+	name := tc.lastCreatedCOSName()
+	return tc.pollForCOSCondition(context.Background(), name, condType, metav1.ConditionStatus(status))
 }
 
-func (tc *testContext) theCOSRInGroupShouldHaveCondition(group string, revision uint32, condType, status string) error {
-	return tc.pollForCOSRCondition(context.Background(), tc.cosrName(group, revision), condType, metav1.ConditionStatus(status))
+func (tc *testContext) theCOSInGroupShouldHaveCondition(group string, revision uint32, condType, status string) error {
+	return tc.pollForCOSCondition(context.Background(), tc.cosName(group, revision), condType, metav1.ConditionStatus(status))
 }
 
-func (tc *testContext) theCOSRShouldHaveConditionWithReason(condType, status, reason string) error {
-	name := tc.lastCreatedCOSRName()
+func (tc *testContext) theCOSShouldHaveConditionWithReason(condType, status, reason string) error {
+	name := tc.lastCreatedCOSName()
 	return tc.pollForConditionWithReasonOn(
 		context.Background(),
-		&orbv1alpha1.ClusterObjectSetRevision{},
+		&orbv1alpha1.ClusterObjectSet{},
 		types.NamespacedName{Name: name},
-		cosrConditions, condType, metav1.ConditionStatus(status), reason,
+		cosConditions, condType, metav1.ConditionStatus(status), reason,
 	)
 }
 
 func (tc *testContext) revisionShouldHaveConditionWithReason(revision uint32, condType, status, reason string) error {
-	for name, cosr := range tc.cosrs {
-		if cosr.Spec.Revision == revision {
+	for name, cos := range tc.coss {
+		if cos.Spec.Revision == revision {
 			return tc.pollForConditionWithReasonOn(
 				context.Background(),
-				&orbv1alpha1.ClusterObjectSetRevision{},
+				&orbv1alpha1.ClusterObjectSet{},
 				types.NamespacedName{Name: name},
-				cosrConditions, condType, metav1.ConditionStatus(status), reason,
+				cosConditions, condType, metav1.ConditionStatus(status), reason,
 			)
 		}
 	}
@@ -197,9 +197,9 @@ func (tc *testContext) revisionShouldHaveConditionWithReason(revision uint32, co
 }
 
 func (tc *testContext) revisionShouldHaveObservedPhase(revision uint32, phaseName, status string) error {
-	for name, cosr := range tc.cosrs {
-		if cosr.Spec.Revision == revision {
-			obj := &orbv1alpha1.ClusterObjectSetRevision{}
+	for name, cos := range tc.coss {
+		if cos.Spec.Revision == revision {
+			obj := &orbv1alpha1.ClusterObjectSet{}
 			return pollForObjectMatching(tc, obj, types.NamespacedName{Name: name}, func() bool {
 				for _, op := range obj.Status.ObservedPhases {
 					if op.Name == phaseName && string(op.Status) == status {
@@ -217,27 +217,27 @@ func (tc *testContext) codFullName(name string) string {
 	return tc.namespace + "-" + name
 }
 
-func (tc *testContext) cosrName(group string, revision uint32) string {
+func (tc *testContext) cosName(group string, revision uint32) string {
 	return fmt.Sprintf("%s-%s-%d", tc.namespace, group, revision)
 }
 
-func (tc *testContext) getCOSR(ctx context.Context, group string, revision uint32) (*orbv1alpha1.ClusterObjectSetRevision, error) {
-	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
-	if err := tc.pollForObject(ctx, types.NamespacedName{Name: tc.cosrName(group, revision)}, cosr); err != nil {
-		return nil, fmt.Errorf("COSR %s-%d not found: %w", group, revision, err)
+func (tc *testContext) getCOS(ctx context.Context, group string, revision uint32) (*orbv1alpha1.ClusterObjectSet, error) {
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	if err := tc.pollForObject(ctx, types.NamespacedName{Name: tc.cosName(group, revision)}, cos); err != nil {
+		return nil, fmt.Errorf("COS %s-%d not found: %w", group, revision, err)
 	}
-	return cosr, nil
+	return cos, nil
 }
 
-func (tc *testContext) aCOSRShouldExistWithGroupAndRevision(group string, revision uint32) error {
-	_, err := tc.getCOSR(context.Background(), group, revision)
+func (tc *testContext) aCOSShouldExistWithGroupAndRevision(group string, revision uint32) error {
+	_, err := tc.getCOS(context.Background(), group, revision)
 	return err
 }
 
-func (tc *testContext) cosrShouldHaveLifecycleState(group string, revision uint32, state string) error {
-	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
-	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: tc.cosrName(group, revision)}, func() bool {
-		actual := string(cosr.Spec.LifecycleState)
+func (tc *testContext) cosShouldHaveLifecycleState(group string, revision uint32, state string) error {
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	return pollForObjectMatching(tc, cos, types.NamespacedName{Name: tc.cosName(group, revision)}, func() bool {
+		actual := string(cos.Spec.LifecycleState)
 		if actual == "" {
 			actual = "Active"
 		}
@@ -245,74 +245,74 @@ func (tc *testContext) cosrShouldHaveLifecycleState(group string, revision uint3
 	})
 }
 
-func (tc *testContext) cosrShouldHaveCollisionProtection(group string, revision uint32, cp string) error {
-	cosr, err := tc.getCOSR(context.Background(), group, revision)
+func (tc *testContext) cosShouldHaveCollisionProtection(group string, revision uint32, cp string) error {
+	cos, err := tc.getCOS(context.Background(), group, revision)
 	if err != nil {
 		return err
 	}
-	if cosr.Spec.CollisionProtection == nil {
-		return fmt.Errorf("COSR %s-%d collisionProtection is nil, want %q", group, revision, cp)
+	if cos.Spec.CollisionProtection == nil {
+		return fmt.Errorf("COS %s-%d collisionProtection is nil, want %q", group, revision, cp)
 	}
-	if string(*cosr.Spec.CollisionProtection) != cp {
-		return fmt.Errorf("COSR %s-%d collisionProtection: got %q, want %q", group, revision, *cosr.Spec.CollisionProtection, cp)
+	if string(*cos.Spec.CollisionProtection) != cp {
+		return fmt.Errorf("COS %s-%d collisionProtection: got %q, want %q", group, revision, *cos.Spec.CollisionProtection, cp)
 	}
 	return nil
 }
 
-func (tc *testContext) cosrShouldHavePhaseCount(group string, revision uint32, count int) error {
-	cosr, err := tc.getCOSR(context.Background(), group, revision)
+func (tc *testContext) cosShouldHavePhaseCount(group string, revision uint32, count int) error {
+	cos, err := tc.getCOS(context.Background(), group, revision)
 	if err != nil {
 		return err
 	}
-	if len(cosr.Spec.Phases) != count {
-		return fmt.Errorf("COSR %s-%d phases: got %d, want %d", group, revision, len(cosr.Spec.Phases), count)
+	if len(cos.Spec.Phases) != count {
+		return fmt.Errorf("COS %s-%d phases: got %d, want %d", group, revision, len(cos.Spec.Phases), count)
 	}
 	return nil
 }
 
-func (tc *testContext) cosrShouldHaveMetadata(group string, revision uint32, kind, key, value string) error {
-	cosr, err := tc.getCOSR(context.Background(), group, revision)
+func (tc *testContext) cosShouldHaveMetadata(group string, revision uint32, kind, key, value string) error {
+	cos, err := tc.getCOS(context.Background(), group, revision)
 	if err != nil {
 		return err
 	}
-	m := cosr.Labels
+	m := cos.Labels
 	if kind == "annotation" {
-		m = cosr.Annotations
+		m = cos.Annotations
 	}
 	if got := m[key]; got != value {
-		return fmt.Errorf("COSR %s-%d %s %q: got %q, want %q", group, revision, kind, key, got, value)
+		return fmt.Errorf("COS %s-%d %s %q: got %q, want %q", group, revision, kind, key, got, value)
 	}
 	return nil
 }
 
-func (tc *testContext) cosrShouldNotHaveLabelValue(group string, revision uint32, key, value string) error {
-	cosr, err := tc.getCOSR(context.Background(), group, revision)
+func (tc *testContext) cosShouldNotHaveLabelValue(group string, revision uint32, key, value string) error {
+	cos, err := tc.getCOS(context.Background(), group, revision)
 	if err != nil {
 		return err
 	}
-	if got := cosr.Labels[key]; got == value {
-		return fmt.Errorf("COSR %s-%d label %q: got %q, should not equal %q", group, revision, key, got, value)
+	if got := cos.Labels[key]; got == value {
+		return fmt.Errorf("COS %s-%d label %q: got %q, should not equal %q", group, revision, key, got, value)
 	}
 	return nil
 }
 
-func (tc *testContext) cosrShouldBeNamed(group string, revision uint32, expectedName string) error {
-	cosr, err := tc.getCOSR(context.Background(), group, revision)
+func (tc *testContext) cosShouldBeNamed(group string, revision uint32, expectedName string) error {
+	cos, err := tc.getCOS(context.Background(), group, revision)
 	if err != nil {
 		return err
 	}
 	expected := tc.codFullName(expectedName)
-	if cosr.Name != expected {
-		return fmt.Errorf("COSR %s-%d name: got %q, want %q", group, revision, cosr.Name, expected)
+	if cos.Name != expected {
+		return fmt.Errorf("COS %s-%d name: got %q, want %q", group, revision, cos.Name, expected)
 	}
 	return nil
 }
 
-func (tc *testContext) cosrShouldHaveControllerOwnerRef(group string, revision uint32, codName string) error {
+func (tc *testContext) cosShouldHaveControllerOwnerRef(group string, revision uint32, codName string) error {
 	fullCODName := tc.codFullName(codName)
-	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
-	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: tc.cosrName(group, revision)}, func() bool {
-		for _, ref := range cosr.OwnerReferences {
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	return pollForObjectMatching(tc, cos, types.NamespacedName{Name: tc.cosName(group, revision)}, func() bool {
+		for _, ref := range cos.OwnerReferences {
 			if ref.Kind == "ClusterObjectDeployment" && ref.Name == fullCODName && ref.Controller != nil && *ref.Controller {
 				return true
 			}
@@ -321,22 +321,22 @@ func (tc *testContext) cosrShouldHaveControllerOwnerRef(group string, revision u
 	})
 }
 
-func (tc *testContext) cosrShouldNotExist(group string, revision uint32) error {
-	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
-	return tc.pollForObjectAbsence(context.Background(), types.NamespacedName{Name: tc.cosrName(group, revision)}, cosr)
+func (tc *testContext) cosShouldNotExist(group string, revision uint32) error {
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	return tc.pollForObjectAbsence(context.Background(), types.NamespacedName{Name: tc.cosName(group, revision)}, cos)
 }
 
-func (tc *testContext) cosrShouldNotHaveOwnerRef(group string, revision uint32) error {
-	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
-	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: tc.cosrName(group, revision)}, func() bool {
-		return len(cosr.OwnerReferences) == 0
+func (tc *testContext) cosShouldNotHaveOwnerRef(group string, revision uint32) error {
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	return pollForObjectMatching(tc, cos, types.NamespacedName{Name: tc.cosName(group, revision)}, func() bool {
+		return len(cos.OwnerReferences) == 0
 	})
 }
 
-func (tc *testContext) cosrShouldNotHaveFinalizer(group string, revision uint32, finalizer string) error {
-	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
-	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: tc.cosrName(group, revision)}, func() bool {
-		for _, f := range cosr.Finalizers {
+func (tc *testContext) cosShouldNotHaveFinalizer(group string, revision uint32, finalizer string) error {
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	return pollForObjectMatching(tc, cos, types.NamespacedName{Name: tc.cosName(group, revision)}, func() bool {
+		for _, f := range cos.Finalizers {
 			if f == finalizer {
 				return false
 			}
@@ -345,20 +345,20 @@ func (tc *testContext) cosrShouldNotHaveFinalizer(group string, revision uint32,
 	})
 }
 
-func (tc *testContext) cosrCountForCODShouldBe(codName string, count int) error {
+func (tc *testContext) cosCountForCODShouldBe(codName string, count int) error {
 	fullCODName := tc.codFullName(codName)
-	var list orbv1alpha1.ClusterObjectSetRevisionList
+	var list orbv1alpha1.ClusterObjectSetList
 	if err := tc.client.List(context.Background(), &list); err != nil {
 		return err
 	}
 	actual := 0
-	for _, cosr := range list.Items {
-		if cosr.Spec.Group == fullCODName {
+	for _, cos := range list.Items {
+		if cos.Spec.Group == fullCODName {
 			actual++
 		}
 	}
 	if actual != count {
-		return fmt.Errorf("COSR count for COD %q: got %d, want %d", codName, actual, count)
+		return fmt.Errorf("COS count for COD %q: got %d, want %d", codName, actual, count)
 	}
 	return nil
 }
@@ -375,13 +375,13 @@ func normalizeViaJSON(v any) (any, error) {
 	return out, nil
 }
 
-func (tc *testContext) stampedCOSRSpecShouldMatchTemplate(group string, revision uint32) error {
-	cosr, err := tc.getCOSR(context.Background(), group, revision)
+func (tc *testContext) stampedCOSSpecShouldMatchTemplate(group string, revision uint32) error {
+	cos, err := tc.getCOS(context.Background(), group, revision)
 	if err != nil {
 		return err
 	}
 	expected := tc.tmpl.build()
-	actual := cosr.Spec.ClusterObjectDeploymentTemplateSpec
+	actual := cos.Spec.ClusterObjectDeploymentTemplateSpec
 
 	// Normalize both through JSON so that runtime.RawExtension.Object vs .Raw differences are eliminated.
 	expectedNorm, err := normalizeViaJSON(expected)
@@ -394,7 +394,7 @@ func (tc *testContext) stampedCOSRSpecShouldMatchTemplate(group string, revision
 	}
 
 	if !equality.Semantic.DeepEqual(expectedNorm, actualNorm) {
-		return fmt.Errorf("COSR spec does not match COD template spec:\n%s", cmp.Diff(expectedNorm, actualNorm))
+		return fmt.Errorf("COS spec does not match COD template spec:\n%s", cmp.Diff(expectedNorm, actualNorm))
 	}
 	return nil
 }
@@ -435,11 +435,11 @@ func (tc *testContext) theCODShouldBecomeAvailableWithoutBecomingUnavailable(cod
 
 func (tc *testContext) theCODShouldHaveActiveRevision(codName string, revision uint32) error {
 	fullCODName := tc.codFullName(codName)
-	expectedCOSRName := fmt.Sprintf("%s-%d", fullCODName, revision)
+	expectedCOSName := fmt.Sprintf("%s-%d", fullCODName, revision)
 	cod := &orbv1alpha1.ClusterObjectDeployment{}
 	return pollForObjectMatching(tc, cod, types.NamespacedName{Name: fullCODName}, func() bool {
 		for _, rs := range cod.Status.ActiveRevisions {
-			if rs.Name == expectedCOSRName {
+			if rs.Name == expectedCOSName {
 				return true
 			}
 		}
@@ -447,11 +447,11 @@ func (tc *testContext) theCODShouldHaveActiveRevision(codName string, revision u
 	})
 }
 
-func (tc *testContext) theCOSRShouldHaveObservedPhase(phaseName, status string) error {
-	name := tc.lastCreatedCOSRName()
-	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
-	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: name}, func() bool {
-		for _, op := range cosr.Status.ObservedPhases {
+func (tc *testContext) theCOSShouldHaveObservedPhase(phaseName, status string) error {
+	name := tc.lastCreatedCOSName()
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	return pollForObjectMatching(tc, cos, types.NamespacedName{Name: name}, func() bool {
+		for _, op := range cos.Status.ObservedPhases {
 			if op.Name == phaseName && string(op.Status) == status {
 				return true
 			}
@@ -460,19 +460,19 @@ func (tc *testContext) theCOSRShouldHaveObservedPhase(phaseName, status string) 
 	})
 }
 
-func (tc *testContext) theCOSRShouldHaveObservedPhaseCount(count int) error {
-	name := tc.lastCreatedCOSRName()
-	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
-	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: name}, func() bool {
-		return len(cosr.Status.ObservedPhases) == count
+func (tc *testContext) theCOSShouldHaveObservedPhaseCount(count int) error {
+	name := tc.lastCreatedCOSName()
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	return pollForObjectMatching(tc, cos, types.NamespacedName{Name: name}, func() bool {
+		return len(cos.Status.ObservedPhases) == count
 	})
 }
 
 func (tc *testContext) observedPhaseShouldHaveIncompleteObjectCount(phaseName string, count int) error {
-	name := tc.lastCreatedCOSRName()
-	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
-	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: name}, func() bool {
-		for _, op := range cosr.Status.ObservedPhases {
+	name := tc.lastCreatedCOSName()
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	return pollForObjectMatching(tc, cos, types.NamespacedName{Name: name}, func() bool {
+		for _, op := range cos.Status.ObservedPhases {
 			if op.Name == phaseName {
 				return len(op.IncompleteObjects) == count
 			}
@@ -482,10 +482,10 @@ func (tc *testContext) observedPhaseShouldHaveIncompleteObjectCount(phaseName st
 }
 
 func (tc *testContext) observedPhaseShouldHaveIncompleteObjectNamed(phaseName, objectName string) error {
-	name := tc.lastCreatedCOSRName()
-	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
-	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: name}, func() bool {
-		for _, op := range cosr.Status.ObservedPhases {
+	name := tc.lastCreatedCOSName()
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	return pollForObjectMatching(tc, cos, types.NamespacedName{Name: name}, func() bool {
+		for _, op := range cos.Status.ObservedPhases {
 			if op.Name == phaseName {
 				for _, obj := range op.IncompleteObjects {
 					if obj.Name == objectName {
@@ -498,66 +498,66 @@ func (tc *testContext) observedPhaseShouldHaveIncompleteObjectNamed(phaseName, o
 	})
 }
 
-func (tc *testContext) theCOSRShouldHaveCompletedAt() error {
-	name := tc.lastCreatedCOSRName()
-	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
-	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: name}, func() bool {
-		return cosr.Status.CompletedAt != nil
+func (tc *testContext) theCOSShouldHaveCompletedAt() error {
+	name := tc.lastCreatedCOSName()
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	return pollForObjectMatching(tc, cos, types.NamespacedName{Name: name}, func() bool {
+		return cos.Status.CompletedAt != nil
 	})
 }
 
 // Single Get, not poll: preceding poll-based assertions guarantee the controller
 // has reconciled. If completedAt is set at this point, that's a real bug.
-func (tc *testContext) theCOSRShouldNotHaveCompletedAt() error {
-	name := tc.lastCreatedCOSRName()
-	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
-	if err := tc.client.Get(context.Background(), types.NamespacedName{Name: name}, cosr); err != nil {
+func (tc *testContext) theCOSShouldNotHaveCompletedAt() error {
+	name := tc.lastCreatedCOSName()
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	if err := tc.client.Get(context.Background(), types.NamespacedName{Name: name}, cos); err != nil {
 		return err
 	}
-	if cosr.Status.CompletedAt != nil {
-		return fmt.Errorf("completedAt is set: %v", cosr.Status.CompletedAt)
+	if cos.Status.CompletedAt != nil {
+		return fmt.Errorf("completedAt is set: %v", cos.Status.CompletedAt)
 	}
 	return nil
 }
 
-func (tc *testContext) theCOSRShouldHaveNoObservedPhases() error {
-	name := tc.lastCreatedCOSRName()
-	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
-	return pollForObjectMatching(tc, cosr, types.NamespacedName{Name: name}, func() bool {
-		return len(cosr.Status.ObservedPhases) == 0
+func (tc *testContext) theCOSShouldHaveNoObservedPhases() error {
+	name := tc.lastCreatedCOSName()
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	return pollForObjectMatching(tc, cos, types.NamespacedName{Name: name}, func() bool {
+		return len(cos.Status.ObservedPhases) == 0
 	})
 }
 
-func (tc *testContext) theCOSRCompletedAtIsTracked() error {
-	name := tc.lastCreatedCOSRName()
-	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
-	if err := tc.client.Get(context.Background(), types.NamespacedName{Name: name}, cosr); err != nil {
+func (tc *testContext) theCOSCompletedAtIsTracked() error {
+	name := tc.lastCreatedCOSName()
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	if err := tc.client.Get(context.Background(), types.NamespacedName{Name: name}, cos); err != nil {
 		return err
 	}
-	if cosr.Status.CompletedAt == nil {
+	if cos.Status.CompletedAt == nil {
 		return fmt.Errorf("completedAt is not set")
 	}
-	tc.trackedCompletedAt = cosr.Status.CompletedAt
+	tc.trackedCompletedAt = cos.Status.CompletedAt
 	return nil
 }
 
 // Single Get, not poll: preceding poll-based assertions guarantee the controller
 // has reconciled. completedAt and conditions are set in the same status update,
 // so if the condition has changed, completedAt is already in its final state.
-func (tc *testContext) theCOSRCompletedAtShouldBePreserved() error {
+func (tc *testContext) theCOSCompletedAtShouldBePreserved() error {
 	if tc.trackedCompletedAt == nil {
 		return fmt.Errorf("no tracked completedAt")
 	}
-	name := tc.lastCreatedCOSRName()
-	cosr := &orbv1alpha1.ClusterObjectSetRevision{}
-	if err := tc.client.Get(context.Background(), types.NamespacedName{Name: name}, cosr); err != nil {
+	name := tc.lastCreatedCOSName()
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	if err := tc.client.Get(context.Background(), types.NamespacedName{Name: name}, cos); err != nil {
 		return err
 	}
-	if cosr.Status.CompletedAt == nil {
+	if cos.Status.CompletedAt == nil {
 		return fmt.Errorf("completedAt is nil")
 	}
-	if !cosr.Status.CompletedAt.Equal(tc.trackedCompletedAt) {
-		return fmt.Errorf("completedAt changed from %s to %s", tc.trackedCompletedAt, cosr.Status.CompletedAt)
+	if !cos.Status.CompletedAt.Equal(tc.trackedCompletedAt) {
+		return fmt.Errorf("completedAt changed from %s to %s", tc.trackedCompletedAt, cos.Status.CompletedAt)
 	}
 	return nil
 }
