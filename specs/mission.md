@@ -24,7 +24,7 @@ orb-operator is a Kubernetes operator that manages phased, safe rollout of exten
 
 ## Development Practices
 
-- **Testing** — primary testing via controller-runtime envtest; unit tests with testify for pure logic; godog BDD tests for e2e scenarios.
+- **Testing** — primary testing via godog BDD e2e scenarios against a kind cluster; unit tests with testify for pure logic.
 - **Linting and formatting** — golangci-lint and gofumpt are mandatory. `go vet` runs as part of the lint pipeline.
 - **CI gating** — all PRs must pass tests, lint, and build before merge. GitHub Actions enforces this.
 - **ADR compliance** — changes to the API or controller behavior must be consistent with ADR-0001. If a change requires deviating from the ADR, update the ADR first.

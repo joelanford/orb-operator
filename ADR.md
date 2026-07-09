@@ -31,15 +31,15 @@ The extension object management architecture uses five cooperating API resources
                     │             │
                     └──────┬──────┘
                            │ manages
-                    ┌──────▼──────┐
-                    │             │
-                    │ ClusterObj  │
-                    │   ectSet    │
-                    │             │
-                    └──┬───────┬──┘
+                    ┌──────▼────────┐
+                    │               │
+                    │ ClusterObject │
+                    │  Deployment   │
+                    │               │
+                    └──┬───────┬────┘
              manages   │       │   manages
           ┌────────────▼─┐   ┌─▼────────────┐
-          │ COS         │   │ COS         │
+          │ COS          │   │ COS          │
           │ rev: 1       │   │ rev: 2       │
           │ state:Active │   │ state:Active │
           └──┬───────────┘   └───────────┬──┘
@@ -49,7 +49,7 @@ The extension object management architecture uses five cooperating API resources
     │    Slice        │       │    Slice        │
     └────────┬────────┘       └──────────┬──────┘
       embeds │                           │ embeds
-    ┌ ─ ─ ─ ▼─ ─ ─ ─ ┐       ┌ ─ ─ ─ ─ ▼─ ─ ─ ┐
+    ┌ ─ ─ ─ ▼─ ─ ─ ─  ┐       ┌  ─ ─ ─ ─ ▼─ ─ ─ ┐
     │ CRD             │╌╌╌╌╌╌╌│ CRD             │
     │ Deployment      │╌╌╌╌╌╌╌│ Deployment      │
     │ Service         │╌╌╌╌╌╌╌│ Service         │
@@ -59,7 +59,7 @@ The extension object management architecture uses five cooperating API resources
     │ Validating      │       │ Validating      │
     │   Webhook       │       │   Admission     │
     │   Config        │       │   Policy        │
-    └ ─ ─ ─ ─ ─ ─ ─ ─┘       └ ─ ─ ─ ─ ─ ─ ─ ─┘
+    └ ─ ─ ─ ─ ─ ─ ─  ─┘       └  ─ ─ ─ ─ ─ ─ ─ ─┘
 
     ╌╌╌ = ownership transfer during rollout
 ```
@@ -78,7 +78,7 @@ The ClusterExtension controller is the only component that interacts with catalo
 
 Spec fields:
 - `progressDeadlineMinutes` — deadline for rollout progress
-- `template.metadata` — labels and annotations propagated to stamped-out COSs (analogous to `Deployment.spec.template.metadata`). Callers attach arbitrary metadata here (package name, bundle version, service account info) without the COD API needing to know about those concerns.
+- `template.metadata` — labels and annotations propagated to stamped-out COSs (analogous to `Deployment.spec.template.metadata`). Callers attach arbitrary metadata here (package name, bundle version) without the COD API needing to know about those concerns.
 - `template.spec` — the COS spec template (phases, collisionProtection, per-object assertions)
 
 **ClusterObjectSet (COS)** is a point-in-time snapshot analogous to a ReplicaSet. COSs with the same `group` form a revision chain ordered by `revision`. The COS controller manages object ownership handoffs within a group.
@@ -90,7 +90,7 @@ Immutable spec fields:
 - `collisionProtection` — collision protection strategy
 
 Mutable spec field:
-- `lifecycleState` — `Active` or `Archived` (one-way transition)
+- `lifecycleState` — `Active` -> `Archived` (one-way transition)
 
 COSs can be created by the COD controller or directly by users and other controllers. The `group` and `revision` fields give the COS controller everything it needs to manage handoffs regardless of who created the COS.
 
@@ -122,6 +122,7 @@ Assertion types:
 - **ConditionEqual** — checks that an object has a condition of specified type and status
 - **FieldsEqual** — checks that values at two field paths match
 - **FieldValue** — checks that a field has a specific value
+- **CELExpression** — evaluates a CEL expression against the object
 
 Several resource kinds have built-in assertions (e.g. CRD checks `Established=True`, Deployment checks `updatedReplicas == replicas`). Inline assertions are for custom resources or non-standard readiness criteria.
 

@@ -44,14 +44,12 @@ orb-operator/
 │   └── operator/           # cobra entrypoint
 ├── internal/
 │   ├── controller/         # reconcilers (COD, COS)
-│   ├── handler/            # object management (boxcutter integration)
 │   └── assertions/         # assertion evaluation logic
 ├── deploy/
 │   ├── lib/                # shared jsonnet libraries
 │   ├── operator.jsonnet    # main deployment manifest (Deployment, RBAC, etc.)
 │   └── crds/               # controller-gen CRD output
 ├── test/
-│   ├── integration/        # envtest-based tests
 │   └── e2e/                # godog BDD tests
 ├── hack/
 │   └── diff.sh             # verify script (jj-aware)
@@ -76,9 +74,8 @@ orb-operator/
 | `make lint` | `go tool golangci-lint run ./...` |
 | `make lint-fix` | `go tool golangci-lint run --fix ./...` |
 | `make test-unit` | Run unit tests (all packages except `./test/...`) |
-| `make test-integration` | Run envtest integration tests (`./test/integration/...`) |
 | `make test-e2e` | Run godog BDD e2e tests (`./test/e2e/...`) |
-| `make test-all` | Run test-unit, test-integration, test-e2e |
+| `make test-all` | Run test-unit, test-e2e |
 | `make build` | `go build ./...` (also called by `make verify`) |
 | `make tidy` | `go mod tidy` |
 | `make generate` | `go generate ./...` (controller-gen: CRDs, deepcopy) |
@@ -97,7 +94,6 @@ Separate GitHub Actions workflows per concern:
 | Workflow | Triggers | Runs |
 |---|---|---|
 | `unit.yml` | PR, push to main | `make test-unit` |
-| `integration.yml` | PR, push to main | `make test-integration` |
 | `e2e.yml` | PR, push to main | `make test-e2e` |
 | `verify.yml` | PR, push to main | `make verify` |
 | `image.yml` | push to main | `go tool goreleaser release --snapshot` |
