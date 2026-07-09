@@ -52,7 +52,10 @@ local applyE2eProfile(deploy) = deploy {
         containers: [
           c {
             imagePullPolicy: 'Never',
-            env+: [{ name: 'GOCOVERDIR', value: '/coverage' }],
+            env+: [
+              { name: 'GOCOVERDIR', value: '/coverage' },
+              { name: 'ORB_DEADLINE_DURATION_UNIT_OVERRIDE', value: '1ms' },
+            ],
             volumeMounts+: [{ name: 'coverage', mountPath: '/coverage' }],
           }
           for c in deploy.spec.template.spec.containers
