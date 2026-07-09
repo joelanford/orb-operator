@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -112,7 +113,16 @@ func run(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("setting up COS controller: %w", err)
 	}
 
-	codReconciler := controller.NewCODReconciler(mgr.GetClient(), mgr.GetScheme())
+	deadlineUnit := time.Minute
+	if v := os.Getenv("ORB_DEADLINE_DURATION_UNIT_OVERRIDE"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("parsing ORB_DEADLINE_DURATION_UNIT_OVERRIDE=%q: %w", v, err)
+		}
+		deadlineUnit = d
+	}
+
+	codReconciler := controller.NewCODReconciler(mgr.GetClient(), mgr.GetScheme(), deadlineUnit)
 	if err := codReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("setting up COD controller: %w", err)
 	}

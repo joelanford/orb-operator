@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -34,12 +35,13 @@ const (
 )
 
 type CODReconciler struct {
-	client client.Client
-	scheme *runtime.Scheme
+	client       client.Client
+	scheme       *runtime.Scheme
+	deadlineUnit time.Duration
 }
 
-func NewCODReconciler(c client.Client, scheme *runtime.Scheme) *CODReconciler {
-	return &CODReconciler{client: c, scheme: scheme}
+func NewCODReconciler(c client.Client, scheme *runtime.Scheme, deadlineUnit time.Duration) *CODReconciler {
+	return &CODReconciler{client: c, scheme: scheme, deadlineUnit: deadlineUnit}
 }
 
 func (r *CODReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -71,7 +73,7 @@ func (r *CODReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	}
 
 	reconciledCOD := existing.DeepCopy()
-	reconcileErr := r.reconcile(ctx, reconciledCOD)
+	result, reconcileErr := r.reconcile(ctx, reconciledCOD)
 
 	if !equality.Semantic.DeepEqual(existing.Status, reconciledCOD.Status) {
 		if err := r.client.Status().Update(ctx, reconciledCOD); err != nil {
@@ -82,13 +84,13 @@ func (r *CODReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	if reconcileErr != nil {
 		log.Error(reconcileErr, "reconcile error")
 	}
-	return ctrl.Result{}, reconcileErr
+	return result, reconcileErr
 }
 
-func (r *CODReconciler) reconcile(ctx context.Context, cod *orbv1alpha1.ClusterObjectDeployment) error {
+func (r *CODReconciler) reconcile(ctx context.Context, cod *orbv1alpha1.ClusterObjectDeployment) (ctrl.Result, error) {
 	var cosList orbv1alpha1.ClusterObjectSetList
 	if err := r.client.List(ctx, &cosList, client.MatchingFields{groupIndex: cod.Name}); err != nil {
-		return fmt.Errorf("listing COSs: %w", err)
+		return ctrl.Result{}, fmt.Errorf("listing COSs: %w", err)
 	}
 
 	slices.SortFunc(cosList.Items, func(a, b orbv1alpha1.ClusterObjectSet) int {
@@ -97,10 +99,10 @@ func (r *CODReconciler) reconcile(ctx context.Context, cod *orbv1alpha1.ClusterO
 
 	ownedCOSs, err := r.adoptAndFilterOwned(ctx, cod, cosList.Items)
 	if err != nil {
-		return err
+		return ctrl.Result{}, err
 	}
 
-	r.setStatus(cod, ownedCOSs)
+	requeueAfter := r.setStatus(cod, ownedCOSs)
 
 	var latestOwned *orbv1alpha1.ClusterObjectSet
 	if len(ownedCOSs) > 0 {
@@ -109,55 +111,55 @@ func (r *CODReconciler) reconcile(ctx context.Context, cod *orbv1alpha1.ClusterO
 
 	currentHash, err := templateHash(cod.Spec.Template)
 	if err != nil {
-		return fmt.Errorf("computing template hash: %w", err)
+		return ctrl.Result{}, fmt.Errorf("computing template hash: %w", err)
 	}
 	if latestOwned == nil || latestOwned.Labels[labelTemplateHash] != currentHash {
 		nextRevision := r.nextRevision(cosList.Items)
 
 		cos, err := buildCOSFromTemplate(cod, nextRevision, currentHash)
 		if err != nil {
-			return fmt.Errorf("building COS from template: %w", err)
+			return ctrl.Result{}, fmt.Errorf("building COS from template: %w", err)
 		}
 
 		cosUnstructuredObj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(cos)
 		if err != nil {
-			return fmt.Errorf("converting COS to unstructured: %w", err)
+			return ctrl.Result{}, fmt.Errorf("converting COS to unstructured: %w", err)
 		}
 
 		u := &unstructured.Unstructured{Object: cosUnstructuredObj}
 		if err := r.client.Create(ctx, u); err != nil {
-			return fmt.Errorf("creating COS: %w", err)
+			return ctrl.Result{}, fmt.Errorf("creating COS: %w", err)
 		}
 		if err := r.client.Apply(ctx, cos, client.FieldOwner(codFieldOwner), client.ForceOwnership); err != nil {
-			return fmt.Errorf("claiming field ownership for new COS: %w", err)
+			return ctrl.Result{}, fmt.Errorf("claiming field ownership for new COS: %w", err)
 		}
-		return nil
+		return ctrl.Result{}, nil
 	}
 
 	desired, err := buildCOSFromTemplate(cod, latestOwned.Spec.Revision, currentHash)
 	if err != nil {
-		return fmt.Errorf("building desired COS apply config: %w", err)
+		return ctrl.Result{}, fmt.Errorf("building desired COS apply config: %w", err)
 	}
 	existing, err := cosac.ExtractClusterObjectSet(latestOwned, codFieldOwner)
 	if err != nil {
-		return fmt.Errorf("extracting COS apply config: %w", err)
+		return ctrl.Result{}, fmt.Errorf("extracting COS apply config: %w", err)
 	}
 	if !equality.Semantic.DeepEqual(existing, desired) {
 		ctrl.LoggerFrom(ctx).Info("fixing up COS field owners")
 		if err := r.client.Apply(ctx, desired, client.FieldOwner(codFieldOwner), client.ForceOwnership); err != nil {
-			return fmt.Errorf("applying COS: %w", err)
+			return ctrl.Result{}, fmt.Errorf("applying COS: %w", err)
 		}
 	}
 
 	if err := r.archiveOlderRevisions(ctx, cod, ownedCOSs); err != nil {
-		return err
+		return ctrl.Result{}, err
 	}
 
 	if err := r.pruneArchivedCOSs(ctx, cod, ownedCOSs); err != nil {
-		return err
+		return ctrl.Result{}, err
 	}
 
-	return nil
+	return requeueAfter, nil
 }
 
 func (r *CODReconciler) adoptAndFilterOwned(ctx context.Context, cod *orbv1alpha1.ClusterObjectDeployment, coss []orbv1alpha1.ClusterObjectSet) ([]orbv1alpha1.ClusterObjectSet, error) {
@@ -302,12 +304,14 @@ func (r *CODReconciler) pruneArchivedCOSs(ctx context.Context, cod *orbv1alpha1.
 	return nil
 }
 
-func (r *CODReconciler) setStatus(cod *orbv1alpha1.ClusterObjectDeployment, ownedCOSs []orbv1alpha1.ClusterObjectSet) {
+func (r *CODReconciler) setStatus(cod *orbv1alpha1.ClusterObjectDeployment, ownedCOSs []orbv1alpha1.ClusterObjectSet) ctrl.Result {
+	var activeCOSs []orbv1alpha1.ClusterObjectSet
 	var active []orbv1alpha1.ClusterObjectSetStatusSummary
 	for i := range ownedCOSs {
 		if ownedCOSs[i].Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived {
 			continue
 		}
+		activeCOSs = append(activeCOSs, ownedCOSs[i])
 		active = append(active, orbv1alpha1.ClusterObjectSetStatusSummary{
 			Name:       ownedCOSs[i].Name,
 			Conditions: ownedCOSs[i].Status.Conditions,
@@ -316,9 +320,22 @@ func (r *CODReconciler) setStatus(cod *orbv1alpha1.ClusterObjectDeployment, owne
 
 	cod.Status.ActiveRevisions = active
 
+	meta.SetStatusCondition(&cod.Status.Conditions, evaluateAvailability(cod.Generation, active))
+
+	var latestCOS *orbv1alpha1.ClusterObjectSet
+	if len(activeCOSs) > 0 {
+		latestCOS = &activeCOSs[len(activeCOSs)-1]
+	}
+	progressingCondition, requeueAfter := r.evaluateProgressDeadline(cod, latestCOS, time.Now())
+	meta.SetStatusCondition(&cod.Status.Conditions, progressingCondition)
+
+	return requeueAfter
+}
+
+func evaluateAvailability(generation int64, active []orbv1alpha1.ClusterObjectSetStatusSummary) metav1.Condition {
 	condition := metav1.Condition{
 		Type:               orbv1alpha1.ConditionTypeAvailable,
-		ObservedGeneration: cod.Generation,
+		ObservedGeneration: generation,
 	}
 
 	switch len(active) {
@@ -342,7 +359,54 @@ func (r *CODReconciler) setStatus(cod *orbv1alpha1.ClusterObjectDeployment, owne
 		condition.Message = "revision transition in progress"
 	}
 
-	meta.SetStatusCondition(&cod.Status.Conditions, condition)
+	return condition
+}
+
+func (r *CODReconciler) evaluateProgressDeadline(cod *orbv1alpha1.ClusterObjectDeployment, latestCOS *orbv1alpha1.ClusterObjectSet, now time.Time) (metav1.Condition, ctrl.Result) {
+	condition := metav1.Condition{
+		Type:               orbv1alpha1.ConditionTypeProgressing,
+		ObservedGeneration: cod.Generation,
+	}
+
+	if latestCOS == nil {
+		condition.Status = metav1.ConditionFalse
+		condition.Reason = orbv1alpha1.ReasonNoActiveRevisions
+		condition.Message = "no active revisions"
+		return condition, ctrl.Result{}
+	}
+
+	if latestCOS.Status.CompletedAt != nil {
+		condition.Status = metav1.ConditionTrue
+		condition.Reason = orbv1alpha1.ReasonNewClusterObjectSetProgressed
+		condition.Message = "latest revision has progressed"
+		return condition, ctrl.Result{}
+	}
+
+	var requeueAfter time.Duration
+	if cod.Spec.ProgressDeadlineMinutes != nil {
+		lastMilestone := latestCOS.CreationTimestamp
+		for _, phase := range latestCOS.Status.ObservedPhases {
+			if phase.CompletedAt != nil && phase.CompletedAt.After(lastMilestone.Time) {
+				lastMilestone = *phase.CompletedAt
+			}
+		}
+
+		deadline := time.Duration(*cod.Spec.ProgressDeadlineMinutes) * r.deadlineUnit
+		elapsed := now.Sub(lastMilestone.Time)
+
+		if elapsed >= deadline {
+			condition.Status = metav1.ConditionFalse
+			condition.Reason = orbv1alpha1.ReasonProgressDeadlineExceeded
+			condition.Message = "latest revision has not made progress within the deadline"
+			return condition, ctrl.Result{}
+		}
+		requeueAfter = deadline - elapsed
+	}
+
+	condition.Status = metav1.ConditionTrue
+	condition.Reason = orbv1alpha1.ReasonNewClusterObjectSetProgressing
+	condition.Message = "latest revision is progressing"
+	return condition, ctrl.Result{RequeueAfter: requeueAfter}
 }
 
 func isCOSAvailable(cos *orbv1alpha1.ClusterObjectSet) bool {
