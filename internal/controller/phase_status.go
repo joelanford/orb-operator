@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"pkg.package-operator.run/boxcutter/machinery"
 	"pkg.package-operator.run/boxcutter/machinery/types"
 	"pkg.package-operator.run/boxcutter/validation"
@@ -200,6 +202,23 @@ func messagesForObject(obj machinery.ObjectResult) []string {
 	}
 
 	return msgs
+}
+
+func preservePhaseCompletionTimes(existing, current []orbv1alpha1.ObservedPhase, now time.Time) {
+	completedAt := make(map[string]*metav1.Time, len(existing))
+	for i := range existing {
+		if existing[i].CompletedAt != nil {
+			completedAt[existing[i].Name] = existing[i].CompletedAt
+		}
+	}
+	for i := range current {
+		if t, ok := completedAt[current[i].Name]; ok {
+			current[i].CompletedAt = t
+		} else if current[i].Status == orbv1alpha1.PhaseStatusAvailable {
+			mt := metav1.NewTime(now)
+			current[i].CompletedAt = &mt
+		}
+	}
 }
 
 const maxMessageLength = 1024

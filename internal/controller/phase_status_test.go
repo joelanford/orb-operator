@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -384,6 +385,102 @@ func (f *fakePhaseTeardownResult) IsComplete() bool                    { return 
 func (f *fakePhaseTeardownResult) Gone() []boxcuttertypes.ObjectRef    { return f.gone }
 func (f *fakePhaseTeardownResult) Waiting() []boxcuttertypes.ObjectRef { return f.waiting }
 func (f *fakePhaseTeardownResult) String() string                      { return f.name }
+
+func TestPreservePhaseCompletionTimes(t *testing.T) {
+	now := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	earlier := metav1.NewTime(now.Add(-time.Hour))
+
+	t.Run("sets completedAt on first Available", func(t *testing.T) {
+		existing := []orbv1alpha1.ObservedPhase{
+			{Name: "phase-1", Status: orbv1alpha1.PhaseStatusReconciling},
+		}
+		current := []orbv1alpha1.ObservedPhase{
+			{Name: "phase-1", Status: orbv1alpha1.PhaseStatusAvailable},
+		}
+		preservePhaseCompletionTimes(existing, current, now)
+		require.NotNil(t, current[0].CompletedAt)
+		assert.Equal(t, metav1.NewTime(now), *current[0].CompletedAt)
+	})
+
+	t.Run("preserves existing completedAt", func(t *testing.T) {
+		existing := []orbv1alpha1.ObservedPhase{
+			{Name: "phase-1", Status: orbv1alpha1.PhaseStatusAvailable, CompletedAt: &earlier},
+		}
+		current := []orbv1alpha1.ObservedPhase{
+			{Name: "phase-1", Status: orbv1alpha1.PhaseStatusAvailable},
+		}
+		preservePhaseCompletionTimes(existing, current, now)
+		require.NotNil(t, current[0].CompletedAt)
+		assert.Equal(t, earlier, *current[0].CompletedAt)
+	})
+
+	t.Run("nil for non-Available phases", func(t *testing.T) {
+		existing := []orbv1alpha1.ObservedPhase{
+			{Name: "phase-1", Status: orbv1alpha1.PhaseStatusReconciling},
+		}
+		current := []orbv1alpha1.ObservedPhase{
+			{Name: "phase-1", Status: orbv1alpha1.PhaseStatusReconciling},
+		}
+		preservePhaseCompletionTimes(existing, current, now)
+		assert.Nil(t, current[0].CompletedAt)
+	})
+
+	t.Run("preserves completedAt even when phase regresses from Available", func(t *testing.T) {
+		existing := []orbv1alpha1.ObservedPhase{
+			{Name: "phase-1", Status: orbv1alpha1.PhaseStatusAvailable, CompletedAt: &earlier},
+		}
+		current := []orbv1alpha1.ObservedPhase{
+			{Name: "phase-1", Status: orbv1alpha1.PhaseStatusReconciling},
+		}
+		preservePhaseCompletionTimes(existing, current, now)
+		require.NotNil(t, current[0].CompletedAt)
+		assert.Equal(t, earlier, *current[0].CompletedAt)
+	})
+
+	t.Run("multiple phases mixed states", func(t *testing.T) {
+		existing := []orbv1alpha1.ObservedPhase{
+			{Name: "phase-1", Status: orbv1alpha1.PhaseStatusAvailable, CompletedAt: &earlier},
+			{Name: "phase-2", Status: orbv1alpha1.PhaseStatusReconciling},
+			{Name: "phase-3", Status: orbv1alpha1.PhaseStatusUnknown},
+		}
+		current := []orbv1alpha1.ObservedPhase{
+			{Name: "phase-1", Status: orbv1alpha1.PhaseStatusAvailable},
+			{Name: "phase-2", Status: orbv1alpha1.PhaseStatusAvailable},
+			{Name: "phase-3", Status: orbv1alpha1.PhaseStatusReconciling},
+		}
+		preservePhaseCompletionTimes(existing, current, now)
+		require.NotNil(t, current[0].CompletedAt)
+		assert.Equal(t, earlier, *current[0].CompletedAt)
+		require.NotNil(t, current[1].CompletedAt)
+		assert.Equal(t, metav1.NewTime(now), *current[1].CompletedAt)
+		assert.Nil(t, current[2].CompletedAt)
+	})
+
+	t.Run("all phases become Available at once", func(t *testing.T) {
+		existing := []orbv1alpha1.ObservedPhase{
+			{Name: "phase-1", Status: orbv1alpha1.PhaseStatusReconciling},
+			{Name: "phase-2", Status: orbv1alpha1.PhaseStatusUnknown},
+		}
+		current := []orbv1alpha1.ObservedPhase{
+			{Name: "phase-1", Status: orbv1alpha1.PhaseStatusAvailable},
+			{Name: "phase-2", Status: orbv1alpha1.PhaseStatusAvailable},
+		}
+		preservePhaseCompletionTimes(existing, current, now)
+		require.NotNil(t, current[0].CompletedAt)
+		assert.Equal(t, metav1.NewTime(now), *current[0].CompletedAt)
+		require.NotNil(t, current[1].CompletedAt)
+		assert.Equal(t, metav1.NewTime(now), *current[1].CompletedAt)
+	})
+
+	t.Run("empty existing phases", func(t *testing.T) {
+		current := []orbv1alpha1.ObservedPhase{
+			{Name: "phase-1", Status: orbv1alpha1.PhaseStatusAvailable},
+		}
+		preservePhaseCompletionTimes(nil, current, now)
+		require.NotNil(t, current[0].CompletedAt)
+		assert.Equal(t, metav1.NewTime(now), *current[0].CompletedAt)
+	})
+}
 
 func TestTruncateMessage(t *testing.T) {
 	t.Run("short message unchanged", func(t *testing.T) {

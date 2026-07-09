@@ -212,7 +212,9 @@ func (r *COSReconciler) doReconcileActive(ctx context.Context, cos *orbv1alpha1.
 		return fmt.Errorf("building revision: %w", err)
 	}
 	result, err := engine.Reconcile(ctx, rev, types.WithAggregatePhaseReconcileErrors())
+	existingPhases := cos.Status.ObservedPhases
 	cos.Status.ObservedPhases = observedPhasesFromReconcileResult(cos.Spec.Phases, result)
+	preservePhaseCompletionTimes(existingPhases, cos.Status.ObservedPhases, time.Now())
 	if err != nil {
 		setCondition(cos, metav1.ConditionUnknown, orbv1alpha1.ReasonReconcileError, fmt.Sprintf("reconcile failed: %v", err))
 		return fmt.Errorf("reconciling: %w", err)
@@ -290,7 +292,9 @@ func (r *COSReconciler) doTeardownCOS(ctx context.Context, cos *orbv1alpha1.Clus
 	}
 
 	result, teardownErr := engine.Teardown(ctx, rev, types.WithAggregatePhaseTeardownErrors())
+	existingPhases := cos.Status.ObservedPhases
 	setTeardownStatus(cos, result, teardownErr)
+	preservePhaseCompletionTimes(existingPhases, cos.Status.ObservedPhases, time.Now())
 
 	if teardownErr != nil {
 		return false, fmt.Errorf("teardown: %w", teardownErr)
