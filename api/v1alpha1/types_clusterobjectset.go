@@ -95,7 +95,7 @@ type ClusterObjectSetSpec struct {
 // ClusterObjectSetStatus reports the observed state of a
 // ClusterObjectSet.
 //
-// +kubebuilder:validation:XValidation:rule="!has(oldSelf.completedAt) || has(self.completedAt)",message="completedAt is immutable once set"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.completedAt) || (has(self.completedAt) && self.completedAt == oldSelf.completedAt)",message="completedAt is immutable once set"
 type ClusterObjectSetStatus struct {
 	// conditions represent the latest available observations of the revision's
 	// state. The "Available" condition indicates whether all managed objects in
@@ -157,6 +157,8 @@ const (
 )
 
 // ObservedPhase reports the observed state of a single phase in the rollout.
+//
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.completedAt) || (has(self.completedAt) && self.completedAt == oldSelf.completedAt)",message="completedAt is immutable once set"
 type ObservedPhase struct {
 	// name is the name of the phase from the spec. Must be a valid DNS-1035
 	// label: lowercase alphanumeric characters or '-', must start with a
@@ -173,6 +175,12 @@ type ObservedPhase struct {
 	// TeardownComplete.
 	// +required
 	Status PhaseStatus `json:"status"`
+
+	// completedAt is the timestamp when this phase first became Available.
+	// Set once and never cleared. Nil means the phase has never been
+	// Available.
+	// +optional
+	CompletedAt *metav1.Time `json:"completedAt,omitempty"`
 
 	// error is a phase-level error message describing a validation or
 	// configuration problem with the phase itself (as opposed to

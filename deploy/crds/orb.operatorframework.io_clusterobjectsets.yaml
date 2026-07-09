@@ -406,6 +406,13 @@ spec:
                   description: ObservedPhase reports the observed state of a single
                     phase in the rollout.
                   properties:
+                    completedAt:
+                      description: |-
+                        completedAt is the timestamp when this phase first became Available.
+                        Set once and never cleared. Nil means the phase has never been
+                        Available.
+                      format: date-time
+                      type: string
                     error:
                       description: |-
                         error is a phase-level error message describing a validation or
@@ -510,6 +517,10 @@ spec:
                   - name
                   - status
                   type: object
+                  x-kubernetes-validations:
+                  - message: completedAt is immutable once set
+                    rule: '!has(oldSelf.completedAt) || (has(self.completedAt) &&
+                      self.completedAt == oldSelf.completedAt)'
                 maxItems: 20
                 type: array
                 x-kubernetes-list-map-keys:
@@ -518,7 +529,8 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: completedAt is immutable once set
-              rule: '!has(oldSelf.completedAt) || has(self.completedAt)'
+              rule: '!has(oldSelf.completedAt) || (has(self.completedAt) && self.completedAt
+                == oldSelf.completedAt)'
         required:
         - spec
         type: object

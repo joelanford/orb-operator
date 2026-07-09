@@ -20,6 +20,9 @@ spec:
     - jsonPath: .status.conditions[?(@.type=="Available")].reason
       name: Availability
       type: string
+    - jsonPath: .status.conditions[?(@.type=="Progressing")].reason
+      name: Progressing
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -53,6 +56,17 @@ spec:
             description: spec defines the desired set of objects and their lifecycle
               configuration.
             properties:
+              progressDeadlineMinutes:
+                description: |-
+                  progressDeadlineMinutes specifies the number of minutes the controller
+                  waits for a new revision to make progress before reporting
+                  Progressing=False with reason ProgressDeadlineExceeded. Progress is
+                  defined as any phase completing successfully. When omitted, no deadline
+                  is enforced and the Progressing condition never reports
+                  ProgressDeadlineExceeded.
+                format: int32
+                minimum: 1
+                type: integer
               revisionHistoryLimit:
                 description: |-
                   revisionHistoryLimit is the maximum number of archived

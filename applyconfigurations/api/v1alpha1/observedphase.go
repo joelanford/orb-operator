@@ -4,6 +4,7 @@ package v1alpha1
 
 import (
 	apiv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // ObservedPhaseApplyConfiguration represents a declarative configuration of the ObservedPhase type for use
@@ -20,6 +21,10 @@ type ObservedPhaseApplyConfiguration struct {
 	// one of Reconciling, Available, Unknown, Superseded, TearingDown, or
 	// TeardownComplete.
 	Status *apiv1alpha1.PhaseStatus `json:"status,omitempty"`
+	// completedAt is the timestamp when this phase first became Available.
+	// Set once and never cleared. Nil means the phase has never been
+	// Available.
+	CompletedAt *v1.Time `json:"completedAt,omitempty"`
 	// error is a phase-level error message describing a validation or
 	// configuration problem with the phase itself (as opposed to
 	// individual objects). At most 1024 characters; longer messages
@@ -56,6 +61,14 @@ func (b *ObservedPhaseApplyConfiguration) WithName(value string) *ObservedPhaseA
 // If called multiple times, the Status field is set to the value of the last call.
 func (b *ObservedPhaseApplyConfiguration) WithStatus(value apiv1alpha1.PhaseStatus) *ObservedPhaseApplyConfiguration {
 	b.Status = &value
+	return b
+}
+
+// WithCompletedAt sets the CompletedAt field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the CompletedAt field is set to the value of the last call.
+func (b *ObservedPhaseApplyConfiguration) WithCompletedAt(value v1.Time) *ObservedPhaseApplyConfiguration {
+	b.CompletedAt = &value
 	return b
 }
 

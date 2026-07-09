@@ -31,6 +31,10 @@ const (
 	// managed objects satisfy their assertions.
 	ConditionTypeAvailable = "Available"
 
+	// ConditionTypeProgressing is the condition type that reports whether
+	// the latest revision is making forward progress toward availability.
+	ConditionTypeProgressing = "Progressing"
+
 	// ReasonAvailable indicates all assertions are satisfied.
 	ReasonAvailable = "Available"
 
@@ -64,6 +68,22 @@ const (
 	// ReasonTeardownError indicates the reconciliation engine returned an
 	// error while tearing down managed objects.
 	ReasonTeardownError = "TeardownError"
+
+	// ReasonNewClusterObjectSetProgressing indicates the latest revision is rolling
+	// out and has not yet become fully available.
+	ReasonNewClusterObjectSetProgressing = "NewClusterObjectSetProgressing"
+
+	// ReasonNewClusterObjectSetProgressed indicates the latest revision has
+	// completed successfully.
+	ReasonNewClusterObjectSetProgressed = "NewClusterObjectSetProgressed"
+
+	// ReasonProgressDeadlineExceeded indicates the latest revision has not
+	// made progress within the configured progressDeadlineMinutes.
+	ReasonProgressDeadlineExceeded = "ProgressDeadlineExceeded"
+
+	// ReasonNoActiveRevisions indicates there are no active revisions to
+	// evaluate for progress.
+	ReasonNoActiveRevisions = "NoActiveRevisions"
 )
 
 // Phase is an ordered group of objects that are applied together. Phases within

@@ -11,6 +11,7 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=cod
 // +kubebuilder:printcolumn:name="Availability",type=string,JSONPath=`.status.conditions[?(@.type=="Available")].reason`
+// +kubebuilder:printcolumn:name="Progressing",type=string,JSONPath=`.status.conditions[?(@.type=="Progressing")].reason`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 type ClusterObjectDeployment struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -37,6 +38,16 @@ type ClusterObjectDeploymentSpec struct {
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	RevisionHistoryLimit *int32 `json:"revisionHistoryLimit,omitempty"`
+
+	// progressDeadlineMinutes specifies the number of minutes the controller
+	// waits for a new revision to make progress before reporting
+	// Progressing=False with reason ProgressDeadlineExceeded. Progress is
+	// defined as any phase completing successfully. When omitted, no deadline
+	// is enforced and the Progressing condition never reports
+	// ProgressDeadlineExceeded.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	ProgressDeadlineMinutes *int32 `json:"progressDeadlineMinutes,omitempty"`
 
 	// template defines the ClusterObjectSet that the controller will
 	// create whenever the template content changes.

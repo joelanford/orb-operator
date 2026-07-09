@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,6 +35,20 @@ func TestCOS_Status_CompletedAt_ImmutableOnceSet(t *testing.T) {
 		require.NoError(t, k8sClient.Status().Update(ctx, cos))
 
 		cos.Status.CompletedAt = nil
+		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
+			"status", "completedAt is immutable once set")
+	})
+
+	t.Run("changing completedAt to a different value is rejected", func(t *testing.T) {
+		cos := newCOS("completed-at-change")
+		createCOS(t, ctx, cos)
+
+		now := metav1.Now()
+		cos.Status.CompletedAt = &now
+		require.NoError(t, k8sClient.Status().Update(ctx, cos))
+
+		later := metav1.NewTime(now.Add(time.Hour))
+		cos.Status.CompletedAt = &later
 		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
 			"status", "completedAt is immutable once set")
 	})
@@ -203,6 +218,54 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 		}}
 		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
 			"status.observedPhases[0].incompleteObjects", "must have at most 50 items")
+	})
+
+	t.Run("setting phase completedAt succeeds", func(t *testing.T) {
+		cos := newCOS("op-completed-at-set")
+		createCOS(t, ctx, cos)
+
+		now := metav1.Now()
+		cos.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
+			Name:        "install",
+			Status:      orbv1alpha1.PhaseStatusAvailable,
+			CompletedAt: &now,
+		}}
+		require.NoError(t, k8sClient.Status().Update(ctx, cos))
+	})
+
+	t.Run("clearing phase completedAt after it has been set is rejected", func(t *testing.T) {
+		cos := newCOS("op-completed-at-clear")
+		createCOS(t, ctx, cos)
+
+		now := metav1.Now()
+		cos.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
+			Name:        "install",
+			Status:      orbv1alpha1.PhaseStatusAvailable,
+			CompletedAt: &now,
+		}}
+		require.NoError(t, k8sClient.Status().Update(ctx, cos))
+
+		cos.Status.ObservedPhases[0].CompletedAt = nil
+		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
+			"status.observedPhases[0]", "completedAt is immutable once set")
+	})
+
+	t.Run("changing phase completedAt to a different value is rejected", func(t *testing.T) {
+		cos := newCOS("op-completed-at-change")
+		createCOS(t, ctx, cos)
+
+		now := metav1.Now()
+		cos.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
+			Name:        "install",
+			Status:      orbv1alpha1.PhaseStatusAvailable,
+			CompletedAt: &now,
+		}}
+		require.NoError(t, k8sClient.Status().Update(ctx, cos))
+
+		later := metav1.NewTime(now.Add(time.Hour))
+		cos.Status.ObservedPhases[0].CompletedAt = &later
+		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
+			"status.observedPhases[0]", "completedAt is immutable once set")
 	})
 }
 

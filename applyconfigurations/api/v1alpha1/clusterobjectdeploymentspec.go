@@ -14,6 +14,13 @@ type ClusterObjectDeploymentSpecApplyConfiguration struct {
 	// time. The current default is 10. Set to 0 to disable revision history
 	// entirely.
 	RevisionHistoryLimit *int32 `json:"revisionHistoryLimit,omitempty"`
+	// progressDeadlineMinutes specifies the number of minutes the controller
+	// waits for a new revision to make progress before reporting
+	// Progressing=False with reason ProgressDeadlineExceeded. Progress is
+	// defined as any phase completing successfully. When omitted, no deadline
+	// is enforced and the Progressing condition never reports
+	// ProgressDeadlineExceeded.
+	ProgressDeadlineMinutes *int32 `json:"progressDeadlineMinutes,omitempty"`
 	// template defines the ClusterObjectSet that the controller will
 	// create whenever the template content changes.
 	Template *ClusterObjectDeploymentTemplateApplyConfiguration `json:"template,omitempty"`
@@ -30,6 +37,14 @@ func ClusterObjectDeploymentSpec() *ClusterObjectDeploymentSpecApplyConfiguratio
 // If called multiple times, the RevisionHistoryLimit field is set to the value of the last call.
 func (b *ClusterObjectDeploymentSpecApplyConfiguration) WithRevisionHistoryLimit(value int32) *ClusterObjectDeploymentSpecApplyConfiguration {
 	b.RevisionHistoryLimit = &value
+	return b
+}
+
+// WithProgressDeadlineMinutes sets the ProgressDeadlineMinutes field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ProgressDeadlineMinutes field is set to the value of the last call.
+func (b *ClusterObjectDeploymentSpecApplyConfiguration) WithProgressDeadlineMinutes(value int32) *ClusterObjectDeploymentSpecApplyConfiguration {
+	b.ProgressDeadlineMinutes = &value
 	return b
 }
 

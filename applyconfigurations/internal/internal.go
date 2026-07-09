@@ -68,6 +68,9 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectDeploymentSpec
   map:
     fields:
+    - name: progressDeadlineMinutes
+      type:
+        scalar: numeric
     - name: revisionHistoryLimit
       type:
         scalar: numeric
@@ -272,6 +275,9 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.joelanford.orb-operator.api.v1alpha1.ObservedPhase
   map:
     fields:
+    - name: completedAt
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
     - name: error
       type:
         scalar: string
