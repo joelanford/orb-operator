@@ -27,41 +27,41 @@ import (
 )
 
 const (
-	cosFieldOwner                     = "cos-controller"
+	codFieldOwner                     = "cod-controller"
 	defaultRevisionHistoryLimit int32 = 5
 
 	labelTemplateHash = "orb.operatorframework.io/template-hash"
 )
 
-type COSReconciler struct {
+type CODReconciler struct {
 	client client.Client
 	scheme *runtime.Scheme
 }
 
-func NewCOSReconciler(c client.Client, scheme *runtime.Scheme) *COSReconciler {
-	return &COSReconciler{client: c, scheme: scheme}
+func NewCODReconciler(c client.Client, scheme *runtime.Scheme) *CODReconciler {
+	return &CODReconciler{client: c, scheme: scheme}
 }
 
-func (r *COSReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *CODReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&orbv1alpha1.ClusterObjectSet{}).
+		For(&orbv1alpha1.ClusterObjectDeployment{}).
 		Owns(&orbv1alpha1.ClusterObjectSetRevision{}).
 		Watches(&orbv1alpha1.ClusterObjectSetRevision{},
-			handler.EnqueueRequestsFromMapFunc(mapCOSRGroupToCOS),
+			handler.EnqueueRequestsFromMapFunc(mapCOSRGroupToCOD),
 		).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 4}).
 		Complete(r)
 }
 
-func mapCOSRGroupToCOS(_ context.Context, obj client.Object) []reconcile.Request {
+func mapCOSRGroupToCOD(_ context.Context, obj client.Object) []reconcile.Request {
 	cosr := obj.(*orbv1alpha1.ClusterObjectSetRevision)
 	return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: cosr.Spec.Group}}}
 }
 
-func (r *COSReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *CODReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
 
-	existing := &orbv1alpha1.ClusterObjectSet{}
+	existing := &orbv1alpha1.ClusterObjectDeployment{}
 	if err := r.client.Get(ctx, req.NamespacedName, existing); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -70,11 +70,11 @@ func (r *COSReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return ctrl.Result{}, nil
 	}
 
-	reconciledCOS := existing.DeepCopy()
-	reconcileErr := r.reconcile(ctx, reconciledCOS)
+	reconciledCOD := existing.DeepCopy()
+	reconcileErr := r.reconcile(ctx, reconciledCOD)
 
-	if !equality.Semantic.DeepEqual(existing.Status, reconciledCOS.Status) {
-		if err := r.client.Status().Update(ctx, reconciledCOS); err != nil {
+	if !equality.Semantic.DeepEqual(existing.Status, reconciledCOD.Status) {
+		if err := r.client.Status().Update(ctx, reconciledCOD); err != nil {
 			reconcileErr = errors.Join(reconcileErr, fmt.Errorf("updating status: %w", err))
 		}
 	}
@@ -85,9 +85,9 @@ func (r *COSReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	return ctrl.Result{}, reconcileErr
 }
 
-func (r *COSReconciler) reconcile(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet) error {
+func (r *CODReconciler) reconcile(ctx context.Context, cod *orbv1alpha1.ClusterObjectDeployment) error {
 	var cosrList orbv1alpha1.ClusterObjectSetRevisionList
-	if err := r.client.List(ctx, &cosrList, client.MatchingFields{groupIndex: cos.Name}); err != nil {
+	if err := r.client.List(ctx, &cosrList, client.MatchingFields{groupIndex: cod.Name}); err != nil {
 		return fmt.Errorf("listing COSRs: %w", err)
 	}
 
@@ -95,26 +95,26 @@ func (r *COSReconciler) reconcile(ctx context.Context, cos *orbv1alpha1.ClusterO
 		return cmp.Compare(a.Spec.Revision, b.Spec.Revision)
 	})
 
-	ownedCOSRs, err := r.adoptAndFilterOwned(ctx, cos, cosrList.Items)
+	ownedCOSRs, err := r.adoptAndFilterOwned(ctx, cod, cosrList.Items)
 	if err != nil {
 		return err
 	}
 
-	r.setStatus(cos, ownedCOSRs)
+	r.setStatus(cod, ownedCOSRs)
 
 	var latestOwned *orbv1alpha1.ClusterObjectSetRevision
 	if len(ownedCOSRs) > 0 {
 		latestOwned = &ownedCOSRs[len(ownedCOSRs)-1]
 	}
 
-	currentHash, err := templateHash(cos.Spec.Template)
+	currentHash, err := templateHash(cod.Spec.Template)
 	if err != nil {
 		return fmt.Errorf("computing template hash: %w", err)
 	}
 	if latestOwned == nil || latestOwned.Labels[labelTemplateHash] != currentHash {
 		nextRevision := r.nextRevision(cosrList.Items)
 
-		cosr, err := buildCOSRFromTemplate(cos, nextRevision, currentHash)
+		cosr, err := buildCOSRFromTemplate(cod, nextRevision, currentHash)
 		if err != nil {
 			return fmt.Errorf("building COSR from template: %w", err)
 		}
@@ -128,52 +128,52 @@ func (r *COSReconciler) reconcile(ctx context.Context, cos *orbv1alpha1.ClusterO
 		if err := r.client.Create(ctx, u); err != nil {
 			return fmt.Errorf("creating COSR: %w", err)
 		}
-		if err := r.client.Apply(ctx, cosr, client.FieldOwner(cosFieldOwner), client.ForceOwnership); err != nil {
+		if err := r.client.Apply(ctx, cosr, client.FieldOwner(codFieldOwner), client.ForceOwnership); err != nil {
 			return fmt.Errorf("claiming field ownership for new COSR: %w", err)
 		}
 		return nil
 	}
 
-	desired, err := buildCOSRFromTemplate(cos, latestOwned.Spec.Revision, currentHash)
+	desired, err := buildCOSRFromTemplate(cod, latestOwned.Spec.Revision, currentHash)
 	if err != nil {
 		return fmt.Errorf("building desired COSR apply config: %w", err)
 	}
-	existing, err := cosrac.ExtractClusterObjectSetRevision(latestOwned, cosFieldOwner)
+	existing, err := cosrac.ExtractClusterObjectSetRevision(latestOwned, codFieldOwner)
 	if err != nil {
 		return fmt.Errorf("extracting COSR apply config: %w", err)
 	}
 	if !equality.Semantic.DeepEqual(existing, desired) {
 		ctrl.LoggerFrom(ctx).Info("fixing up COSR field owners")
-		if err := r.client.Apply(ctx, desired, client.FieldOwner(cosFieldOwner), client.ForceOwnership); err != nil {
+		if err := r.client.Apply(ctx, desired, client.FieldOwner(codFieldOwner), client.ForceOwnership); err != nil {
 			return fmt.Errorf("applying COSR: %w", err)
 		}
 	}
 
-	if err := r.archiveOlderRevisions(ctx, cos, ownedCOSRs); err != nil {
+	if err := r.archiveOlderRevisions(ctx, cod, ownedCOSRs); err != nil {
 		return err
 	}
 
-	if err := r.pruneArchivedCOSRs(ctx, cos, ownedCOSRs); err != nil {
+	if err := r.pruneArchivedCOSRs(ctx, cod, ownedCOSRs); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (r *COSReconciler) adoptAndFilterOwned(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, cosrs []orbv1alpha1.ClusterObjectSetRevision) ([]orbv1alpha1.ClusterObjectSetRevision, error) {
+func (r *CODReconciler) adoptAndFilterOwned(ctx context.Context, cod *orbv1alpha1.ClusterObjectDeployment, cosrs []orbv1alpha1.ClusterObjectSetRevision) ([]orbv1alpha1.ClusterObjectSetRevision, error) {
 	var owned []orbv1alpha1.ClusterObjectSetRevision
 	for i := range cosrs {
 		cosr := &cosrs[i]
 		ref := metav1.GetControllerOf(cosr)
 
 		if ref != nil {
-			if ref.UID == cos.UID {
+			if ref.UID == cod.UID {
 				owned = append(owned, *cosr)
 			}
 			continue
 		}
 
-		if err := r.adoptCOSR(ctx, cos, cosr); err != nil {
+		if err := r.adoptCOSR(ctx, cod, cosr); err != nil {
 			return nil, err
 		}
 		owned = append(owned, *cosr)
@@ -181,13 +181,13 @@ func (r *COSReconciler) adoptAndFilterOwned(ctx context.Context, cos *orbv1alpha
 	return owned, nil
 }
 
-func (r *COSReconciler) adoptCOSR(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, cosr *orbv1alpha1.ClusterObjectSetRevision) error {
-	_, err := applyCOSR(ctx, r.client, cosr, cosFieldOwner,
+func (r *CODReconciler) adoptCOSR(ctx context.Context, cod *orbv1alpha1.ClusterObjectDeployment, cosr *orbv1alpha1.ClusterObjectSetRevision) error {
+	_, err := applyCOSR(ctx, r.client, cosr, codFieldOwner,
 		func(cosr *orbv1alpha1.ClusterObjectSetRevision) bool {
 			return true
 		},
 		func(ac *cosrac.ClusterObjectSetRevisionApplyConfiguration) {
-			setCOSControllerReference(cos, ac)
+			setCODControllerReference(cod, ac)
 		},
 	)
 	if err != nil {
@@ -196,7 +196,7 @@ func (r *COSReconciler) adoptCOSR(ctx context.Context, cos *orbv1alpha1.ClusterO
 	return nil
 }
 
-func (r *COSReconciler) nextRevision(allGroupCOSRs []orbv1alpha1.ClusterObjectSetRevision) uint32 {
+func (r *CODReconciler) nextRevision(allGroupCOSRs []orbv1alpha1.ClusterObjectSetRevision) uint32 {
 	var maxRevision uint32
 	for _, cosr := range allGroupCOSRs {
 		if cosr.Spec.Revision > maxRevision {
@@ -206,7 +206,7 @@ func (r *COSReconciler) nextRevision(allGroupCOSRs []orbv1alpha1.ClusterObjectSe
 	return maxRevision + 1
 }
 
-func (r *COSReconciler) archiveOlderRevisions(ctx context.Context, _ *orbv1alpha1.ClusterObjectSet, ownedCOSRs []orbv1alpha1.ClusterObjectSetRevision) error {
+func (r *CODReconciler) archiveOlderRevisions(ctx context.Context, _ *orbv1alpha1.ClusterObjectDeployment, ownedCOSRs []orbv1alpha1.ClusterObjectSetRevision) error {
 	if len(ownedCOSRs) < 2 {
 		return nil
 	}
@@ -218,7 +218,7 @@ func (r *COSReconciler) archiveOlderRevisions(ctx context.Context, _ *orbv1alpha
 
 	for i := range ownedCOSRs[:len(ownedCOSRs)-1] {
 		cosr := &ownedCOSRs[i]
-		if _, err := applyCOSR(ctx, r.client, cosr, cosFieldOwner,
+		if _, err := applyCOSR(ctx, r.client, cosr, codFieldOwner,
 			func(cosr *orbv1alpha1.ClusterObjectSetRevision) bool {
 				return cosr.Spec.LifecycleState != orbv1alpha1.LifecycleStateArchived
 			},
@@ -233,14 +233,14 @@ func (r *COSReconciler) archiveOlderRevisions(ctx context.Context, _ *orbv1alpha
 	return nil
 }
 
-func buildCOSRFromTemplate(cos *orbv1alpha1.ClusterObjectSet, revision uint32, hash string) (*cosrac.ClusterObjectSetRevisionApplyConfiguration, error) {
-	labels := maps.Clone(cos.Spec.Template.Metadata.Labels)
+func buildCOSRFromTemplate(cod *orbv1alpha1.ClusterObjectDeployment, revision uint32, hash string) (*cosrac.ClusterObjectSetRevisionApplyConfiguration, error) {
+	labels := maps.Clone(cod.Spec.Template.Metadata.Labels)
 	if labels == nil {
 		labels = map[string]string{}
 	}
 	labels[labelTemplateHash] = hash
 
-	tmplSpecJSON, err := json.Marshal(cos.Spec.Template.Spec)
+	tmplSpecJSON, err := json.Marshal(cod.Spec.Template.Spec)
 	if err != nil {
 		return nil, err
 	}
@@ -250,36 +250,36 @@ func buildCOSRFromTemplate(cos *orbv1alpha1.ClusterObjectSet, revision uint32, h
 		return nil, err
 	}
 
-	cosrSpec.WithGroup(cos.Name).
+	cosrSpec.WithGroup(cod.Name).
 		WithRevision(revision).
 		WithLifecycleState(orbv1alpha1.LifecycleStateActive)
 
-	name := fmt.Sprintf("%s-%d", cos.Name, revision)
+	name := fmt.Sprintf("%s-%d", cod.Name, revision)
 	cosr := cosrac.ClusterObjectSetRevision(name).
 		WithLabels(labels).
-		WithAnnotations(maps.Clone(cos.Spec.Template.Metadata.Annotations)).
+		WithAnnotations(maps.Clone(cod.Spec.Template.Metadata.Annotations)).
 		WithSpec(&cosrSpec)
 
-	setCOSControllerReference(cos, cosr)
+	setCODControllerReference(cod, cosr)
 	return cosr, nil
 }
 
-func setCOSControllerReference(cos *orbv1alpha1.ClusterObjectSet, cosr *cosrac.ClusterObjectSetRevisionApplyConfiguration) {
-	gvk := orbv1alpha1.GroupVersion.WithKind("ClusterObjectSet")
+func setCODControllerReference(cod *orbv1alpha1.ClusterObjectDeployment, cosr *cosrac.ClusterObjectSetRevisionApplyConfiguration) {
+	gvk := orbv1alpha1.GroupVersion.WithKind("ClusterObjectDeployment")
 	cosr.WithOwnerReferences(metav1ac.OwnerReference().
 		WithAPIVersion(gvk.GroupVersion().String()).
 		WithKind(gvk.Kind).
-		WithName(cos.Name).
-		WithUID(cos.UID).
+		WithName(cod.Name).
+		WithUID(cod.UID).
 		WithController(true).
 		WithBlockOwnerDeletion(true),
 	)
 }
 
-func (r *COSReconciler) pruneArchivedCOSRs(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, cosrs []orbv1alpha1.ClusterObjectSetRevision) error {
+func (r *CODReconciler) pruneArchivedCOSRs(ctx context.Context, cod *orbv1alpha1.ClusterObjectDeployment, cosrs []orbv1alpha1.ClusterObjectSetRevision) error {
 	limit := defaultRevisionHistoryLimit
-	if cos.Spec.RevisionHistoryLimit != nil {
-		limit = *cos.Spec.RevisionHistoryLimit
+	if cod.Spec.RevisionHistoryLimit != nil {
+		limit = *cod.Spec.RevisionHistoryLimit
 	}
 
 	var prunable []orbv1alpha1.ClusterObjectSetRevision
@@ -302,7 +302,7 @@ func (r *COSReconciler) pruneArchivedCOSRs(ctx context.Context, cos *orbv1alpha1
 	return nil
 }
 
-func (r *COSReconciler) setStatus(cos *orbv1alpha1.ClusterObjectSet, ownedCOSRs []orbv1alpha1.ClusterObjectSetRevision) {
+func (r *CODReconciler) setStatus(cod *orbv1alpha1.ClusterObjectDeployment, ownedCOSRs []orbv1alpha1.ClusterObjectSetRevision) {
 	var active []orbv1alpha1.ClusterObjectSetRevisionStatusSummary
 	for i := range ownedCOSRs {
 		if ownedCOSRs[i].Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived {
@@ -314,11 +314,11 @@ func (r *COSReconciler) setStatus(cos *orbv1alpha1.ClusterObjectSet, ownedCOSRs 
 		})
 	}
 
-	cos.Status.ActiveRevisions = active
+	cod.Status.ActiveRevisions = active
 
 	condition := metav1.Condition{
 		Type:               orbv1alpha1.ConditionTypeAvailable,
-		ObservedGeneration: cos.Generation,
+		ObservedGeneration: cod.Generation,
 	}
 
 	switch len(active) {
@@ -342,7 +342,7 @@ func (r *COSReconciler) setStatus(cos *orbv1alpha1.ClusterObjectSet, ownedCOSRs 
 		condition.Message = "revision transition in progress"
 	}
 
-	meta.SetStatusCondition(&cos.Status.Conditions, condition)
+	meta.SetStatusCondition(&cod.Status.Conditions, condition)
 }
 
 func isCOSRAvailable(cosr *orbv1alpha1.ClusterObjectSetRevision) bool {

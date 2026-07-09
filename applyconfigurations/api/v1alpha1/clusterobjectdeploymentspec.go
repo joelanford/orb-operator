@@ -2,11 +2,11 @@
 
 package v1alpha1
 
-// ClusterObjectSetSpecApplyConfiguration represents a declarative configuration of the ClusterObjectSetSpec type for use
+// ClusterObjectDeploymentSpecApplyConfiguration represents a declarative configuration of the ClusterObjectDeploymentSpec type for use
 // with apply.
 //
-// ClusterObjectSetSpec defines the desired state of a ClusterObjectSet.
-type ClusterObjectSetSpecApplyConfiguration struct {
+// ClusterObjectDeploymentSpec defines the desired state of a ClusterObjectDeployment.
+type ClusterObjectDeploymentSpecApplyConfiguration struct {
 	// revisionHistoryLimit is the maximum number of archived
 	// ClusterObjectSetRevision resources to retain. Older archived revisions
 	// beyond this limit are garbage collected by the controller. When omitted,
@@ -16,19 +16,19 @@ type ClusterObjectSetSpecApplyConfiguration struct {
 	RevisionHistoryLimit *int32 `json:"revisionHistoryLimit,omitempty"`
 	// template defines the ClusterObjectSetRevision that the controller will
 	// create whenever the template content changes.
-	Template *ClusterObjectSetTemplateApplyConfiguration `json:"template,omitempty"`
+	Template *ClusterObjectDeploymentTemplateApplyConfiguration `json:"template,omitempty"`
 }
 
-// ClusterObjectSetSpecApplyConfiguration constructs a declarative configuration of the ClusterObjectSetSpec type for use with
+// ClusterObjectDeploymentSpecApplyConfiguration constructs a declarative configuration of the ClusterObjectDeploymentSpec type for use with
 // apply.
-func ClusterObjectSetSpec() *ClusterObjectSetSpecApplyConfiguration {
-	return &ClusterObjectSetSpecApplyConfiguration{}
+func ClusterObjectDeploymentSpec() *ClusterObjectDeploymentSpecApplyConfiguration {
+	return &ClusterObjectDeploymentSpecApplyConfiguration{}
 }
 
 // WithRevisionHistoryLimit sets the RevisionHistoryLimit field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the RevisionHistoryLimit field is set to the value of the last call.
-func (b *ClusterObjectSetSpecApplyConfiguration) WithRevisionHistoryLimit(value int32) *ClusterObjectSetSpecApplyConfiguration {
+func (b *ClusterObjectDeploymentSpecApplyConfiguration) WithRevisionHistoryLimit(value int32) *ClusterObjectDeploymentSpecApplyConfiguration {
 	b.RevisionHistoryLimit = &value
 	return b
 }
@@ -36,7 +36,7 @@ func (b *ClusterObjectSetSpecApplyConfiguration) WithRevisionHistoryLimit(value 
 // WithTemplate sets the Template field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Template field is set to the value of the last call.
-func (b *ClusterObjectSetSpecApplyConfiguration) WithTemplate(value *ClusterObjectSetTemplateApplyConfiguration) *ClusterObjectSetSpecApplyConfiguration {
+func (b *ClusterObjectDeploymentSpecApplyConfiguration) WithTemplate(value *ClusterObjectDeploymentTemplateApplyConfiguration) *ClusterObjectDeploymentSpecApplyConfiguration {
 	b.Template = value
 	return b
 }

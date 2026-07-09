@@ -11,79 +11,79 @@ import (
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// ClusterObjectSetApplyConfiguration represents a declarative configuration of the ClusterObjectSet type for use
+// ClusterObjectDeploymentApplyConfiguration represents a declarative configuration of the ClusterObjectDeployment type for use
 // with apply.
 //
-// ClusterObjectSet declares a set of Kubernetes objects that should be applied
+// ClusterObjectDeployment declares a set of Kubernetes objects that should be applied
 // to the cluster and kept in the desired state. The controller creates
 // ClusterObjectSetRevision resources to track each unique template snapshot and
 // manages their lifecycle automatically.
-type ClusterObjectSetApplyConfiguration struct {
+type ClusterObjectDeploymentApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
 	// spec defines the desired set of objects and their lifecycle configuration.
-	Spec *ClusterObjectSetSpecApplyConfiguration `json:"spec,omitempty"`
-	// status reports the observed state of the ClusterObjectSet, including
+	Spec *ClusterObjectDeploymentSpecApplyConfiguration `json:"spec,omitempty"`
+	// status reports the observed state of the ClusterObjectDeployment, including
 	// aggregate availability and the state of active revisions.
-	Status *ClusterObjectSetStatusApplyConfiguration `json:"status,omitempty"`
+	Status *ClusterObjectDeploymentStatusApplyConfiguration `json:"status,omitempty"`
 }
 
-// ClusterObjectSet constructs a declarative configuration of the ClusterObjectSet type for use with
+// ClusterObjectDeployment constructs a declarative configuration of the ClusterObjectDeployment type for use with
 // apply.
-func ClusterObjectSet(name string) *ClusterObjectSetApplyConfiguration {
-	b := &ClusterObjectSetApplyConfiguration{}
+func ClusterObjectDeployment(name string) *ClusterObjectDeploymentApplyConfiguration {
+	b := &ClusterObjectDeploymentApplyConfiguration{}
 	b.WithName(name)
-	b.WithKind("ClusterObjectSet")
+	b.WithKind("ClusterObjectDeployment")
 	b.WithAPIVersion("orb.operatorframework.io/v1alpha1")
 	return b
 }
 
-// ExtractClusterObjectSetFrom extracts the applied configuration owned by fieldManager from
-// clusterObjectSet for the specified subresource. Pass an empty string for subresource to extract
+// ExtractClusterObjectDeploymentFrom extracts the applied configuration owned by fieldManager from
+// clusterObjectDeployment for the specified subresource. Pass an empty string for subresource to extract
 // the main resource. Common subresources include "status", "scale", etc.
-// clusterObjectSet must be a unmodified ClusterObjectSet API object that was retrieved from the Kubernetes API.
-// ExtractClusterObjectSetFrom provides a way to perform a extract/modify-in-place/apply workflow.
+// clusterObjectDeployment must be a unmodified ClusterObjectDeployment API object that was retrieved from the Kubernetes API.
+// ExtractClusterObjectDeploymentFrom provides a way to perform a extract/modify-in-place/apply workflow.
 // Note that an extracted apply configuration will contain fewer fields than what the fieldManager previously
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
-func ExtractClusterObjectSetFrom(clusterObjectSet *apiv1alpha1.ClusterObjectSet, fieldManager string, subresource string) (*ClusterObjectSetApplyConfiguration, error) {
-	b := &ClusterObjectSetApplyConfiguration{}
-	err := managedfields.ExtractInto(clusterObjectSet, internal.Parser().Type("com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSet"), fieldManager, b, subresource)
+func ExtractClusterObjectDeploymentFrom(clusterObjectDeployment *apiv1alpha1.ClusterObjectDeployment, fieldManager string, subresource string) (*ClusterObjectDeploymentApplyConfiguration, error) {
+	b := &ClusterObjectDeploymentApplyConfiguration{}
+	err := managedfields.ExtractInto(clusterObjectDeployment, internal.Parser().Type("com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectDeployment"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
-	b.WithName(clusterObjectSet.Name)
+	b.WithName(clusterObjectDeployment.Name)
 
-	b.WithKind("ClusterObjectSet")
+	b.WithKind("ClusterObjectDeployment")
 	b.WithAPIVersion("orb.operatorframework.io/v1alpha1")
 	return b, nil
 }
 
-// ExtractClusterObjectSet extracts the applied configuration owned by fieldManager from
-// clusterObjectSet. If no managedFields are found in clusterObjectSet for fieldManager, a
-// ClusterObjectSetApplyConfiguration is returned with only the Name, Namespace (if applicable),
+// ExtractClusterObjectDeployment extracts the applied configuration owned by fieldManager from
+// clusterObjectDeployment. If no managedFields are found in clusterObjectDeployment for fieldManager, a
+// ClusterObjectDeploymentApplyConfiguration is returned with only the Name, Namespace (if applicable),
 // APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
-// clusterObjectSet must be a unmodified ClusterObjectSet API object that was retrieved from the Kubernetes API.
-// ExtractClusterObjectSet provides a way to perform a extract/modify-in-place/apply workflow.
+// clusterObjectDeployment must be a unmodified ClusterObjectDeployment API object that was retrieved from the Kubernetes API.
+// ExtractClusterObjectDeployment provides a way to perform a extract/modify-in-place/apply workflow.
 // Note that an extracted apply configuration will contain fewer fields than what the fieldManager previously
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
-func ExtractClusterObjectSet(clusterObjectSet *apiv1alpha1.ClusterObjectSet, fieldManager string) (*ClusterObjectSetApplyConfiguration, error) {
-	return ExtractClusterObjectSetFrom(clusterObjectSet, fieldManager, "")
+func ExtractClusterObjectDeployment(clusterObjectDeployment *apiv1alpha1.ClusterObjectDeployment, fieldManager string) (*ClusterObjectDeploymentApplyConfiguration, error) {
+	return ExtractClusterObjectDeploymentFrom(clusterObjectDeployment, fieldManager, "")
 }
 
-// ExtractClusterObjectSetStatus extracts the applied configuration owned by fieldManager from
-// clusterObjectSet for the status subresource.
-func ExtractClusterObjectSetStatus(clusterObjectSet *apiv1alpha1.ClusterObjectSet, fieldManager string) (*ClusterObjectSetApplyConfiguration, error) {
-	return ExtractClusterObjectSetFrom(clusterObjectSet, fieldManager, "status")
+// ExtractClusterObjectDeploymentStatus extracts the applied configuration owned by fieldManager from
+// clusterObjectDeployment for the status subresource.
+func ExtractClusterObjectDeploymentStatus(clusterObjectDeployment *apiv1alpha1.ClusterObjectDeployment, fieldManager string) (*ClusterObjectDeploymentApplyConfiguration, error) {
+	return ExtractClusterObjectDeploymentFrom(clusterObjectDeployment, fieldManager, "status")
 }
 
-func (b ClusterObjectSetApplyConfiguration) IsApplyConfiguration() {}
+func (b ClusterObjectDeploymentApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Kind field is set to the value of the last call.
-func (b *ClusterObjectSetApplyConfiguration) WithKind(value string) *ClusterObjectSetApplyConfiguration {
+func (b *ClusterObjectDeploymentApplyConfiguration) WithKind(value string) *ClusterObjectDeploymentApplyConfiguration {
 	b.TypeMetaApplyConfiguration.Kind = &value
 	return b
 }
@@ -91,7 +91,7 @@ func (b *ClusterObjectSetApplyConfiguration) WithKind(value string) *ClusterObje
 // WithAPIVersion sets the APIVersion field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the APIVersion field is set to the value of the last call.
-func (b *ClusterObjectSetApplyConfiguration) WithAPIVersion(value string) *ClusterObjectSetApplyConfiguration {
+func (b *ClusterObjectDeploymentApplyConfiguration) WithAPIVersion(value string) *ClusterObjectDeploymentApplyConfiguration {
 	b.TypeMetaApplyConfiguration.APIVersion = &value
 	return b
 }
@@ -99,7 +99,7 @@ func (b *ClusterObjectSetApplyConfiguration) WithAPIVersion(value string) *Clust
 // WithName sets the Name field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Name field is set to the value of the last call.
-func (b *ClusterObjectSetApplyConfiguration) WithName(value string) *ClusterObjectSetApplyConfiguration {
+func (b *ClusterObjectDeploymentApplyConfiguration) WithName(value string) *ClusterObjectDeploymentApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.Name = &value
 	return b
@@ -108,7 +108,7 @@ func (b *ClusterObjectSetApplyConfiguration) WithName(value string) *ClusterObje
 // WithGenerateName sets the GenerateName field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the GenerateName field is set to the value of the last call.
-func (b *ClusterObjectSetApplyConfiguration) WithGenerateName(value string) *ClusterObjectSetApplyConfiguration {
+func (b *ClusterObjectDeploymentApplyConfiguration) WithGenerateName(value string) *ClusterObjectDeploymentApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.GenerateName = &value
 	return b
@@ -117,7 +117,7 @@ func (b *ClusterObjectSetApplyConfiguration) WithGenerateName(value string) *Clu
 // WithNamespace sets the Namespace field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Namespace field is set to the value of the last call.
-func (b *ClusterObjectSetApplyConfiguration) WithNamespace(value string) *ClusterObjectSetApplyConfiguration {
+func (b *ClusterObjectDeploymentApplyConfiguration) WithNamespace(value string) *ClusterObjectDeploymentApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.Namespace = &value
 	return b
@@ -126,7 +126,7 @@ func (b *ClusterObjectSetApplyConfiguration) WithNamespace(value string) *Cluste
 // WithUID sets the UID field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the UID field is set to the value of the last call.
-func (b *ClusterObjectSetApplyConfiguration) WithUID(value types.UID) *ClusterObjectSetApplyConfiguration {
+func (b *ClusterObjectDeploymentApplyConfiguration) WithUID(value types.UID) *ClusterObjectDeploymentApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.UID = &value
 	return b
@@ -135,7 +135,7 @@ func (b *ClusterObjectSetApplyConfiguration) WithUID(value types.UID) *ClusterOb
 // WithResourceVersion sets the ResourceVersion field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ResourceVersion field is set to the value of the last call.
-func (b *ClusterObjectSetApplyConfiguration) WithResourceVersion(value string) *ClusterObjectSetApplyConfiguration {
+func (b *ClusterObjectDeploymentApplyConfiguration) WithResourceVersion(value string) *ClusterObjectDeploymentApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.ResourceVersion = &value
 	return b
@@ -144,7 +144,7 @@ func (b *ClusterObjectSetApplyConfiguration) WithResourceVersion(value string) *
 // WithGeneration sets the Generation field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Generation field is set to the value of the last call.
-func (b *ClusterObjectSetApplyConfiguration) WithGeneration(value int64) *ClusterObjectSetApplyConfiguration {
+func (b *ClusterObjectDeploymentApplyConfiguration) WithGeneration(value int64) *ClusterObjectDeploymentApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.Generation = &value
 	return b
@@ -153,7 +153,7 @@ func (b *ClusterObjectSetApplyConfiguration) WithGeneration(value int64) *Cluste
 // WithCreationTimestamp sets the CreationTimestamp field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the CreationTimestamp field is set to the value of the last call.
-func (b *ClusterObjectSetApplyConfiguration) WithCreationTimestamp(value metav1.Time) *ClusterObjectSetApplyConfiguration {
+func (b *ClusterObjectDeploymentApplyConfiguration) WithCreationTimestamp(value metav1.Time) *ClusterObjectDeploymentApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.CreationTimestamp = &value
 	return b
@@ -162,7 +162,7 @@ func (b *ClusterObjectSetApplyConfiguration) WithCreationTimestamp(value metav1.
 // WithDeletionTimestamp sets the DeletionTimestamp field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the DeletionTimestamp field is set to the value of the last call.
-func (b *ClusterObjectSetApplyConfiguration) WithDeletionTimestamp(value metav1.Time) *ClusterObjectSetApplyConfiguration {
+func (b *ClusterObjectDeploymentApplyConfiguration) WithDeletionTimestamp(value metav1.Time) *ClusterObjectDeploymentApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.DeletionTimestamp = &value
 	return b
@@ -171,7 +171,7 @@ func (b *ClusterObjectSetApplyConfiguration) WithDeletionTimestamp(value metav1.
 // WithDeletionGracePeriodSeconds sets the DeletionGracePeriodSeconds field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the DeletionGracePeriodSeconds field is set to the value of the last call.
-func (b *ClusterObjectSetApplyConfiguration) WithDeletionGracePeriodSeconds(value int64) *ClusterObjectSetApplyConfiguration {
+func (b *ClusterObjectDeploymentApplyConfiguration) WithDeletionGracePeriodSeconds(value int64) *ClusterObjectDeploymentApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.DeletionGracePeriodSeconds = &value
 	return b
@@ -181,7 +181,7 @@ func (b *ClusterObjectSetApplyConfiguration) WithDeletionGracePeriodSeconds(valu
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, the entries provided by each call will be put on the Labels field,
 // overwriting an existing map entries in Labels field with the same key.
-func (b *ClusterObjectSetApplyConfiguration) WithLabels(entries map[string]string) *ClusterObjectSetApplyConfiguration {
+func (b *ClusterObjectDeploymentApplyConfiguration) WithLabels(entries map[string]string) *ClusterObjectDeploymentApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	if b.ObjectMetaApplyConfiguration.Labels == nil && len(entries) > 0 {
 		b.ObjectMetaApplyConfiguration.Labels = make(map[string]string, len(entries))
@@ -196,7 +196,7 @@ func (b *ClusterObjectSetApplyConfiguration) WithLabels(entries map[string]strin
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, the entries provided by each call will be put on the Annotations field,
 // overwriting an existing map entries in Annotations field with the same key.
-func (b *ClusterObjectSetApplyConfiguration) WithAnnotations(entries map[string]string) *ClusterObjectSetApplyConfiguration {
+func (b *ClusterObjectDeploymentApplyConfiguration) WithAnnotations(entries map[string]string) *ClusterObjectDeploymentApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	if b.ObjectMetaApplyConfiguration.Annotations == nil && len(entries) > 0 {
 		b.ObjectMetaApplyConfiguration.Annotations = make(map[string]string, len(entries))
@@ -210,7 +210,7 @@ func (b *ClusterObjectSetApplyConfiguration) WithAnnotations(entries map[string]
 // WithOwnerReferences adds the given value to the OwnerReferences field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the OwnerReferences field.
-func (b *ClusterObjectSetApplyConfiguration) WithOwnerReferences(values ...*v1.OwnerReferenceApplyConfiguration) *ClusterObjectSetApplyConfiguration {
+func (b *ClusterObjectDeploymentApplyConfiguration) WithOwnerReferences(values ...*v1.OwnerReferenceApplyConfiguration) *ClusterObjectDeploymentApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	for i := range values {
 		if values[i] == nil {
@@ -224,7 +224,7 @@ func (b *ClusterObjectSetApplyConfiguration) WithOwnerReferences(values ...*v1.O
 // WithFinalizers adds the given value to the Finalizers field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Finalizers field.
-func (b *ClusterObjectSetApplyConfiguration) WithFinalizers(values ...string) *ClusterObjectSetApplyConfiguration {
+func (b *ClusterObjectDeploymentApplyConfiguration) WithFinalizers(values ...string) *ClusterObjectDeploymentApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	for i := range values {
 		b.ObjectMetaApplyConfiguration.Finalizers = append(b.ObjectMetaApplyConfiguration.Finalizers, values[i])
@@ -232,7 +232,7 @@ func (b *ClusterObjectSetApplyConfiguration) WithFinalizers(values ...string) *C
 	return b
 }
 
-func (b *ClusterObjectSetApplyConfiguration) ensureObjectMetaApplyConfigurationExists() {
+func (b *ClusterObjectDeploymentApplyConfiguration) ensureObjectMetaApplyConfigurationExists() {
 	if b.ObjectMetaApplyConfiguration == nil {
 		b.ObjectMetaApplyConfiguration = &v1.ObjectMetaApplyConfiguration{}
 	}
@@ -241,7 +241,7 @@ func (b *ClusterObjectSetApplyConfiguration) ensureObjectMetaApplyConfigurationE
 // WithSpec sets the Spec field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Spec field is set to the value of the last call.
-func (b *ClusterObjectSetApplyConfiguration) WithSpec(value *ClusterObjectSetSpecApplyConfiguration) *ClusterObjectSetApplyConfiguration {
+func (b *ClusterObjectDeploymentApplyConfiguration) WithSpec(value *ClusterObjectDeploymentSpecApplyConfiguration) *ClusterObjectDeploymentApplyConfiguration {
 	b.Spec = value
 	return b
 }
@@ -249,29 +249,29 @@ func (b *ClusterObjectSetApplyConfiguration) WithSpec(value *ClusterObjectSetSpe
 // WithStatus sets the Status field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Status field is set to the value of the last call.
-func (b *ClusterObjectSetApplyConfiguration) WithStatus(value *ClusterObjectSetStatusApplyConfiguration) *ClusterObjectSetApplyConfiguration {
+func (b *ClusterObjectDeploymentApplyConfiguration) WithStatus(value *ClusterObjectDeploymentStatusApplyConfiguration) *ClusterObjectDeploymentApplyConfiguration {
 	b.Status = value
 	return b
 }
 
 // GetKind retrieves the value of the Kind field in the declarative configuration.
-func (b *ClusterObjectSetApplyConfiguration) GetKind() *string {
+func (b *ClusterObjectDeploymentApplyConfiguration) GetKind() *string {
 	return b.TypeMetaApplyConfiguration.Kind
 }
 
 // GetAPIVersion retrieves the value of the APIVersion field in the declarative configuration.
-func (b *ClusterObjectSetApplyConfiguration) GetAPIVersion() *string {
+func (b *ClusterObjectDeploymentApplyConfiguration) GetAPIVersion() *string {
 	return b.TypeMetaApplyConfiguration.APIVersion
 }
 
 // GetName retrieves the value of the Name field in the declarative configuration.
-func (b *ClusterObjectSetApplyConfiguration) GetName() *string {
+func (b *ClusterObjectDeploymentApplyConfiguration) GetName() *string {
 	b.ensureObjectMetaApplyConfigurationExists()
 	return b.ObjectMetaApplyConfiguration.Name
 }
 
 // GetNamespace retrieves the value of the Namespace field in the declarative configuration.
-func (b *ClusterObjectSetApplyConfiguration) GetNamespace() *string {
+func (b *ClusterObjectDeploymentApplyConfiguration) GetNamespace() *string {
 	b.ensureObjectMetaApplyConfigurationExists()
 	return b.ObjectMetaApplyConfiguration.Namespace
 }

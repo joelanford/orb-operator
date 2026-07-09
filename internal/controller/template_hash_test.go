@@ -11,11 +11,11 @@ import (
 )
 
 func TestTemplateHash_Stability(t *testing.T) {
-	tmpl := orbv1alpha1.ClusterObjectSetTemplate{
-		Metadata: orbv1alpha1.ClusterObjectSetTemplateMetadata{
+	tmpl := orbv1alpha1.ClusterObjectDeploymentTemplate{
+		Metadata: orbv1alpha1.ClusterObjectDeploymentTemplateMetadata{
 			Labels: map[string]string{"app": "test"},
 		},
-		Spec: orbv1alpha1.ClusterObjectSetTemplateSpec{
+		Spec: orbv1alpha1.ClusterObjectDeploymentTemplateSpec{
 			Phases: []orbv1alpha1.Phase{{
 				Name: "install",
 				Objects: []orbv1alpha1.PhaseObject{{
@@ -34,11 +34,11 @@ func TestTemplateHash_Stability(t *testing.T) {
 }
 
 func TestTemplateHash_Sensitivity(t *testing.T) {
-	base := orbv1alpha1.ClusterObjectSetTemplate{
-		Metadata: orbv1alpha1.ClusterObjectSetTemplateMetadata{
+	base := orbv1alpha1.ClusterObjectDeploymentTemplate{
+		Metadata: orbv1alpha1.ClusterObjectDeploymentTemplateMetadata{
 			Labels: map[string]string{"app": "test"},
 		},
-		Spec: orbv1alpha1.ClusterObjectSetTemplateSpec{
+		Spec: orbv1alpha1.ClusterObjectDeploymentTemplateSpec{
 			Phases: []orbv1alpha1.Phase{{
 				Name: "install",
 				Objects: []orbv1alpha1.PhaseObject{{
@@ -48,16 +48,16 @@ func TestTemplateHash_Sensitivity(t *testing.T) {
 		},
 	}
 
-	changedLabel := orbv1alpha1.ClusterObjectSetTemplate{
-		Metadata: orbv1alpha1.ClusterObjectSetTemplateMetadata{
+	changedLabel := orbv1alpha1.ClusterObjectDeploymentTemplate{
+		Metadata: orbv1alpha1.ClusterObjectDeploymentTemplateMetadata{
 			Labels: map[string]string{"app": "changed"},
 		},
 		Spec: base.Spec,
 	}
 
-	changedSpec := orbv1alpha1.ClusterObjectSetTemplate{
+	changedSpec := orbv1alpha1.ClusterObjectDeploymentTemplate{
 		Metadata: base.Metadata,
-		Spec: orbv1alpha1.ClusterObjectSetTemplateSpec{
+		Spec: orbv1alpha1.ClusterObjectDeploymentTemplateSpec{
 			Phases: []orbv1alpha1.Phase{{
 				Name: "install",
 				Objects: []orbv1alpha1.PhaseObject{{

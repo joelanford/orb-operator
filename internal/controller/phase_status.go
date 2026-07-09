@@ -128,7 +128,10 @@ func tearingDownPhase(_ orbv1alpha1.Phase, pr machinery.PhaseTeardownResult) orb
 	return op
 }
 
-func mapSpecPhases[T interface{ GetName() string; IsComplete() bool }](
+func mapSpecPhases[T interface {
+	GetName() string
+	IsComplete() bool
+}](
 	specPhases []orbv1alpha1.Phase,
 	results []T,
 	completeStatus orbv1alpha1.PhaseStatus,

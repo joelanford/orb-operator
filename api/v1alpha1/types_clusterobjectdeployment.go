@@ -2,32 +2,32 @@ package v1alpha1
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-// ClusterObjectSet declares a set of Kubernetes objects that should be applied
+// ClusterObjectDeployment declares a set of Kubernetes objects that should be applied
 // to the cluster and kept in the desired state. The controller creates
 // ClusterObjectSetRevision resources to track each unique template snapshot and
 // manages their lifecycle automatically.
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=cos
+// +kubebuilder:resource:scope=Cluster,shortName=cod
 // +kubebuilder:printcolumn:name="Availability",type=string,JSONPath=`.status.conditions[?(@.type=="Available")].reason`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
-type ClusterObjectSet struct {
+type ClusterObjectDeployment struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// spec defines the desired set of objects and their lifecycle configuration.
 	// +required
-	Spec ClusterObjectSetSpec `json:"spec"`
+	Spec ClusterObjectDeploymentSpec `json:"spec"`
 
-	// status reports the observed state of the ClusterObjectSet, including
+	// status reports the observed state of the ClusterObjectDeployment, including
 	// aggregate availability and the state of active revisions.
 	// +optional
-	Status ClusterObjectSetStatus `json:"status,omitempty"`
+	Status ClusterObjectDeploymentStatus `json:"status,omitempty"`
 }
 
-// ClusterObjectSetSpec defines the desired state of a ClusterObjectSet.
-type ClusterObjectSetSpec struct {
+// ClusterObjectDeploymentSpec defines the desired state of a ClusterObjectDeployment.
+type ClusterObjectDeploymentSpec struct {
 	// revisionHistoryLimit is the maximum number of archived
 	// ClusterObjectSetRevision resources to retain. Older archived revisions
 	// beyond this limit are garbage collected by the controller. When omitted,
@@ -41,30 +41,30 @@ type ClusterObjectSetSpec struct {
 	// template defines the ClusterObjectSetRevision that the controller will
 	// create whenever the template content changes.
 	// +required
-	Template ClusterObjectSetTemplate `json:"template"`
+	Template ClusterObjectDeploymentTemplate `json:"template"`
 }
 
-// ClusterObjectSetTemplate defines the template used to stamp out
+// ClusterObjectDeploymentTemplate defines the template used to stamp out
 // ClusterObjectSetRevision resources.
-type ClusterObjectSetTemplate struct {
+type ClusterObjectDeploymentTemplate struct {
 	// metadata contains labels and annotations that are propagated to each
 	// ClusterObjectSetRevision created from this template.
 	// +optional
-	Metadata ClusterObjectSetTemplateMetadata `json:"metadata,omitempty"`
+	Metadata ClusterObjectDeploymentTemplateMetadata `json:"metadata,omitempty"`
 
 	// spec defines the phases, objects, and configuration for each revision
 	// created from this template.
 	// +required
-	Spec ClusterObjectSetTemplateSpec `json:"spec"`
+	Spec ClusterObjectDeploymentTemplateSpec `json:"spec"`
 }
 
-// ClusterObjectSetTemplateMetadata contains labels and annotations propagated
+// ClusterObjectDeploymentTemplateMetadata contains labels and annotations propagated
 // to revisions created from the template. Labels and annotations must conform
 // to the standard Kubernetes metadata format. Annotation values are bounded to
 // 256 KiB each.
 //
 // +kubebuilder:validation:XValidation:rule="!has(self.annotations) || self.annotations.all(k, self.annotations[k].size() <= 262144)",message="annotation values must be 256 KiB or less"
-type ClusterObjectSetTemplateMetadata struct {
+type ClusterObjectDeploymentTemplateMetadata struct {
 	// labels is a set of key/value pairs propagated to each revision's metadata.
 	// Keys and values must conform to the Kubernetes label format. A maximum of
 	// 32 labels may be specified.
@@ -81,10 +81,10 @@ type ClusterObjectSetTemplateMetadata struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
-// ClusterObjectSetStatus reports the observed state of a ClusterObjectSet.
-type ClusterObjectSetStatus struct {
+// ClusterObjectDeploymentStatus reports the observed state of a ClusterObjectDeployment.
+type ClusterObjectDeploymentStatus struct {
 	// conditions represent the latest available observations of the
-	// ClusterObjectSet's state. The "Available" condition indicates whether the
+	// ClusterObjectDeployment's state. The "Available" condition indicates whether the
 	// active revision's managed objects satisfy their assertions.
 	// +listType=map
 	// +listMapKey=type
@@ -116,9 +116,9 @@ type ClusterObjectSetRevisionStatusSummary struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// ClusterObjectSetTemplateSpec defines the phases and collision protection
+// ClusterObjectDeploymentTemplateSpec defines the phases and collision protection
 // settings that are embedded in each revision created from the template.
-type ClusterObjectSetTemplateSpec struct {
+type ClusterObjectDeploymentTemplateSpec struct {
 	// collisionProtection sets the default collision protection for all phases
 	// and objects in the revision. Individual phases and objects may override
 	// this setting. When omitted, the platform chooses a reasonable default,
@@ -137,14 +137,14 @@ type ClusterObjectSetTemplateSpec struct {
 	Phases []Phase `json:"phases"`
 }
 
-// ClusterObjectSetList is a list of ClusterObjectSet resources.
+// ClusterObjectDeploymentList is a list of ClusterObjectDeployment resources.
 //
 // +kubebuilder:object:root=true
-type ClusterObjectSetList struct {
+type ClusterObjectDeploymentList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 
-	// items is the list of ClusterObjectSet resources.
+	// items is the list of ClusterObjectDeployment resources.
 	// +required
-	Items []ClusterObjectSet `json:"items"`
+	Items []ClusterObjectDeployment `json:"items"`
 }

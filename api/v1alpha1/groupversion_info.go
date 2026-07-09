@@ -15,8 +15,8 @@ var (
 
 func addKnownTypes(s *runtime.Scheme) error {
 	s.AddKnownTypes(GroupVersion,
-		&ClusterObjectSet{},
-		&ClusterObjectSetList{},
+		&ClusterObjectDeployment{},
+		&ClusterObjectDeploymentList{},
 		&ClusterObjectSetRevision{},
 		&ClusterObjectSetRevisionList{},
 		&ClusterObjectSlice{},

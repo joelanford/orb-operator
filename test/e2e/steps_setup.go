@@ -46,11 +46,11 @@ func registerSetupSteps(sc *godog.ScenarioContext, tc *testContext) {
 
 	sc.Step(`^an available COSR with group "([^"]*)" and revision (\d+)$`, tc.anAvailableCOSR)
 
-	// COS setup steps
-	sc.Step(`^a COS named "([^"]*)"$`, tc.aCOSNamed)
-	sc.Step(`^a COS named "([^"]*)" with revisionHistoryLimit (\d+)$`, tc.aCOSNamedWithRevisionHistoryLimit)
-	sc.Step(`^an available COS named "([^"]*)"$`, tc.anAvailableCOS)
-	sc.Step(`^the COS template has (label|annotation) "([^"]*)" with value "([^"]*)"$`, tc.theCOSTemplateHasMetadata)
+	// COD setup steps
+	sc.Step(`^a COD named "([^"]*)"$`, tc.aCODNamed)
+	sc.Step(`^a COD named "([^"]*)" with revisionHistoryLimit (\d+)$`, tc.aCODNamedWithRevisionHistoryLimit)
+	sc.Step(`^an available COD named "([^"]*)"$`, tc.anAvailableCOD)
+	sc.Step(`^the COD template has (label|annotation) "([^"]*)" with value "([^"]*)"$`, tc.theCODTemplateHasMetadata)
 }
 
 func (tc *testContext) aCOSRNamedWithGroupAndRevision(name, group string, revision uint32) {
@@ -238,36 +238,36 @@ func (tc *testContext) aStandaloneConfigMapExists(name string) error {
 	return tc.client.Create(context.Background(), newConfigMap(name, tc.namespace))
 }
 
-func (tc *testContext) aCOSNamed(name string) {
-	tc.resetCOSBuilder(name)
+func (tc *testContext) aCODNamed(name string) {
+	tc.resetCODBuilder(name)
 }
 
-func (tc *testContext) anAvailableCOS(name string) error {
-	tc.resetCOSBuilder(name)
+func (tc *testContext) anAvailableCOD(name string) error {
+	tc.resetCODBuilder(name)
 	tc.addPhase("install")
 	tc.addConfigMapToPhase("cm-"+name, false)
-	if err := tc.createCOS(context.Background()); err != nil {
+	if err := tc.createCOD(context.Background()); err != nil {
 		return err
 	}
-	return tc.theCOSShouldBeAvailable(name)
+	return tc.theCODShouldBeAvailable(name)
 }
 
-func (tc *testContext) aCOSNamedWithRevisionHistoryLimit(name string, limit int32) {
-	tc.resetCOSBuilder(name)
-	tc.cos.revisionHistoryLimit = &limit
+func (tc *testContext) aCODNamedWithRevisionHistoryLimit(name string, limit int32) {
+	tc.resetCODBuilder(name)
+	tc.cod.revisionHistoryLimit = &limit
 }
 
-func (tc *testContext) theCOSTemplateHasMetadata(kind, key, value string) {
+func (tc *testContext) theCODTemplateHasMetadata(kind, key, value string) {
 	if kind == "label" {
-		if tc.cos.labels == nil {
-			tc.cos.labels = make(map[string]string)
+		if tc.cod.labels == nil {
+			tc.cod.labels = make(map[string]string)
 		}
-		tc.cos.labels[key] = value
+		tc.cod.labels[key] = value
 	} else {
-		if tc.cos.annotations == nil {
-			tc.cos.annotations = make(map[string]string)
+		if tc.cod.annotations == nil {
+			tc.cod.annotations = make(map[string]string)
 		}
-		tc.cos.annotations[key] = value
+		tc.cod.annotations[key] = value
 	}
 }
 

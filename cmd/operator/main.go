@@ -112,9 +112,9 @@ func run(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("setting up COSR controller: %w", err)
 	}
 
-	cosReconciler := controller.NewCOSReconciler(mgr.GetClient(), mgr.GetScheme())
-	if err := cosReconciler.SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("setting up COS controller: %w", err)
+	codReconciler := controller.NewCODReconciler(mgr.GetClient(), mgr.GetScheme())
+	if err := codReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("setting up COD controller: %w", err)
 	}
 
 	return mgr.Start(cmd.Context())

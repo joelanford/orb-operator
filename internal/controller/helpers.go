@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 	cosrac "github.com/joelanford/orb-operator/applyconfigurations/api/v1alpha1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func applyCOSR(ctx context.Context, c client.Client, cosr *orbv1alpha1.ClusterObjectSetRevision, fieldOwner string, needsApply func(*orbv1alpha1.ClusterObjectSetRevision) bool, mutate func(*cosrac.ClusterObjectSetRevisionApplyConfiguration)) (bool, error) {

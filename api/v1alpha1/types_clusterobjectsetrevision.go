@@ -89,7 +89,7 @@ type ClusterObjectSetRevisionSpec struct {
 	// +required
 	LifecycleState LifecycleState `json:"lifecycleState"`
 
-	ClusterObjectSetTemplateSpec `json:",inline"`
+	ClusterObjectDeploymentTemplateSpec `json:",inline"`
 }
 
 // ClusterObjectSetRevisionStatus reports the observed state of a

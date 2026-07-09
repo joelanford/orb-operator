@@ -6,12 +6,12 @@ import (
 	apiv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 )
 
-// ClusterObjectSetTemplateSpecApplyConfiguration represents a declarative configuration of the ClusterObjectSetTemplateSpec type for use
+// ClusterObjectDeploymentTemplateSpecApplyConfiguration represents a declarative configuration of the ClusterObjectDeploymentTemplateSpec type for use
 // with apply.
 //
-// ClusterObjectSetTemplateSpec defines the phases and collision protection
+// ClusterObjectDeploymentTemplateSpec defines the phases and collision protection
 // settings that are embedded in each revision created from the template.
-type ClusterObjectSetTemplateSpecApplyConfiguration struct {
+type ClusterObjectDeploymentTemplateSpecApplyConfiguration struct {
 	// collisionProtection sets the default collision protection for all phases
 	// and objects in the revision. Individual phases and objects may override
 	// this setting. When omitted, the platform chooses a reasonable default,
@@ -25,16 +25,16 @@ type ClusterObjectSetTemplateSpecApplyConfiguration struct {
 	Phases []PhaseApplyConfiguration `json:"phases,omitempty"`
 }
 
-// ClusterObjectSetTemplateSpecApplyConfiguration constructs a declarative configuration of the ClusterObjectSetTemplateSpec type for use with
+// ClusterObjectDeploymentTemplateSpecApplyConfiguration constructs a declarative configuration of the ClusterObjectDeploymentTemplateSpec type for use with
 // apply.
-func ClusterObjectSetTemplateSpec() *ClusterObjectSetTemplateSpecApplyConfiguration {
-	return &ClusterObjectSetTemplateSpecApplyConfiguration{}
+func ClusterObjectDeploymentTemplateSpec() *ClusterObjectDeploymentTemplateSpecApplyConfiguration {
+	return &ClusterObjectDeploymentTemplateSpecApplyConfiguration{}
 }
 
 // WithCollisionProtection sets the CollisionProtection field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the CollisionProtection field is set to the value of the last call.
-func (b *ClusterObjectSetTemplateSpecApplyConfiguration) WithCollisionProtection(value apiv1alpha1.CollisionProtection) *ClusterObjectSetTemplateSpecApplyConfiguration {
+func (b *ClusterObjectDeploymentTemplateSpecApplyConfiguration) WithCollisionProtection(value apiv1alpha1.CollisionProtection) *ClusterObjectDeploymentTemplateSpecApplyConfiguration {
 	b.CollisionProtection = &value
 	return b
 }
@@ -42,7 +42,7 @@ func (b *ClusterObjectSetTemplateSpecApplyConfiguration) WithCollisionProtection
 // WithPhases adds the given value to the Phases field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Phases field.
-func (b *ClusterObjectSetTemplateSpecApplyConfiguration) WithPhases(values ...*PhaseApplyConfiguration) *ClusterObjectSetTemplateSpecApplyConfiguration {
+func (b *ClusterObjectDeploymentTemplateSpecApplyConfiguration) WithPhases(values ...*PhaseApplyConfiguration) *ClusterObjectDeploymentTemplateSpecApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithPhases")

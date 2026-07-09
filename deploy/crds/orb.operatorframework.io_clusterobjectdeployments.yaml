@@ -4,16 +4,16 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.21.0
-  name: clusterobjectsets.orb.operatorframework.io
+  name: clusterobjectdeployments.orb.operatorframework.io
 spec:
   group: orb.operatorframework.io
   names:
-    kind: ClusterObjectSet
-    listKind: ClusterObjectSetList
-    plural: clusterobjectsets
+    kind: ClusterObjectDeployment
+    listKind: ClusterObjectDeploymentList
+    plural: clusterobjectdeployments
     shortNames:
-    - cos
-    singular: clusterobjectset
+    - cod
+    singular: clusterobjectdeployment
   scope: Cluster
   versions:
   - additionalPrinterColumns:
@@ -27,7 +27,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          ClusterObjectSet declares a set of Kubernetes objects that should be applied
+          ClusterObjectDeployment declares a set of Kubernetes objects that should be applied
           to the cluster and kept in the desired state. The controller creates
           ClusterObjectSetRevision resources to track each unique template snapshot and
           manages their lifecycle automatically.
@@ -310,7 +310,7 @@ spec:
             type: object
           status:
             description: |-
-              status reports the observed state of the ClusterObjectSet, including
+              status reports the observed state of the ClusterObjectDeployment, including
               aggregate availability and the state of active revisions.
             properties:
               activeRevisions:
@@ -400,7 +400,7 @@ spec:
               conditions:
                 description: |-
                   conditions represent the latest available observations of the
-                  ClusterObjectSet's state. The "Available" condition indicates whether the
+                  ClusterObjectDeployment's state. The "Available" condition indicates whether the
                   active revision's managed objects satisfy their assertions.
                 items:
                   description: Condition contains details for one aspect of the current

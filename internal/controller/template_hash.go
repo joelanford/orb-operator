@@ -8,7 +8,7 @@ import (
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 )
 
-func templateHash(tmpl orbv1alpha1.ClusterObjectSetTemplate) (string, error) {
+func templateHash(tmpl orbv1alpha1.ClusterObjectDeploymentTemplate) (string, error) {
 	data, err := json.Marshal(tmpl)
 	if err != nil {
 		return "", fmt.Errorf("marshalling template for hash: %w", err)

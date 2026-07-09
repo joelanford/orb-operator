@@ -33,14 +33,14 @@ type testContext struct {
 	lastCreatedCOSR string
 	cosr            *cosrBuilder
 
-	coss           map[string]*orbv1alpha1.ClusterObjectSet
-	lastCreatedCOS string
-	cos            *cosBuilder
+	cods           map[string]*orbv1alpha1.ClusterObjectDeployment
+	lastCreatedCOD string
+	cod            *codBuilder
 
-	crds               []string
-	createdObjects     []metav1.PartialObjectMetadata
-	trackedConfigMapUIDs        map[string]types.UID
-	trackedCompletedAt *metav1.Time
+	crds                 []string
+	createdObjects       []metav1.PartialObjectMetadata
+	trackedConfigMapUIDs map[string]types.UID
+	trackedCompletedAt   *metav1.Time
 }
 
 type templateSpecBuilder struct {
@@ -48,8 +48,8 @@ type templateSpecBuilder struct {
 	phases              []orbv1alpha1.Phase
 }
 
-func (b *templateSpecBuilder) build() orbv1alpha1.ClusterObjectSetTemplateSpec {
-	return orbv1alpha1.ClusterObjectSetTemplateSpec{
+func (b *templateSpecBuilder) build() orbv1alpha1.ClusterObjectDeploymentTemplateSpec {
+	return orbv1alpha1.ClusterObjectDeploymentTemplateSpec{
 		CollisionProtection: b.collisionProtection,
 		Phases:              b.phases,
 	}
@@ -62,7 +62,7 @@ type cosrBuilder struct {
 	tmpl         *templateSpecBuilder
 }
 
-type cosBuilder struct {
+type codBuilder struct {
 	name                 string
 	revisionHistoryLimit *int32
 	labels               map[string]string
@@ -72,9 +72,9 @@ type cosBuilder struct {
 
 func newTestContext(c client.Client) *testContext {
 	return &testContext{
-		client:      c,
-		cosrs:       make(map[string]*orbv1alpha1.ClusterObjectSetRevision),
-		coss:        make(map[string]*orbv1alpha1.ClusterObjectSet),
+		client:               c,
+		cosrs:                make(map[string]*orbv1alpha1.ClusterObjectSetRevision),
+		cods:                 make(map[string]*orbv1alpha1.ClusterObjectDeployment),
 		trackedConfigMapUIDs: make(map[string]types.UID),
 	}
 }
@@ -88,8 +88,8 @@ func (tc *testContext) setup(ctx context.Context) error {
 }
 
 func (tc *testContext) teardown(ctx context.Context) error {
-	for _, cos := range tc.coss {
-		_ = tc.client.Delete(ctx, cos)
+	for _, cod := range tc.cods {
+		_ = tc.client.Delete(ctx, cod)
 	}
 	for _, cosr := range tc.cosrs {
 		_ = tc.client.Delete(ctx, cosr)
@@ -127,12 +127,12 @@ func (tc *testContext) resetCOSRBuilder(group string, revision uint32) {
 		revision: revision,
 		tmpl:     tc.tmpl,
 	}
-	tc.cos = nil
+	tc.cod = nil
 }
 
-func (tc *testContext) resetCOSBuilder(name string) {
+func (tc *testContext) resetCODBuilder(name string) {
 	tc.tmpl = &templateSpecBuilder{}
-	tc.cos = &cosBuilder{
+	tc.cod = &codBuilder{
 		name: tc.namespace + "-" + name,
 		tmpl: tc.tmpl,
 	}
@@ -149,27 +149,27 @@ func (tc *testContext) buildCOSR() *orbv1alpha1.ClusterObjectSetRevision {
 			Name: name,
 		},
 		Spec: orbv1alpha1.ClusterObjectSetRevisionSpec{
-			Group:                        tc.cosr.group,
-			Revision:                     tc.cosr.revision,
-			LifecycleState:               orbv1alpha1.LifecycleStateActive,
-			ClusterObjectSetTemplateSpec: tc.cosr.tmpl.build(),
+			Group:                               tc.cosr.group,
+			Revision:                            tc.cosr.revision,
+			LifecycleState:                      orbv1alpha1.LifecycleStateActive,
+			ClusterObjectDeploymentTemplateSpec: tc.cosr.tmpl.build(),
 		},
 	}
 }
 
-func (tc *testContext) buildCOS() *orbv1alpha1.ClusterObjectSet {
-	return &orbv1alpha1.ClusterObjectSet{
+func (tc *testContext) buildCOD() *orbv1alpha1.ClusterObjectDeployment {
+	return &orbv1alpha1.ClusterObjectDeployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: tc.cos.name,
+			Name: tc.cod.name,
 		},
-		Spec: orbv1alpha1.ClusterObjectSetSpec{
-			RevisionHistoryLimit: tc.cos.revisionHistoryLimit,
-			Template: orbv1alpha1.ClusterObjectSetTemplate{
-				Metadata: orbv1alpha1.ClusterObjectSetTemplateMetadata{
-					Labels:      tc.cos.labels,
-					Annotations: tc.cos.annotations,
+		Spec: orbv1alpha1.ClusterObjectDeploymentSpec{
+			RevisionHistoryLimit: tc.cod.revisionHistoryLimit,
+			Template: orbv1alpha1.ClusterObjectDeploymentTemplate{
+				Metadata: orbv1alpha1.ClusterObjectDeploymentTemplateMetadata{
+					Labels:      tc.cod.labels,
+					Annotations: tc.cod.annotations,
 				},
-				Spec: tc.cos.tmpl.build(),
+				Spec: tc.cod.tmpl.build(),
 			},
 		},
 	}
@@ -216,13 +216,13 @@ func (tc *testContext) createCOSR(ctx context.Context) error {
 	return nil
 }
 
-func (tc *testContext) createCOS(ctx context.Context) error {
-	cos := tc.buildCOS()
-	if err := tc.client.Create(ctx, cos); err != nil {
+func (tc *testContext) createCOD(ctx context.Context) error {
+	cod := tc.buildCOD()
+	if err := tc.client.Create(ctx, cod); err != nil {
 		return err
 	}
-	tc.coss[cos.Name] = cos
-	tc.lastCreatedCOS = cos.Name
+	tc.cods[cod.Name] = cod
+	tc.lastCreatedCOD = cod.Name
 	return nil
 }
 
@@ -233,8 +233,8 @@ func cosrConditions(obj client.Object) ([]metav1.Condition, int64) {
 	return o.Status.Conditions, o.Generation
 }
 
-func cosConditions(obj client.Object) ([]metav1.Condition, int64) {
-	o := obj.(*orbv1alpha1.ClusterObjectSet)
+func codConditions(obj client.Object) ([]metav1.Condition, int64) {
+	o := obj.(*orbv1alpha1.ClusterObjectDeployment)
 	return o.Status.Conditions, o.Generation
 }
 
@@ -278,8 +278,8 @@ func (tc *testContext) pollForCOSRCondition(ctx context.Context, name string, co
 	return tc.pollForConditionOn(ctx, &orbv1alpha1.ClusterObjectSetRevision{}, types.NamespacedName{Name: name}, cosrConditions, condType, status)
 }
 
-func (tc *testContext) pollForCOSConditionWithReason(ctx context.Context, name string, condType string, status metav1.ConditionStatus, reason string) error {
-	return tc.pollForConditionWithReasonOn(ctx, &orbv1alpha1.ClusterObjectSet{}, types.NamespacedName{Name: name}, cosConditions, condType, status, reason)
+func (tc *testContext) pollForCODConditionWithReason(ctx context.Context, name string, condType string, status metav1.ConditionStatus, reason string) error {
+	return tc.pollForConditionWithReasonOn(ctx, &orbv1alpha1.ClusterObjectDeployment{}, types.NamespacedName{Name: name}, codConditions, condType, status, reason)
 }
 
 func (tc *testContext) pollForObject(ctx context.Context, key types.NamespacedName, obj client.Object) error {
@@ -322,8 +322,8 @@ func (tc *testContext) lastCreatedCOSRName() string {
 	return tc.lastCreatedCOSR
 }
 
-func (tc *testContext) lastCreatedCOSName() string {
-	return tc.lastCreatedCOS
+func (tc *testContext) lastCreatedCODName() string {
+	return tc.lastCreatedCOD
 }
 
 func pollMutateUpdate[T any, PT interface {

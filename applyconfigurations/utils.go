@@ -20,8 +20,18 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.AssertionApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("CELExpressionAssertion"):
 		return &apiv1alpha1.CELExpressionAssertionApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectSet"):
-		return &apiv1alpha1.ClusterObjectSetApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectDeployment"):
+		return &apiv1alpha1.ClusterObjectDeploymentApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectDeploymentSpec"):
+		return &apiv1alpha1.ClusterObjectDeploymentSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectDeploymentStatus"):
+		return &apiv1alpha1.ClusterObjectDeploymentStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectDeploymentTemplate"):
+		return &apiv1alpha1.ClusterObjectDeploymentTemplateApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectDeploymentTemplateMetadata"):
+		return &apiv1alpha1.ClusterObjectDeploymentTemplateMetadataApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectDeploymentTemplateSpec"):
+		return &apiv1alpha1.ClusterObjectDeploymentTemplateSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectSetRevision"):
 		return &apiv1alpha1.ClusterObjectSetRevisionApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectSetRevisionSpec"):
@@ -30,16 +40,6 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ClusterObjectSetRevisionStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectSetRevisionStatusSummary"):
 		return &apiv1alpha1.ClusterObjectSetRevisionStatusSummaryApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectSetSpec"):
-		return &apiv1alpha1.ClusterObjectSetSpecApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectSetStatus"):
-		return &apiv1alpha1.ClusterObjectSetStatusApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectSetTemplate"):
-		return &apiv1alpha1.ClusterObjectSetTemplateApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectSetTemplateMetadata"):
-		return &apiv1alpha1.ClusterObjectSetTemplateMetadataApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectSetTemplateSpec"):
-		return &apiv1alpha1.ClusterObjectSetTemplateSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ClusterObjectSlice"):
 		return &apiv1alpha1.ClusterObjectSliceApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ConditionEqualAssertion"):

@@ -407,7 +407,7 @@ func TestTruncateMessage(t *testing.T) {
 		result := truncateMessage(s)
 		assert.Len(t, []rune(result), maxMessageLength)
 		assert.True(t, strings.HasSuffix(result, "..."))
-		assert.Equal(t, []rune(result)[0], '\U0001F600')
+		assert.Equal(t, '\U0001F600', []rune(result)[0])
 	})
 
 	t.Run("maxMessageLength counts runes not bytes", func(t *testing.T) {

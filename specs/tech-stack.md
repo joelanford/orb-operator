@@ -39,11 +39,11 @@ All build-time Go tools are declared as `tool` directives in go.mod and invoked 
 ```
 orb-operator/
 ├── api/
-│   └── v1alpha1/           # CRD types (COS, COSR, ClusterObjectSlice)
+│   └── v1alpha1/           # CRD types (COD, COSR, ClusterObjectSlice)
 ├── cmd/
 │   └── operator/           # cobra entrypoint
 ├── internal/
-│   ├── controller/         # reconcilers (COS, COSR)
+│   ├── controller/         # reconcilers (COD, COSR)
 │   ├── handler/            # object management (boxcutter integration)
 │   └── assertions/         # assertion evaluation logic
 ├── deploy/

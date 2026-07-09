@@ -44,17 +44,17 @@ func registerActionSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) lifecycleState is set to "([^"]*)"$`, tc.theCOSRInGroupLifecycleStateIsSetTo)
 	sc.Step(`^the COSR with group "([^"]*)" and revision (\d+) is deleted$`, tc.theCOSRInGroupIsDeleted)
 
-	// COS action steps
-	sc.Step(`^the COS is created$`, tc.theCOSIsCreated)
-	sc.Step(`^the COS template spec is updated with a ConfigMap "([^"]*)" in phase "([^"]*)"$`, tc.theCOSTemplateSpecIsUpdated)
-	sc.Step(`^the COS template spec is updated with a gated ConfigMap "([^"]*)" in phase "([^"]*)"$`, tc.theCOSTemplateSpecIsUpdatedWithGatedConfigMap)
-	sc.Step(`^the COS template label "([^"]*)" is updated to "([^"]*)"$`, tc.theCOSTemplateLabelIsUpdated)
-	sc.Step(`^the COS "([^"]*)" is deleted$`, tc.theCOSIsDeleted)
-	sc.Step(`^the COS "([^"]*)" is deleted with cascade (orphan)$`, tc.theCOSIsDeletedWithCascade)
-	sc.Step(`^the COS "([^"]*)" label "([^"]*)" is set to "([^"]*)"$`, tc.theCOSLabelIsSetTo)
-	sc.Step(`^the COS "([^"]*)" revisionHistoryLimit is set to (\d+)$`, tc.theCOSRevisionHistoryLimitIsSetTo)
-	sc.Step(`^creating a COS with a name of exactly 52 characters should succeed$`, tc.creatingCOSWithExact52CharNameShouldSucceed)
-	sc.Step(`^creating a COS with a name longer than 52 characters should fail$`, tc.creatingCOSWithLongNameShouldFail)
+	// COD action steps
+	sc.Step(`^the COD is created$`, tc.theCODIsCreated)
+	sc.Step(`^the COD template spec is updated with a ConfigMap "([^"]*)" in phase "([^"]*)"$`, tc.theCODTemplateSpecIsUpdated)
+	sc.Step(`^the COD template spec is updated with a gated ConfigMap "([^"]*)" in phase "([^"]*)"$`, tc.theCODTemplateSpecIsUpdatedWithGatedConfigMap)
+	sc.Step(`^the COD template label "([^"]*)" is updated to "([^"]*)"$`, tc.theCODTemplateLabelIsUpdated)
+	sc.Step(`^the COD "([^"]*)" is deleted$`, tc.theCODIsDeleted)
+	sc.Step(`^the COD "([^"]*)" is deleted with cascade (orphan)$`, tc.theCODIsDeletedWithCascade)
+	sc.Step(`^the COD "([^"]*)" label "([^"]*)" is set to "([^"]*)"$`, tc.theCODLabelIsSetTo)
+	sc.Step(`^the COD "([^"]*)" revisionHistoryLimit is set to (\d+)$`, tc.theCOSRevisionHistoryLimitIsSetTo)
+	sc.Step(`^creating a COD with a name of exactly 52 characters should succeed$`, tc.creatingCODWithExact52CharNameShouldSucceed)
+	sc.Step(`^creating a COD with a name longer than 52 characters should fail$`, tc.creatingCODWithLongNameShouldFail)
 }
 
 func (tc *testContext) theCOSRIsCreated(andBecomesAvailable string) error {
@@ -285,13 +285,13 @@ func (tc *testContext) revisionIsArchived(revision uint32) error {
 	return fmt.Errorf("revision %d not found", revision)
 }
 
-func (tc *testContext) theCOSIsCreated() error {
-	return tc.createCOS(context.Background())
+func (tc *testContext) theCODIsCreated() error {
+	return tc.createCOD(context.Background())
 }
 
-func (tc *testContext) theCOSTemplateSpecIsUpdated(cmName, phaseName string) error {
-	return pollMutateUpdate[orbv1alpha1.ClusterObjectSet](tc, types.NamespacedName{Name: tc.lastCreatedCOSName()}, func(cos *orbv1alpha1.ClusterObjectSet) {
-		cos.Spec.Template.Spec = orbv1alpha1.ClusterObjectSetTemplateSpec{
+func (tc *testContext) theCODTemplateSpecIsUpdated(cmName, phaseName string) error {
+	return pollMutateUpdate[orbv1alpha1.ClusterObjectDeployment](tc, types.NamespacedName{Name: tc.lastCreatedCODName()}, func(cod *orbv1alpha1.ClusterObjectDeployment) {
+		cod.Spec.Template.Spec = orbv1alpha1.ClusterObjectDeploymentTemplateSpec{
 			Phases: []orbv1alpha1.Phase{{
 				Name:    phaseName,
 				Objects: []orbv1alpha1.PhaseObject{newGatedConfigMapPhaseObject(cmName, tc.namespace, false)},
@@ -300,9 +300,9 @@ func (tc *testContext) theCOSTemplateSpecIsUpdated(cmName, phaseName string) err
 	})
 }
 
-func (tc *testContext) theCOSTemplateSpecIsUpdatedWithGatedConfigMap(cmName, phaseName string) error {
-	return pollMutateUpdate[orbv1alpha1.ClusterObjectSet](tc, types.NamespacedName{Name: tc.lastCreatedCOSName()}, func(cos *orbv1alpha1.ClusterObjectSet) {
-		cos.Spec.Template.Spec = orbv1alpha1.ClusterObjectSetTemplateSpec{
+func (tc *testContext) theCODTemplateSpecIsUpdatedWithGatedConfigMap(cmName, phaseName string) error {
+	return pollMutateUpdate[orbv1alpha1.ClusterObjectDeployment](tc, types.NamespacedName{Name: tc.lastCreatedCODName()}, func(cod *orbv1alpha1.ClusterObjectDeployment) {
+		cod.Spec.Template.Spec = orbv1alpha1.ClusterObjectDeploymentTemplateSpec{
 			Phases: []orbv1alpha1.Phase{{
 				Name:    phaseName,
 				Objects: []orbv1alpha1.PhaseObject{newGatedConfigMapPhaseObject(cmName, tc.namespace, true)},
@@ -311,31 +311,31 @@ func (tc *testContext) theCOSTemplateSpecIsUpdatedWithGatedConfigMap(cmName, pha
 	})
 }
 
-func (tc *testContext) theCOSTemplateLabelIsUpdated(key, value string) error {
-	return pollMutateUpdate[orbv1alpha1.ClusterObjectSet](tc, types.NamespacedName{Name: tc.lastCreatedCOSName()}, func(cos *orbv1alpha1.ClusterObjectSet) {
-		if cos.Spec.Template.Metadata.Labels == nil {
-			cos.Spec.Template.Metadata.Labels = make(map[string]string)
+func (tc *testContext) theCODTemplateLabelIsUpdated(key, value string) error {
+	return pollMutateUpdate[orbv1alpha1.ClusterObjectDeployment](tc, types.NamespacedName{Name: tc.lastCreatedCODName()}, func(cod *orbv1alpha1.ClusterObjectDeployment) {
+		if cod.Spec.Template.Metadata.Labels == nil {
+			cod.Spec.Template.Metadata.Labels = make(map[string]string)
 		}
-		cos.Spec.Template.Metadata.Labels[key] = value
+		cod.Spec.Template.Metadata.Labels[key] = value
 	})
 }
 
-func (tc *testContext) theCOSLabelIsSetTo(cosName, key, value string) error {
-	return pollMutateUpdate[orbv1alpha1.ClusterObjectSet](tc, types.NamespacedName{Name: tc.cosFullName(cosName)}, func(cos *orbv1alpha1.ClusterObjectSet) {
-		if cos.Labels == nil {
-			cos.Labels = make(map[string]string)
+func (tc *testContext) theCODLabelIsSetTo(codName, key, value string) error {
+	return pollMutateUpdate[orbv1alpha1.ClusterObjectDeployment](tc, types.NamespacedName{Name: tc.codFullName(codName)}, func(cod *orbv1alpha1.ClusterObjectDeployment) {
+		if cod.Labels == nil {
+			cod.Labels = make(map[string]string)
 		}
-		cos.Labels[key] = value
+		cod.Labels[key] = value
 	})
 }
 
-func (tc *testContext) theCOSRevisionHistoryLimitIsSetTo(cosName string, limit int32) error {
-	return pollMutateUpdate[orbv1alpha1.ClusterObjectSet](tc, types.NamespacedName{Name: tc.cosFullName(cosName)}, func(cos *orbv1alpha1.ClusterObjectSet) {
-		cos.Spec.RevisionHistoryLimit = &limit
+func (tc *testContext) theCOSRevisionHistoryLimitIsSetTo(codName string, limit int32) error {
+	return pollMutateUpdate[orbv1alpha1.ClusterObjectDeployment](tc, types.NamespacedName{Name: tc.codFullName(codName)}, func(cod *orbv1alpha1.ClusterObjectDeployment) {
+		cod.Spec.RevisionHistoryLimit = &limit
 	})
 }
 
-func (tc *testContext) cosNameOfLength(n int) string {
+func (tc *testContext) codNameOfLength(n int) string {
 	prefix := tc.namespace + "-"
 	pad := n - len(prefix)
 	if pad < 0 {
@@ -344,29 +344,29 @@ func (tc *testContext) cosNameOfLength(n int) string {
 	return prefix + strings.Repeat("b", pad)
 }
 
-func (tc *testContext) creatingCOSWithExact52CharNameShouldSucceed() error {
-	tc.resetCOSBuilder("x")
-	tc.cos.name = tc.cosNameOfLength(52)
+func (tc *testContext) creatingCODWithExact52CharNameShouldSucceed() error {
+	tc.resetCODBuilder("x")
+	tc.cod.name = tc.codNameOfLength(52)
 	tc.addPhase("install")
 	tc.addObjectToPhase(newConfigMap("cm-exact-name", tc.namespace))
-	return tc.createCOS(context.Background())
+	return tc.createCOD(context.Background())
 }
 
-func (tc *testContext) creatingCOSWithLongNameShouldFail() error {
-	tc.resetCOSBuilder("x")
-	tc.cos.name = tc.cosNameOfLength(53)
+func (tc *testContext) creatingCODWithLongNameShouldFail() error {
+	tc.resetCODBuilder("x")
+	tc.cod.name = tc.codNameOfLength(53)
 	tc.addPhase("install")
 	tc.addObjectToPhase(newConfigMap("cm-long-name", tc.namespace))
-	return expectError(tc.createCOS(context.Background()), "COS with name longer than 52 characters")
+	return expectError(tc.createCOD(context.Background()), "COD with name longer than 52 characters")
 }
 
-func (tc *testContext) theCOSIsDeleted(name string) error {
-	return deleteObject[orbv1alpha1.ClusterObjectSet](tc, types.NamespacedName{Name: tc.cosFullName(name)})
+func (tc *testContext) theCODIsDeleted(name string) error {
+	return deleteObject[orbv1alpha1.ClusterObjectDeployment](tc, types.NamespacedName{Name: tc.codFullName(name)})
 }
 
-func (tc *testContext) theCOSIsDeletedWithCascade(name, cascade string) error {
+func (tc *testContext) theCODIsDeletedWithCascade(name, cascade string) error {
 	policy := cascadePolicy(cascade)
-	return deleteObject[orbv1alpha1.ClusterObjectSet](tc, types.NamespacedName{Name: tc.cosFullName(name)}, &client.DeleteOptions{
+	return deleteObject[orbv1alpha1.ClusterObjectDeployment](tc, types.NamespacedName{Name: tc.codFullName(name)}, &client.DeleteOptions{
 		PropagationPolicy: &policy,
 	})
 }

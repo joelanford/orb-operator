@@ -26,8 +26,8 @@ type ClusterObjectSetRevisionSpecApplyConfiguration struct {
 	// triggers teardown (deletion) of any objects still owned by this revision;
 	// phases are torn down in reverse order. Once a revision is archived, it
 	// cannot be unarchived.
-	LifecycleState                                 *apiv1alpha1.LifecycleState `json:"lifecycleState,omitempty"`
-	ClusterObjectSetTemplateSpecApplyConfiguration `json:",inline"`
+	LifecycleState                                        *apiv1alpha1.LifecycleState `json:"lifecycleState,omitempty"`
+	ClusterObjectDeploymentTemplateSpecApplyConfiguration `json:",inline"`
 }
 
 // ClusterObjectSetRevisionSpecApplyConfiguration constructs a declarative configuration of the ClusterObjectSetRevisionSpec type for use with
@@ -64,7 +64,7 @@ func (b *ClusterObjectSetRevisionSpecApplyConfiguration) WithLifecycleState(valu
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the CollisionProtection field is set to the value of the last call.
 func (b *ClusterObjectSetRevisionSpecApplyConfiguration) WithCollisionProtection(value apiv1alpha1.CollisionProtection) *ClusterObjectSetRevisionSpecApplyConfiguration {
-	b.ClusterObjectSetTemplateSpecApplyConfiguration.CollisionProtection = &value
+	b.ClusterObjectDeploymentTemplateSpecApplyConfiguration.CollisionProtection = &value
 	return b
 }
 
@@ -76,7 +76,7 @@ func (b *ClusterObjectSetRevisionSpecApplyConfiguration) WithPhases(values ...*P
 		if values[i] == nil {
 			panic("nil value passed to WithPhases")
 		}
-		b.ClusterObjectSetTemplateSpecApplyConfiguration.Phases = append(b.ClusterObjectSetTemplateSpecApplyConfiguration.Phases, *values[i])
+		b.ClusterObjectDeploymentTemplateSpecApplyConfiguration.Phases = append(b.ClusterObjectDeploymentTemplateSpecApplyConfiguration.Phases, *values[i])
 	}
 	return b
 }

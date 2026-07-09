@@ -47,7 +47,7 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: message
       type:
         scalar: string
-- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSet
+- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectDeployment
   map:
     fields:
     - name: apiVersion
@@ -61,10 +61,72 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
     - name: spec
       type:
-        namedType: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetSpec
+        namedType: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectDeploymentSpec
     - name: status
       type:
-        namedType: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetStatus
+        namedType: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectDeploymentStatus
+- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectDeploymentSpec
+  map:
+    fields:
+    - name: revisionHistoryLimit
+      type:
+        scalar: numeric
+    - name: template
+      type:
+        namedType: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectDeploymentTemplate
+- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectDeploymentStatus
+  map:
+    fields:
+    - name: activeRevisions
+      type:
+        list:
+          elementType:
+            namedType: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetRevisionStatusSummary
+          elementRelationship: associative
+          keys:
+          - name
+    - name: conditions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+          elementRelationship: associative
+          keys:
+          - type
+- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectDeploymentTemplate
+  map:
+    fields:
+    - name: metadata
+      type:
+        namedType: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectDeploymentTemplateMetadata
+    - name: spec
+      type:
+        namedType: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectDeploymentTemplateSpec
+- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectDeploymentTemplateMetadata
+  map:
+    fields:
+    - name: annotations
+      type:
+        map:
+          elementType:
+            scalar: string
+    - name: labels
+      type:
+        map:
+          elementType:
+            scalar: string
+- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectDeploymentTemplateSpec
+  map:
+    fields:
+    - name: collisionProtection
+      type:
+        namedType: com.github.joelanford.orb-operator.api.v1alpha1.CollisionProtection
+    - name: phases
+      type:
+        list:
+          elementType:
+            namedType: com.github.joelanford.orb-operator.api.v1alpha1.Phase
+          elementRelationship: atomic
 - name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetRevision
   map:
     fields:
@@ -140,68 +202,6 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: name
       type:
         scalar: string
-- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetSpec
-  map:
-    fields:
-    - name: revisionHistoryLimit
-      type:
-        scalar: numeric
-    - name: template
-      type:
-        namedType: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetTemplate
-- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetStatus
-  map:
-    fields:
-    - name: activeRevisions
-      type:
-        list:
-          elementType:
-            namedType: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetRevisionStatusSummary
-          elementRelationship: associative
-          keys:
-          - name
-    - name: conditions
-      type:
-        list:
-          elementType:
-            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
-          elementRelationship: associative
-          keys:
-          - type
-- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetTemplate
-  map:
-    fields:
-    - name: metadata
-      type:
-        namedType: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetTemplateMetadata
-    - name: spec
-      type:
-        namedType: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetTemplateSpec
-- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetTemplateMetadata
-  map:
-    fields:
-    - name: annotations
-      type:
-        map:
-          elementType:
-            scalar: string
-    - name: labels
-      type:
-        map:
-          elementType:
-            scalar: string
-- name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetTemplateSpec
-  map:
-    fields:
-    - name: collisionProtection
-      type:
-        namedType: com.github.joelanford.orb-operator.api.v1alpha1.CollisionProtection
-    - name: phases
-      type:
-        list:
-          elementType:
-            namedType: com.github.joelanford.orb-operator.api.v1alpha1.Phase
-          elementRelationship: atomic
 - name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSlice
   map:
     fields:

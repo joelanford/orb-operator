@@ -2,7 +2,7 @@ local image = std.extVar('image');
 local namespace = if std.extVar('namespace') != '' then std.extVar('namespace') else 'orb-operator-system';
 
 local crds = [
-  std.parseYaml(importstr 'crds/orb.operatorframework.io_clusterobjectsets.yaml')[0],
+  std.parseYaml(importstr 'crds/orb.operatorframework.io_clusterobjectdeployments.yaml')[0],
   std.parseYaml(importstr 'crds/orb.operatorframework.io_clusterobjectsetrevisions.yaml')[0],
   std.parseYaml(importstr 'crds/orb.operatorframework.io_clusterobjectslices.yaml')[0],
 ];
@@ -142,16 +142,16 @@ local vapCOSROrphanFinalizerBinding = {
   },
 };
 
-local vapCOSNameLength = {
+local vapCODNameLength = {
   apiVersion: 'admissionregistration.k8s.io/v1',
   kind: 'ValidatingAdmissionPolicy',
-  metadata: { name: 'cos-name-max-length' },
+  metadata: { name: 'cod-name-max-length' },
   spec: {
     matchConstraints: {
       resourceRules: [{
         apiGroups: ['orb.operatorframework.io'],
         apiVersions: ['v1alpha1'],
-        resources: ['clusterobjectsets'],
+        resources: ['clusterobjectdeployments'],
         operations: ['CREATE'],
       }],
     },
@@ -162,12 +162,12 @@ local vapCOSNameLength = {
   },
 };
 
-local vapCOSNameLengthBinding = {
+local vapCODNameLengthBinding = {
   apiVersion: 'admissionregistration.k8s.io/v1',
   kind: 'ValidatingAdmissionPolicyBinding',
-  metadata: { name: 'cos-name-max-length' },
+  metadata: { name: 'cod-name-max-length' },
   spec: {
-    policyName: vapCOSNameLength.metadata.name,
+    policyName: vapCODNameLength.metadata.name,
     validationActions: ['Deny'],
   },
 };
@@ -193,5 +193,5 @@ local svc = {
 {
   apiVersion: 'v1',
   kind: 'List',
-  items: crds + [vapCOSRName, vapCOSRNameBinding, vapCOSROrphanFinalizer, vapCOSROrphanFinalizerBinding, vapCOSNameLength, vapCOSNameLengthBinding, ns, sa, crb, deploy, svc],
+  items: crds + [vapCOSRName, vapCOSRNameBinding, vapCOSROrphanFinalizer, vapCOSROrphanFinalizerBinding, vapCODNameLength, vapCODNameLengthBinding, ns, sa, crb, deploy, svc],
 }

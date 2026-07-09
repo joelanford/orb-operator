@@ -69,7 +69,7 @@ func newCOSR(name string) *orbv1alpha1.ClusterObjectSetRevision {
 			Group:          "test",
 			Revision:       1,
 			LifecycleState: orbv1alpha1.LifecycleStateActive,
-			ClusterObjectSetTemplateSpec: orbv1alpha1.ClusterObjectSetTemplateSpec{
+			ClusterObjectDeploymentTemplateSpec: orbv1alpha1.ClusterObjectDeploymentTemplateSpec{
 				Phases: []orbv1alpha1.Phase{{
 					Name: "default",
 					Objects: []orbv1alpha1.PhaseObject{{

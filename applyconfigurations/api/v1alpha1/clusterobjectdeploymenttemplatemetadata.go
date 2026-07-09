@@ -2,14 +2,14 @@
 
 package v1alpha1
 
-// ClusterObjectSetTemplateMetadataApplyConfiguration represents a declarative configuration of the ClusterObjectSetTemplateMetadata type for use
+// ClusterObjectDeploymentTemplateMetadataApplyConfiguration represents a declarative configuration of the ClusterObjectDeploymentTemplateMetadata type for use
 // with apply.
 //
-// ClusterObjectSetTemplateMetadata contains labels and annotations propagated
+// ClusterObjectDeploymentTemplateMetadata contains labels and annotations propagated
 // to revisions created from the template. Labels and annotations must conform
 // to the standard Kubernetes metadata format. Annotation values are bounded to
 // 256 KiB each.
-type ClusterObjectSetTemplateMetadataApplyConfiguration struct {
+type ClusterObjectDeploymentTemplateMetadataApplyConfiguration struct {
 	// labels is a set of key/value pairs propagated to each revision's metadata.
 	// Keys and values must conform to the Kubernetes label format. A maximum of
 	// 32 labels may be specified.
@@ -21,17 +21,17 @@ type ClusterObjectSetTemplateMetadataApplyConfiguration struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
-// ClusterObjectSetTemplateMetadataApplyConfiguration constructs a declarative configuration of the ClusterObjectSetTemplateMetadata type for use with
+// ClusterObjectDeploymentTemplateMetadataApplyConfiguration constructs a declarative configuration of the ClusterObjectDeploymentTemplateMetadata type for use with
 // apply.
-func ClusterObjectSetTemplateMetadata() *ClusterObjectSetTemplateMetadataApplyConfiguration {
-	return &ClusterObjectSetTemplateMetadataApplyConfiguration{}
+func ClusterObjectDeploymentTemplateMetadata() *ClusterObjectDeploymentTemplateMetadataApplyConfiguration {
+	return &ClusterObjectDeploymentTemplateMetadataApplyConfiguration{}
 }
 
 // WithLabels puts the entries into the Labels field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, the entries provided by each call will be put on the Labels field,
 // overwriting an existing map entries in Labels field with the same key.
-func (b *ClusterObjectSetTemplateMetadataApplyConfiguration) WithLabels(entries map[string]string) *ClusterObjectSetTemplateMetadataApplyConfiguration {
+func (b *ClusterObjectDeploymentTemplateMetadataApplyConfiguration) WithLabels(entries map[string]string) *ClusterObjectDeploymentTemplateMetadataApplyConfiguration {
 	if b.Labels == nil && len(entries) > 0 {
 		b.Labels = make(map[string]string, len(entries))
 	}
@@ -45,7 +45,7 @@ func (b *ClusterObjectSetTemplateMetadataApplyConfiguration) WithLabels(entries 
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, the entries provided by each call will be put on the Annotations field,
 // overwriting an existing map entries in Annotations field with the same key.
-func (b *ClusterObjectSetTemplateMetadataApplyConfiguration) WithAnnotations(entries map[string]string) *ClusterObjectSetTemplateMetadataApplyConfiguration {
+func (b *ClusterObjectDeploymentTemplateMetadataApplyConfiguration) WithAnnotations(entries map[string]string) *ClusterObjectDeploymentTemplateMetadataApplyConfiguration {
 	if b.Annotations == nil && len(entries) > 0 {
 		b.Annotations = make(map[string]string, len(entries))
 	}

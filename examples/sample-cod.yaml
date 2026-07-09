@@ -1,5 +1,5 @@
 apiVersion: orb.operatorframework.io/v1alpha1
-kind: ClusterObjectSet
+kind: ClusterObjectDeployment
 metadata:
   name: sample-group
 spec:

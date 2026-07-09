@@ -6,13 +6,13 @@ import (
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// ClusterObjectSetStatusApplyConfiguration represents a declarative configuration of the ClusterObjectSetStatus type for use
+// ClusterObjectDeploymentStatusApplyConfiguration represents a declarative configuration of the ClusterObjectDeploymentStatus type for use
 // with apply.
 //
-// ClusterObjectSetStatus reports the observed state of a ClusterObjectSet.
-type ClusterObjectSetStatusApplyConfiguration struct {
+// ClusterObjectDeploymentStatus reports the observed state of a ClusterObjectDeployment.
+type ClusterObjectDeploymentStatusApplyConfiguration struct {
 	// conditions represent the latest available observations of the
-	// ClusterObjectSet's state. The "Available" condition indicates whether the
+	// ClusterObjectDeployment's state. The "Available" condition indicates whether the
 	// active revision's managed objects satisfy their assertions.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 	// activeRevisions holds the currently active (non-archived)
@@ -21,16 +21,16 @@ type ClusterObjectSetStatusApplyConfiguration struct {
 	ActiveRevisions []ClusterObjectSetRevisionStatusSummaryApplyConfiguration `json:"activeRevisions,omitempty"`
 }
 
-// ClusterObjectSetStatusApplyConfiguration constructs a declarative configuration of the ClusterObjectSetStatus type for use with
+// ClusterObjectDeploymentStatusApplyConfiguration constructs a declarative configuration of the ClusterObjectDeploymentStatus type for use with
 // apply.
-func ClusterObjectSetStatus() *ClusterObjectSetStatusApplyConfiguration {
-	return &ClusterObjectSetStatusApplyConfiguration{}
+func ClusterObjectDeploymentStatus() *ClusterObjectDeploymentStatusApplyConfiguration {
+	return &ClusterObjectDeploymentStatusApplyConfiguration{}
 }
 
 // WithConditions adds the given value to the Conditions field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Conditions field.
-func (b *ClusterObjectSetStatusApplyConfiguration) WithConditions(values ...*v1.ConditionApplyConfiguration) *ClusterObjectSetStatusApplyConfiguration {
+func (b *ClusterObjectDeploymentStatusApplyConfiguration) WithConditions(values ...*v1.ConditionApplyConfiguration) *ClusterObjectDeploymentStatusApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithConditions")
@@ -43,7 +43,7 @@ func (b *ClusterObjectSetStatusApplyConfiguration) WithConditions(values ...*v1.
 // WithActiveRevisions adds the given value to the ActiveRevisions field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the ActiveRevisions field.
-func (b *ClusterObjectSetStatusApplyConfiguration) WithActiveRevisions(values ...*ClusterObjectSetRevisionStatusSummaryApplyConfiguration) *ClusterObjectSetStatusApplyConfiguration {
+func (b *ClusterObjectDeploymentStatusApplyConfiguration) WithActiveRevisions(values ...*ClusterObjectSetRevisionStatusSummaryApplyConfiguration) *ClusterObjectDeploymentStatusApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithActiveRevisions")
