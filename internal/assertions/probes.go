@@ -44,7 +44,11 @@ func probeForAssertion(a orbv1alpha1.Assertion) (probing.Prober, error) {
 			Value:     a.FieldValue.Value,
 		}, nil
 	case a.CELExpression != nil:
-		return probing.NewCELProbe(a.CELExpression.Expression, a.CELExpression.Message)
+		message := a.CELExpression.Message
+		if message == "" {
+			message = fmt.Sprintf("waiting for CEL expression to pass: %s", a.CELExpression.Expression)
+		}
+		return probing.NewCELProbe(a.CELExpression.Expression, message)
 	default:
 		return nil, fmt.Errorf("assertion has no recognized type set")
 	}

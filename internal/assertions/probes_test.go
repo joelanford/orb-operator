@@ -65,6 +65,18 @@ func TestProbeForAssertions_CELExpression(t *testing.T) {
 	assert.Equal(t, "name must be test", cp.Message)
 }
 
+func TestProbeForAssertions_CELExpression_DefaultMessage(t *testing.T) {
+	p, err := ProbeForAssertions([]orbv1alpha1.Assertion{{
+		CELExpression: &orbv1alpha1.CELExpressionAssertion{
+			Expression: "self.metadata.name == 'test'",
+		},
+	}})
+	require.NoError(t, err)
+	cp, ok := p.(*probing.CELProbe)
+	require.True(t, ok)
+	assert.Equal(t, "waiting for CEL expression to pass: self.metadata.name == 'test'", cp.Message)
+}
+
 func TestProbeForAssertions_Multiple(t *testing.T) {
 	p, err := ProbeForAssertions([]orbv1alpha1.Assertion{
 		{ConditionEqual: &orbv1alpha1.ConditionEqualAssertion{Type: "Ready", Status: "True"}},
