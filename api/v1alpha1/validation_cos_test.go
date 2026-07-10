@@ -565,3 +565,53 @@ func TestCOS_Spec_PhaseName_DNS1035Validation(t *testing.T) {
 		})
 	}
 }
+
+func TestCOS_Status_ResolvedContentHash_ImmutableOnceSet(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("setting resolvedContentHash on a new COS succeeds", func(t *testing.T) {
+		cos := newCOS("rch-set")
+		createCOS(t, ctx, cos)
+
+		cos.Status.ResolvedContentHash = "abc123"
+		require.NoError(t, k8sClient.Status().Update(ctx, cos))
+	})
+
+	t.Run("clearing resolvedContentHash after it has been set is rejected", func(t *testing.T) {
+		cos := newCOS("rch-clear")
+		createCOS(t, ctx, cos)
+
+		cos.Status.ResolvedContentHash = "abc123"
+		require.NoError(t, k8sClient.Status().Update(ctx, cos))
+
+		cos.Status.ResolvedContentHash = ""
+		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
+			"status", "resolvedContentHash is immutable once set")
+	})
+
+	t.Run("changing resolvedContentHash to a different value is rejected", func(t *testing.T) {
+		cos := newCOS("rch-change")
+		createCOS(t, ctx, cos)
+
+		cos.Status.ResolvedContentHash = "abc123"
+		require.NoError(t, k8sClient.Status().Update(ctx, cos))
+
+		cos.Status.ResolvedContentHash = "def456"
+		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
+			"status", "resolvedContentHash is immutable once set")
+	})
+
+	t.Run("resolvedContentHash remains unset when never written", func(t *testing.T) {
+		cos := newCOS("rch-unset")
+		createCOS(t, ctx, cos)
+
+		cos.Status.Conditions = []metav1.Condition{{
+			Type:               "Available",
+			Status:             metav1.ConditionFalse,
+			Reason:             "Testing",
+			LastTransitionTime: metav1.Now(),
+		}}
+		require.NoError(t, k8sClient.Status().Update(ctx, cos))
+		assert.Empty(t, cos.Status.ResolvedContentHash)
+	})
+}

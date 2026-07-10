@@ -17,6 +17,12 @@ type ClusterObjectSetStatusApplyConfiguration struct {
 	// state. The "Available" condition indicates whether all managed objects in
 	// this revision satisfy their assertions.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
+	// resolvedContentHash is a SHA-256 hash of all resolved phase object
+	// content (inline objects and objectRef-resolved objects, in phase order).
+	// Set once on the first successful resolution and never changed. Used to
+	// detect content substitution (e.g. a ClusterObjectSlice deleted and
+	// recreated with different content).
+	ResolvedContentHash *string `json:"resolvedContentHash,omitempty"`
 	// completedAt is the timestamp when all phases first completed
 	// successfully. Set once and never cleared. Nil means the revision
 	// has never been fully available. When set and Available is False,
@@ -46,6 +52,14 @@ func (b *ClusterObjectSetStatusApplyConfiguration) WithConditions(values ...*v1.
 		}
 		b.Conditions = append(b.Conditions, *values[i])
 	}
+	return b
+}
+
+// WithResolvedContentHash sets the ResolvedContentHash field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ResolvedContentHash field is set to the value of the last call.
+func (b *ClusterObjectSetStatusApplyConfiguration) WithResolvedContentHash(value string) *ClusterObjectSetStatusApplyConfiguration {
+	b.ResolvedContentHash = &value
 	return b
 }
 

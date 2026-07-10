@@ -191,6 +191,9 @@ var schemaYAML = typed.YAMLObject(`types:
           elementRelationship: associative
           keys:
           - name
+    - name: resolvedContentHash
+      type:
+        scalar: string
 - name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectSetStatusSummary
   map:
     fields:
@@ -217,6 +220,17 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: metadata
       type:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+    - name: objects
+      type:
+        list:
+          elementType:
+            namedType: com.github.joelanford.orb-operator.api.v1alpha1.SliceObject
+          elementRelationship: associative
+          keys:
+          - apiVersion
+          - kind
+          - name
+          - namespace
 - name: com.github.joelanford.orb-operator.api.v1alpha1.CollisionProtection
   scalar: string
 - name: com.github.joelanford.orb-operator.api.v1alpha1.ConditionEqualAssertion
@@ -248,6 +262,25 @@ var schemaYAML = typed.YAMLObject(`types:
         scalar: string
 - name: com.github.joelanford.orb-operator.api.v1alpha1.LifecycleState
   scalar: string
+- name: com.github.joelanford.orb-operator.api.v1alpha1.ObjectRef
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: name
+      type:
+        scalar: string
+    - name: namespace
+      type:
+        scalar: string
+      default: ""
+    - name: sliceName
+      type:
+        scalar: string
 - name: com.github.joelanford.orb-operator.api.v1alpha1.ObjectStatus
   map:
     fields:
@@ -323,8 +356,30 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: object
       type:
         namedType: __untyped_atomic_
+    - name: objectRef
+      type:
+        namedType: com.github.joelanford.orb-operator.api.v1alpha1.ObjectRef
 - name: com.github.joelanford.orb-operator.api.v1alpha1.PhaseStatus
   scalar: string
+- name: com.github.joelanford.orb-operator.api.v1alpha1.SliceObject
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: content
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: name
+      type:
+        scalar: string
+    - name: namespace
+      type:
+        scalar: string
+      default: ""
 - name: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
   map:
     fields:

@@ -96,6 +96,7 @@ type ClusterObjectSetSpec struct {
 // ClusterObjectSet.
 //
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.completedAt) || (has(self.completedAt) && self.completedAt == oldSelf.completedAt)",message="completedAt is immutable once set"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.resolvedContentHash) || (has(self.resolvedContentHash) && self.resolvedContentHash == oldSelf.resolvedContentHash)",message="resolvedContentHash is immutable once set"
 type ClusterObjectSetStatus struct {
 	// conditions represent the latest available observations of the revision's
 	// state. The "Available" condition indicates whether all managed objects in
@@ -104,6 +105,14 @@ type ClusterObjectSetStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// resolvedContentHash is a SHA-256 hash of all resolved phase object
+	// content (inline objects and objectRef-resolved objects, in phase order).
+	// Set once on the first successful resolution and never changed. Used to
+	// detect content substitution (e.g. a ClusterObjectSlice deleted and
+	// recreated with different content).
+	// +optional
+	ResolvedContentHash string `json:"resolvedContentHash,omitempty"`
 
 	// completedAt is the timestamp when all phases first completed
 	// successfully. Set once and never cleared. Nil means the revision

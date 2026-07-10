@@ -20,9 +20,10 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          ClusterObjectSlice is a placeholder resource reserved for future use as a
-          mechanism to split large ClusterObjectSet phase content across
-          multiple objects.
+          ClusterObjectSlice is a cluster-scoped resource that holds Kubernetes
+          object manifests for use by ClusterObjectSet phases via objectRef.
+          It has no spec or status — it is a pure content store analogous to
+          ConfigMap or Secret.
         properties:
           apiVersion:
             description: |-
@@ -41,6 +42,92 @@ spec:
             type: string
           metadata:
             type: object
+          objects:
+            description: |-
+              objects is the list of Kubernetes object manifests stored in this slice.
+              Each entry is keyed by its Kubernetes identity (apiVersion, kind, name,
+              namespace). The list must contain between 1 and 256 entries. Duplicate
+              keys are rejected at admission time.
+            items:
+              description: |-
+                SliceObject holds a single Kubernetes object manifest with explicit identity
+                fields for keyed lookup and admission-time uniqueness validation.
+              properties:
+                apiVersion:
+                  description: |-
+                    apiVersion is the API version of the object (e.g. "v1",
+                    "apps/v1", "apiextensions.k8s.io/v1"). The format is an optional
+                    DNS-1123 subdomain group followed by "/" and a DNS-1035 version.
+                  maxLength: 253
+                  minLength: 1
+                  type: string
+                  x-kubernetes-validations:
+                  - message: 'must be a valid API version: optional dns-subdomain
+                      group, ''/'', dns-1035 version'
+                    rule: self.matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*\\/)?[a-z]([-a-z0-9]*[a-z0-9])?$')
+                content:
+                  description: |-
+                    content is the Kubernetes object manifest as raw JSON, or as
+                    gzip-compressed JSON. The format is auto-detected by checking for
+                    the gzip magic number (0x1f 0x8b) in the first two bytes.
+                    Decompression happens lazily when the object is referenced by a
+                    ClusterObjectSet. The []byte type is automatically base64-encoded
+                    during JSON serialization by the Kubernetes API machinery — no
+                    user-space encoding is needed.
+                  format: byte
+                  minLength: 1
+                  type: string
+                kind:
+                  description: |-
+                    kind is the kind of the object (e.g. "ConfigMap", "Deployment").
+                    Must be a DNS-1035 label with mixed case allowed.
+                  maxLength: 63
+                  minLength: 1
+                  type: string
+                  x-kubernetes-validations:
+                  - message: must be a DNS-1035 label (mixed case allowed)
+                    rule: self.matches('^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$')
+                name:
+                  description: |-
+                    name is the metadata.name of the object. Must be a valid DNS-1123
+                    subdomain (lowercase alphanumeric, '-', or '.').
+                  maxLength: 253
+                  minLength: 1
+                  type: string
+                  x-kubernetes-validations:
+                  - message: must be a valid DNS-1123 subdomain
+                    rule: self.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$')
+                namespace:
+                  default: ""
+                  description: |-
+                    namespace is the metadata.namespace of the object. Defaults to empty
+                    string for cluster-scoped resources. Must be a valid DNS-1123 label
+                    when non-empty.
+                  maxLength: 63
+                  type: string
+                  x-kubernetes-validations:
+                  - message: must be empty or a valid DNS-1123 label
+                    rule: self == '' || self.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')
+              required:
+              - apiVersion
+              - content
+              - kind
+              - name
+              type: object
+            maxItems: 256
+            minItems: 1
+            type: array
+            x-kubernetes-list-map-keys:
+            - apiVersion
+            - kind
+            - name
+            - namespace
+            x-kubernetes-list-type: map
+        required:
+        - objects
         type: object
+        x-kubernetes-validations:
+        - message: objects is immutable
+          rule: self.objects == oldSelf.objects
     served: true
     storage: true

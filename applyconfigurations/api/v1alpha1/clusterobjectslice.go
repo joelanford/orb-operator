@@ -14,12 +14,18 @@ import (
 // ClusterObjectSliceApplyConfiguration represents a declarative configuration of the ClusterObjectSlice type for use
 // with apply.
 //
-// ClusterObjectSlice is a placeholder resource reserved for future use as a
-// mechanism to split large ClusterObjectSet phase content across
-// multiple objects.
+// ClusterObjectSlice is a cluster-scoped resource that holds Kubernetes
+// object manifests for use by ClusterObjectSet phases via objectRef.
+// It has no spec or status — it is a pure content store analogous to
+// ConfigMap or Secret.
 type ClusterObjectSliceApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
+	// objects is the list of Kubernetes object manifests stored in this slice.
+	// Each entry is keyed by its Kubernetes identity (apiVersion, kind, name,
+	// namespace). The list must contain between 1 and 256 entries. Duplicate
+	// keys are rejected at admission time.
+	Objects []SliceObjectApplyConfiguration `json:"objects,omitempty"`
 }
 
 // ClusterObjectSlice constructs a declarative configuration of the ClusterObjectSlice type for use with
@@ -224,6 +230,19 @@ func (b *ClusterObjectSliceApplyConfiguration) ensureObjectMetaApplyConfiguratio
 	if b.ObjectMetaApplyConfiguration == nil {
 		b.ObjectMetaApplyConfiguration = &v1.ObjectMetaApplyConfiguration{}
 	}
+}
+
+// WithObjects adds the given value to the Objects field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the Objects field.
+func (b *ClusterObjectSliceApplyConfiguration) WithObjects(values ...*SliceObjectApplyConfiguration) *ClusterObjectSliceApplyConfiguration {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithObjects")
+		}
+		b.Objects = append(b.Objects, *values[i])
+	}
+	return b
 }
 
 // GetKind retrieves the value of the Kind field in the declarative configuration.

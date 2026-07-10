@@ -115,27 +115,55 @@ type Phase struct {
 }
 
 // PhaseObject wraps a single Kubernetes object with optional collision
-// protection and availability assertions.
+// protection and availability assertions. The object is specified either
+// inline (via object) or by reference to a ClusterObjectSlice entry (via
+// objectRef). Exactly one must be set.
+//
+// +kubebuilder:validation:ExactlyOneOf=object;objectRef
 type PhaseObject struct {
-	// object is the Kubernetes resource to create or update. The controller
-	// applies this object to the cluster and manages it for the lifetime of the
-	// owning revision.
-	// +required
-	Object runtime.RawExtension `json:"object"`
+	// object is the inline Kubernetes resource manifest to create or update.
+	// The controller applies this object to the cluster and manages it for
+	// the lifetime of the owning revision. Mutually exclusive with objectRef.
+	// +optional
+	Object runtime.RawExtension `json:"object,omitempty"`
+
+	// objectRef identifies a Kubernetes object stored in a ClusterObjectSlice.
+	// The COS controller resolves the reference at reconcile time by looking
+	// up the named slice and matching the object by its identity fields.
+	// Mutually exclusive with object.
+	// +optional
+	ObjectRef *ObjectRef `json:"objectRef,omitempty"`
 
 	// collisionProtection overrides the phase-level collision protection
 	// setting for this specific object. When omitted, the phase-level setting
-	// applies.
+	// applies. This field applies identically whether the object is inline
+	// or referenced via objectRef.
 	// +optional
 	CollisionProtection *CollisionProtection `json:"collisionProtection,omitempty"`
 
 	// assertions define conditions that must be met before this object is
 	// considered available. A maximum of 16 assertions may be specified. When
 	// omitted, the object is considered available immediately after successful
-	// apply.
+	// apply. This field applies identically whether the object is inline or
+	// referenced via objectRef.
 	// +kubebuilder:validation:MaxItems=16
 	// +optional
 	Assertions []Assertion `json:"assertions,omitempty"`
+}
+
+// ObjectRef identifies a single object within a ClusterObjectSlice by its
+// natural Kubernetes identity. The embedded ObjectKey fields (apiVersion,
+// kind, name, namespace) must match a SliceObject entry in the named slice.
+type ObjectRef struct {
+	// sliceName is the metadata.name of the ClusterObjectSlice resource
+	// containing the referenced object.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:XValidation:rule="self.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$')",message="must be a valid DNS-1123 subdomain"
+	// +required
+	SliceName string `json:"sliceName"`
+
+	ObjectKey `json:",inline"`
 }
 
 // Assertion defines a single availability check that must pass before the

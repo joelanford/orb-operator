@@ -11,20 +11,29 @@ import (
 // with apply.
 //
 // PhaseObject wraps a single Kubernetes object with optional collision
-// protection and availability assertions.
+// protection and availability assertions. The object is specified either
+// inline (via object) or by reference to a ClusterObjectSlice entry (via
+// objectRef). Exactly one must be set.
 type PhaseObjectApplyConfiguration struct {
-	// object is the Kubernetes resource to create or update. The controller
-	// applies this object to the cluster and manages it for the lifetime of the
-	// owning revision.
+	// object is the inline Kubernetes resource manifest to create or update.
+	// The controller applies this object to the cluster and manages it for
+	// the lifetime of the owning revision. Mutually exclusive with objectRef.
 	Object *runtime.RawExtension `json:"object,omitempty"`
+	// objectRef identifies a Kubernetes object stored in a ClusterObjectSlice.
+	// The COS controller resolves the reference at reconcile time by looking
+	// up the named slice and matching the object by its identity fields.
+	// Mutually exclusive with object.
+	ObjectRef *ObjectRefApplyConfiguration `json:"objectRef,omitempty"`
 	// collisionProtection overrides the phase-level collision protection
 	// setting for this specific object. When omitted, the phase-level setting
-	// applies.
+	// applies. This field applies identically whether the object is inline
+	// or referenced via objectRef.
 	CollisionProtection *apiv1alpha1.CollisionProtection `json:"collisionProtection,omitempty"`
 	// assertions define conditions that must be met before this object is
 	// considered available. A maximum of 16 assertions may be specified. When
 	// omitted, the object is considered available immediately after successful
-	// apply.
+	// apply. This field applies identically whether the object is inline or
+	// referenced via objectRef.
 	Assertions []AssertionApplyConfiguration `json:"assertions,omitempty"`
 }
 
@@ -39,6 +48,14 @@ func PhaseObject() *PhaseObjectApplyConfiguration {
 // If called multiple times, the Object field is set to the value of the last call.
 func (b *PhaseObjectApplyConfiguration) WithObject(value runtime.RawExtension) *PhaseObjectApplyConfiguration {
 	b.Object = &value
+	return b
+}
+
+// WithObjectRef sets the ObjectRef field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ObjectRef field is set to the value of the last call.
+func (b *PhaseObjectApplyConfiguration) WithObjectRef(value *ObjectRefApplyConfiguration) *PhaseObjectApplyConfiguration {
+	b.ObjectRef = value
 	return b
 }
 

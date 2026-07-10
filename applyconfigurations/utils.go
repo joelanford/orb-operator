@@ -48,6 +48,10 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.FieldsEqualAssertionApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("FieldValueAssertion"):
 		return &apiv1alpha1.FieldValueAssertionApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ObjectKey"):
+		return &apiv1alpha1.ObjectKeyApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ObjectRef"):
+		return &apiv1alpha1.ObjectRefApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ObjectStatus"):
 		return &apiv1alpha1.ObjectStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ObservedPhase"):
@@ -56,6 +60,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.PhaseApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PhaseObject"):
 		return &apiv1alpha1.PhaseObjectApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("SliceObject"):
+		return &apiv1alpha1.SliceObjectApplyConfiguration{}
 
 	}
 	return nil

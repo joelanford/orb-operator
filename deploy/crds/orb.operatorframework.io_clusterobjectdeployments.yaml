@@ -172,14 +172,17 @@ spec:
                               items:
                                 description: |-
                                   PhaseObject wraps a single Kubernetes object with optional collision
-                                  protection and availability assertions.
+                                  protection and availability assertions. The object is specified either
+                                  inline (via object) or by reference to a ClusterObjectSlice entry (via
+                                  objectRef). Exactly one must be set.
                                 properties:
                                   assertions:
                                     description: |-
                                       assertions define conditions that must be met before this object is
                                       considered available. A maximum of 16 assertions may be specified. When
                                       omitted, the object is considered available immediately after successful
-                                      apply.
+                                      apply. This field applies identically whether the object is inline or
+                                      referenced via objectRef.
                                     items:
                                       description: |-
                                         Assertion defines a single availability check that must pass before the
@@ -287,7 +290,8 @@ spec:
                                     description: |-
                                       collisionProtection overrides the phase-level collision protection
                                       setting for this specific object. When omitted, the phase-level setting
-                                      applies.
+                                      applies. This field applies identically whether the object is inline
+                                      or referenced via objectRef.
                                     enum:
                                     - Prevent
                                     - IfNoController
@@ -295,14 +299,85 @@ spec:
                                     type: string
                                   object:
                                     description: |-
-                                      object is the Kubernetes resource to create or update. The controller
-                                      applies this object to the cluster and manages it for the lifetime of the
-                                      owning revision.
+                                      object is the inline Kubernetes resource manifest to create or update.
+                                      The controller applies this object to the cluster and manages it for
+                                      the lifetime of the owning revision. Mutually exclusive with objectRef.
                                     type: object
                                     x-kubernetes-preserve-unknown-fields: true
-                                required:
-                                - object
+                                  objectRef:
+                                    description: |-
+                                      objectRef identifies a Kubernetes object stored in a ClusterObjectSlice.
+                                      The COS controller resolves the reference at reconcile time by looking
+                                      up the named slice and matching the object by its identity fields.
+                                      Mutually exclusive with object.
+                                    properties:
+                                      apiVersion:
+                                        description: |-
+                                          apiVersion is the API version of the object (e.g. "v1",
+                                          "apps/v1", "apiextensions.k8s.io/v1"). The format is an optional
+                                          DNS-1123 subdomain group followed by "/" and a DNS-1035 version.
+                                        maxLength: 253
+                                        minLength: 1
+                                        type: string
+                                        x-kubernetes-validations:
+                                        - message: 'must be a valid API version: optional
+                                            dns-subdomain group, ''/'', dns-1035 version'
+                                          rule: self.matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*\\/)?[a-z]([-a-z0-9]*[a-z0-9])?$')
+                                      kind:
+                                        description: |-
+                                          kind is the kind of the object (e.g. "ConfigMap", "Deployment").
+                                          Must be a DNS-1035 label with mixed case allowed.
+                                        maxLength: 63
+                                        minLength: 1
+                                        type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a DNS-1035 label (mixed
+                                            case allowed)
+                                          rule: self.matches('^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$')
+                                      name:
+                                        description: |-
+                                          name is the metadata.name of the object. Must be a valid DNS-1123
+                                          subdomain (lowercase alphanumeric, '-', or '.').
+                                        maxLength: 253
+                                        minLength: 1
+                                        type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid DNS-1123 subdomain
+                                          rule: self.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$')
+                                      namespace:
+                                        default: ""
+                                        description: |-
+                                          namespace is the metadata.namespace of the object. Defaults to empty
+                                          string for cluster-scoped resources. Must be a valid DNS-1123 label
+                                          when non-empty.
+                                        maxLength: 63
+                                        type: string
+                                        x-kubernetes-validations:
+                                        - message: must be empty or a valid DNS-1123
+                                            label
+                                          rule: self == '' || self.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')
+                                      sliceName:
+                                        description: |-
+                                          sliceName is the metadata.name of the ClusterObjectSlice resource
+                                          containing the referenced object.
+                                        maxLength: 253
+                                        minLength: 1
+                                        type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid DNS-1123 subdomain
+                                          rule: self.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$')
+                                    required:
+                                    - apiVersion
+                                    - kind
+                                    - name
+                                    - sliceName
+                                    type: object
                                 type: object
+                                x-kubernetes-validations:
+                                - message: exactly one of the fields in [object objectRef]
+                                    must be set
+                                  rule: '[has(self.object),has(self.objectRef)].filter(x,x==true).size()
+                                    == 1'
                               maxItems: 50
                               minItems: 1
                               type: array
