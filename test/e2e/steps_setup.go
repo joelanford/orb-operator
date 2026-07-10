@@ -1,7 +1,10 @@
 package e2e
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/cucumber/godog"
@@ -42,6 +45,12 @@ func registerSetupSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^a standalone ConfigMap "([^"]*)" exists$`, tc.aStandaloneConfigMapExists)
 
 	sc.Step(`^a phase "([^"]*)" with an unregistered resource type$`, tc.aPhaseWithUnregisteredResourceType)
+
+	// ClusterObjectSlice setup steps
+	sc.Step(`^a ClusterObjectSlice "([^"]*)" with a ConfigMap "([^"]*)"$`, tc.aSliceWithConfigMap)
+	sc.Step(`^a ClusterObjectSlice "([^"]*)" with a gzip-compressed ConfigMap "([^"]*)"$`, tc.aSliceWithGzipConfigMap)
+	sc.Step(`^(?:a|the) phase "([^"]*)" (?:with|has) an objectRef to slice "([^"]*)" for ConfigMap "([^"]*)"$`, tc.aPhaseWithObjectRefConfigMap)
+	sc.Step(`^the phase "([^"]*)" also has an objectRef to slice "([^"]*)" for ConfigMap "([^"]*)"$`, tc.phaseAlsoHasObjectRefConfigMap)
 	sc.Step(`^ConfigMap(?:\s+"([^"]*)")? operations are blocked$`, tc.configMapOpsAreBlocked)
 
 	sc.Step(`^an available COS with group "([^"]*)" and revision (\d+)$`, tc.anAvailableCOS)
@@ -372,6 +381,67 @@ func newCR(crdName, crName, namespace string) *unstructured.Unstructured {
 			},
 		},
 	}
+}
+
+func (tc *testContext) aSliceWithConfigMap(sliceName, cmName string) error {
+	cm := newConfigMap(cmName, tc.namespace)
+	raw, err := json.Marshal(cm)
+	if err != nil {
+		return fmt.Errorf("marshalling ConfigMap: %w", err)
+	}
+	fullSliceName := tc.namespace + "-" + sliceName
+	return tc.createSlice(context.Background(), fullSliceName, []orbv1alpha1.SliceObject{{
+		ObjectKey: orbv1alpha1.ObjectKey{
+			APIVersion: "v1",
+			Kind:       "ConfigMap",
+			Name:       cmName,
+			Namespace:  tc.namespace,
+		},
+		Content: raw,
+	}})
+}
+
+func (tc *testContext) aSliceWithGzipConfigMap(sliceName, cmName string) error {
+	cm := newConfigMap(cmName, tc.namespace)
+	raw, err := json.Marshal(cm)
+	if err != nil {
+		return fmt.Errorf("marshalling ConfigMap: %w", err)
+	}
+	compressed, err := gzipBytes(raw)
+	if err != nil {
+		return fmt.Errorf("compressing ConfigMap: %w", err)
+	}
+	fullSliceName := tc.namespace + "-" + sliceName
+	return tc.createSlice(context.Background(), fullSliceName, []orbv1alpha1.SliceObject{{
+		ObjectKey: orbv1alpha1.ObjectKey{
+			APIVersion: "v1",
+			Kind:       "ConfigMap",
+			Name:       cmName,
+			Namespace:  tc.namespace,
+		},
+		Content: compressed,
+	}})
+}
+
+func gzipBytes(data []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	w := gzip.NewWriter(&buf)
+	if _, err := w.Write(data); err != nil {
+		return nil, err
+	}
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func (tc *testContext) aPhaseWithObjectRefConfigMap(phaseName, sliceName, cmName string) {
+	tc.addPhase(phaseName)
+	tc.addObjectRefToPhase(tc.namespace+"-"+sliceName, "v1", "ConfigMap", cmName, tc.namespace)
+}
+
+func (tc *testContext) phaseAlsoHasObjectRefConfigMap(_, sliceName, cmName string) {
+	tc.addObjectRefToPhase(tc.namespace+"-"+sliceName, "v1", "ConfigMap", cmName, tc.namespace)
 }
 
 func (tc *testContext) aPhaseWithUnregisteredResourceType(phaseName string) {

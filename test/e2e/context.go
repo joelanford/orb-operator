@@ -37,6 +37,7 @@ type testContext struct {
 	lastCreatedCOD string
 	cod            *codBuilder
 
+	slices               map[string]*orbv1alpha1.ClusterObjectSlice
 	crds                 []string
 	createdObjects       []metav1.PartialObjectMetadata
 	trackedConfigMapUIDs map[string]types.UID
@@ -74,6 +75,7 @@ type codBuilder struct {
 func newTestContext(c client.Client) *testContext {
 	return &testContext{
 		client:               c,
+		slices:               make(map[string]*orbv1alpha1.ClusterObjectSlice),
 		coss:                 make(map[string]*orbv1alpha1.ClusterObjectSet),
 		cods:                 make(map[string]*orbv1alpha1.ClusterObjectDeployment),
 		trackedConfigMapUIDs: make(map[string]types.UID),
@@ -94,6 +96,9 @@ func (tc *testContext) teardown(ctx context.Context) error {
 	}
 	for _, cos := range tc.coss {
 		_ = tc.client.Delete(ctx, cos)
+	}
+	for _, slice := range tc.slices {
+		_ = tc.client.Delete(ctx, slice)
 	}
 
 	var allCOSs orbv1alpha1.ClusterObjectSetList
@@ -198,6 +203,33 @@ func (tc *testContext) addObjectToPhase(obj runtime.Object) {
 	phase.Objects = append(phase.Objects, orbv1alpha1.PhaseObject{
 		Object: runtime.RawExtension{Object: obj},
 	})
+}
+
+func (tc *testContext) addObjectRefToPhase(sliceName, apiVersion, kind, name, namespace string) {
+	phase := tc.currentPhase()
+	phase.Objects = append(phase.Objects, orbv1alpha1.PhaseObject{
+		ObjectRef: &orbv1alpha1.ObjectRef{
+			SliceName: sliceName,
+			ObjectKey: orbv1alpha1.ObjectKey{
+				APIVersion: apiVersion,
+				Kind:       kind,
+				Name:       name,
+				Namespace:  namespace,
+			},
+		},
+	})
+}
+
+func (tc *testContext) createSlice(ctx context.Context, name string, objects []orbv1alpha1.SliceObject) error {
+	slice := &orbv1alpha1.ClusterObjectSlice{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Objects:    objects,
+	}
+	if err := tc.client.Create(ctx, slice); err != nil {
+		return err
+	}
+	tc.slices[name] = slice
+	return nil
 }
 
 func (tc *testContext) addObjectWithAssertions(obj runtime.Object, assertions []orbv1alpha1.Assertion) {

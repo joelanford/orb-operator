@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -43,6 +44,10 @@ func registerActionSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the COS is deleted$`, tc.theCOSIsDeleted)
 	sc.Step(`^the COS with group "([^"]*)" and revision (\d+) lifecycleState is set to "([^"]*)"$`, tc.theCOSInGroupLifecycleStateIsSetTo)
 	sc.Step(`^the COS with group "([^"]*)" and revision (\d+) is deleted$`, tc.theCOSInGroupIsDeleted)
+
+	// ClusterObjectSlice action steps
+	sc.Step(`^the ClusterObjectSlice "([^"]*)" is deleted$`, tc.theSliceIsDeleted)
+	sc.Step(`^the ClusterObjectSlice "([^"]*)" is recreated with a ConfigMap "([^"]*)" with data key "([^"]*)" value "([^"]*)"$`, tc.theSliceIsRecreatedWithDifferentContent)
 
 	// COD action steps
 	sc.Step(`^the COD is created$`, tc.theCODIsCreated)
@@ -369,4 +374,30 @@ func (tc *testContext) theCODIsDeletedWithCascade(name, cascade string) error {
 	return deleteObject[orbv1alpha1.ClusterObjectDeployment](tc, types.NamespacedName{Name: tc.codFullName(name)}, &client.DeleteOptions{
 		PropagationPolicy: &policy,
 	})
+}
+
+func (tc *testContext) theSliceIsDeleted(sliceName string) error {
+	fullName := tc.namespace + "-" + sliceName
+	if err := deleteObject[orbv1alpha1.ClusterObjectSlice](tc, types.NamespacedName{Name: fullName}); err != nil {
+		return err
+	}
+	return tc.pollForObjectAbsence(context.Background(), types.NamespacedName{Name: fullName}, &orbv1alpha1.ClusterObjectSlice{})
+}
+
+func (tc *testContext) theSliceIsRecreatedWithDifferentContent(sliceName, cmName, key, value string) error {
+	fullName := tc.namespace + "-" + sliceName
+	cm := newConfigMapWithData(cmName, tc.namespace, map[string]string{key: value})
+	raw, err := json.Marshal(cm)
+	if err != nil {
+		return fmt.Errorf("marshalling ConfigMap: %w", err)
+	}
+	return tc.createSlice(context.Background(), fullName, []orbv1alpha1.SliceObject{{
+		ObjectKey: orbv1alpha1.ObjectKey{
+			APIVersion: "v1",
+			Kind:       "ConfigMap",
+			Name:       cmName,
+			Namespace:  tc.namespace,
+		},
+		Content: raw,
+	}})
 }
