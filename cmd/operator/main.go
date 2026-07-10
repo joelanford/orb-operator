@@ -18,6 +18,7 @@ import (
 	"pkg.package-operator.run/boxcutter/managedcache"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -66,6 +67,13 @@ func run(cmd *cobra.Command, _ []string) error {
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme,
+		Cache: cache.Options{
+			ByObject: map[client.Object]cache.ByObject{
+				&orbv1alpha1.ClusterObjectSlice{}: {
+					Transform: controller.TransformClusterObjectSlice,
+				},
+			},
+		},
 		Metrics: metricsserver.Options{
 			BindAddress:    ":8443",
 			SecureServing:  true,

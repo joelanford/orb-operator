@@ -1,11 +1,16 @@
 package controller
 
 import (
+	"bytes"
 	"cmp"
+	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"time"
 
@@ -82,10 +87,13 @@ func SetupIndexes(mgr ctrl.Manager) error {
 	)
 }
 
+// +kubebuilder:rbac:groups=orb.operatorframework.io,resources=clusterobjectslices,verbs=get;list;watch
+
 func (r *COSReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("cos").
 		For(&orbv1alpha1.ClusterObjectSet{}).
+		Watches(&orbv1alpha1.ClusterObjectSlice{}, handler.EnqueueRequestsFromMapFunc(r.cosesForSlice)).
 		WatchesRawSource(
 			r.accessManager.Source(
 				handler.EnqueueRequestForOwner(r.scheme, mgr.GetRESTMapper(), &orbv1alpha1.ClusterObjectSet{}, handler.OnlyControllerOwner()),
@@ -93,6 +101,36 @@ func (r *COSReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 4}).
 		Complete(r)
+}
+
+func (r *COSReconciler) cosesForSlice(ctx context.Context, obj client.Object) []ctrl.Request {
+	slice := obj.(*orbv1alpha1.ClusterObjectSlice)
+	var cosList orbv1alpha1.ClusterObjectSetList
+	if err := r.client.List(ctx, &cosList); err != nil {
+		ctrl.LoggerFrom(ctx).Error(err, "listing COSs for slice watch")
+		return nil
+	}
+
+	var requests []ctrl.Request
+	for _, cos := range cosList.Items {
+		if cosReferencesSlice(&cos, slice.Name) {
+			requests = append(requests, ctrl.Request{
+				NamespacedName: client.ObjectKeyFromObject(&cos),
+			})
+		}
+	}
+	return requests
+}
+
+func cosReferencesSlice(cos *orbv1alpha1.ClusterObjectSet, sliceName string) bool {
+	for _, p := range cos.Spec.Phases {
+		for _, o := range p.Objects {
+			if o.ObjectRef != nil && o.ObjectRef.SliceName == sliceName {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (r *COSReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -200,17 +238,21 @@ func (r *COSReconciler) reconcileActive(ctx context.Context, log logr.Logger, co
 }
 
 func (r *COSReconciler) doReconcileActive(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, siblings []*orbv1alpha1.ClusterObjectSet) error {
-	engine, err := r.engineForCOS(ctx, cos)
+	resolved, err := r.resolveAllObjects(ctx, cos)
+	if err != nil {
+		return r.handleResolutionError(cos, err)
+	}
+	if err := r.verifyContentHash(cos, resolved); err != nil {
+		return r.handleResolutionError(cos, err)
+	}
+
+	engine, err := r.engineForCOS(ctx, cos, resolved)
 	if err != nil {
 		setInternalErrorStatus(cos, fmt.Sprintf("engine setup: %v", err))
 		return err
 	}
 
-	rev, err := r.buildRevisionWithSiblings(cos, siblings)
-	if err != nil {
-		setInternalErrorStatus(cos, fmt.Sprintf("building revision: %v", err))
-		return fmt.Errorf("building revision: %w", err)
-	}
+	rev := r.buildRevisionFromResolved(cos, resolved, siblings)
 	result, err := engine.Reconcile(ctx, rev, types.WithAggregatePhaseReconcileErrors())
 	existingPhases := cos.Status.ObservedPhases
 	cos.Status.ObservedPhases = observedPhasesFromReconcileResult(cos.Spec.Phases, result)
@@ -279,18 +321,21 @@ func (r *COSReconciler) teardownAndRelease(ctx context.Context, log logr.Logger,
 }
 
 func (r *COSReconciler) doTeardownCOS(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet) (bool, error) {
-	engine, err := r.engineForCOS(ctx, cos)
+	resolved, err := r.resolveAllObjects(ctx, cos)
+	if err != nil {
+		return false, r.handleResolutionError(cos, err)
+	}
+	if err := r.verifyContentHash(cos, resolved); err != nil {
+		return false, r.handleResolutionError(cos, err)
+	}
+
+	engine, err := r.engineForCOS(ctx, cos, resolved)
 	if err != nil {
 		setInternalErrorStatus(cos, fmt.Sprintf("engine setup: %v", err))
 		return false, fmt.Errorf("engine setup: %w", err)
 	}
 
-	rev, err := r.buildRevision(cos)
-	if err != nil {
-		setInternalErrorStatus(cos, fmt.Sprintf("building revision: %v", err))
-		return false, fmt.Errorf("building revision: %w", err)
-	}
-
+	rev := r.buildRevisionFromResolved(cos, resolved, nil)
 	result, teardownErr := engine.Teardown(ctx, rev, types.WithAggregatePhaseTeardownErrors())
 	existingPhases := cos.Status.ObservedPhases
 	setTeardownStatus(cos, result, teardownErr)
@@ -336,11 +381,8 @@ func (r *COSReconciler) releaseCOS(ctx context.Context, cos *orbv1alpha1.Cluster
 	return nil
 }
 
-func (r *COSReconciler) engineForCOS(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet) (*boxcutter.RevisionEngine, error) {
-	usedFor, err := r.managedObjectsForCOS(cos)
-	if err != nil {
-		return nil, fmt.Errorf("listing managed objects: %w", err)
-	}
+func (r *COSReconciler) engineForCOS(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, resolved *resolvedPhaseObjects) (*boxcutter.RevisionEngine, error) {
+	usedFor := managedObjectsFromResolved(resolved)
 	accessor, err := r.accessManager.GetWithUser(ctx, cos, cos, usedFor)
 	if err != nil {
 		return nil, fmt.Errorf("getting accessor: %w", err)
@@ -362,54 +404,139 @@ func (r *COSReconciler) engineForCOS(ctx context.Context, cos *orbv1alpha1.Clust
 	return engine, nil
 }
 
-func (r *COSReconciler) managedObjectsForCOS(cos *orbv1alpha1.ClusterObjectSet) ([]client.Object, error) {
-	seen := map[schema.GroupVersionKind]struct{}{}
-	var objects []client.Object
+type resolvedPhaseObjects struct {
+	phases []resolvedPhase
+	hash   string
+}
+
+type resolvedPhase struct {
+	name                string
+	collisionProtection *orbv1alpha1.CollisionProtection
+	objects             []resolvedObject
+}
+
+type resolvedObject struct {
+	obj                 *unstructured.Unstructured
+	collisionProtection *orbv1alpha1.CollisionProtection
+	assertions          []orbv1alpha1.Assertion
+}
+
+func (r *COSReconciler) resolveAllObjects(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet) (*resolvedPhaseObjects, error) {
+	h := sha256.New()
+	var phases []resolvedPhase
+
 	for _, p := range cos.Spec.Phases {
-		for _, o := range p.Objects {
-			obj, err := objectFromRawExtension(o.Object)
+		rp := resolvedPhase{
+			name:                p.Name,
+			collisionProtection: p.CollisionProtection,
+		}
+
+		for _, po := range p.Objects {
+			var raw []byte
+
+			switch {
+			case po.ObjectRef != nil:
+				ref := po.ObjectRef
+				slice := &orbv1alpha1.ClusterObjectSlice{}
+				if err := r.client.Get(ctx, client.ObjectKey{Name: ref.SliceName}, slice); err != nil {
+					return nil, fmt.Errorf("phase %q: fetching slice %q: %w", p.Name, ref.SliceName, err)
+				}
+				content, ok := slice.ObjectMap[ref.ObjectKey]
+				if !ok {
+					return nil, fmt.Errorf(
+						"phase %q: object %s %s/%s not found in slice %q",
+						p.Name, ref.Kind, ref.Namespace, ref.Name, ref.SliceName)
+				}
+				if len(content) >= 2 && content[0] == 0x1f && content[1] == 0x8b {
+					var err error
+					raw, err = decompressGzip(content)
+					if err != nil {
+						return nil, fmt.Errorf(
+							"phase %q: decompress %s %s/%s from slice %q: %w",
+							p.Name, ref.Kind, ref.Namespace, ref.Name, ref.SliceName, err)
+					}
+				} else {
+					raw = content
+				}
+
+			default:
+				raw = po.Object.Raw
+			}
+
+			obj, err := unmarshalUnstructured(raw)
 			if err != nil {
 				return nil, fmt.Errorf("phase %q: %w", p.Name, err)
 			}
-			gvk := obj.GetObjectKind().GroupVersionKind()
+			rp.objects = append(rp.objects, resolvedObject{
+				obj:                 obj,
+				collisionProtection: po.CollisionProtection,
+				assertions:          po.Assertions,
+			})
+			h.Write(raw)
+		}
+		phases = append(phases, rp)
+	}
+
+	return &resolvedPhaseObjects{
+		phases: phases,
+		hash:   hex.EncodeToString(h.Sum(nil)),
+	}, nil
+}
+
+func decompressGzip(data []byte) ([]byte, error) {
+	r, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return io.ReadAll(r)
+}
+
+func unmarshalUnstructured(raw []byte) (*unstructured.Unstructured, error) {
+	u := &unstructured.Unstructured{}
+	if err := u.UnmarshalJSON(raw); err != nil {
+		return nil, fmt.Errorf("unmarshalling: %w", err)
+	}
+	return u, nil
+}
+
+func managedObjectsFromResolved(resolved *resolvedPhaseObjects) []client.Object {
+	seen := map[schema.GroupVersionKind]struct{}{}
+	var objects []client.Object
+	for _, p := range resolved.phases {
+		for _, o := range p.objects {
+			gvk := o.obj.GetObjectKind().GroupVersionKind()
 			if _, ok := seen[gvk]; ok {
 				continue
 			}
 			seen[gvk] = struct{}{}
-			objects = append(objects, obj)
+			objects = append(objects, o.obj)
 		}
 	}
-	return objects, nil
+	return objects
 }
 
-func (r *COSReconciler) buildRevision(cos *orbv1alpha1.ClusterObjectSet) (boxcutter.Revision, error) {
-	return r.buildRevisionWithSiblings(cos, nil)
-}
-
-func (r *COSReconciler) buildRevisionWithSiblings(
+func (r *COSReconciler) buildRevisionFromResolved(
 	cos *orbv1alpha1.ClusterObjectSet,
+	resolved *resolvedPhaseObjects,
 	siblings []*orbv1alpha1.ClusterObjectSet,
-) (boxcutter.Revision, error) {
-	phases := make([]boxcutter.Phase, 0, len(cos.Spec.Phases))
+) boxcutter.Revision {
+	phases := make([]boxcutter.Phase, 0, len(resolved.phases))
 
-	for _, p := range cos.Spec.Phases {
-		objects := make([]client.Object, 0, len(p.Objects))
+	for _, rp := range resolved.phases {
+		objects := make([]client.Object, 0, len(rp.objects))
 		var phaseReconcileOpts []boxcutter.PhaseReconcileOption
 
-		if p.CollisionProtection != nil {
-			phaseReconcileOpts = append(phaseReconcileOpts, mapCollisionProtection(*p.CollisionProtection))
+		if rp.collisionProtection != nil {
+			phaseReconcileOpts = append(phaseReconcileOpts, mapCollisionProtection(*rp.collisionProtection))
 		}
 
-		for _, o := range p.Objects {
-			obj, err := objectFromRawExtension(o.Object)
-			if err != nil {
-				return nil, fmt.Errorf("phase %q: %w", p.Name, err)
-			}
-			objects = append(objects, obj)
+		for _, ro := range rp.objects {
+			objects = append(objects, ro.obj)
 
 			var objOpts []boxcutter.ObjectReconcileOption
 
-			probe, err := assertions.ProbeForAssertions(o.Assertions)
+			probe, err := assertions.ProbeForAssertions(ro.assertions)
 			if err != nil {
 				probe = boxcutter.ProbeFunc(func(_ client.Object) probing.Result {
 					return probing.FalseResult(fmt.Sprintf("invalid assertion: %v", err))
@@ -419,18 +546,18 @@ func (r *COSReconciler) buildRevisionWithSiblings(
 				objOpts = append(objOpts, boxcutter.WithProbe(boxcutter.ProgressProbeType, probe))
 			}
 
-			if o.CollisionProtection != nil {
-				objOpts = append(objOpts, mapCollisionProtection(*o.CollisionProtection))
+			if ro.collisionProtection != nil {
+				objOpts = append(objOpts, mapCollisionProtection(*ro.collisionProtection))
 			}
 
 			if len(objOpts) > 0 {
 				phaseReconcileOpts = append(phaseReconcileOpts,
-					boxcutter.WithObjectReconcileOptions(obj, objOpts...),
+					boxcutter.WithObjectReconcileOptions(ro.obj, objOpts...),
 				)
 			}
 		}
 
-		phase := boxcutter.NewPhaseWithOwner(p.Name, objects, cos, r.ownerStrategy)
+		phase := boxcutter.NewPhaseWithOwner(rp.name, objects, cos, r.ownerStrategy)
 		if len(phaseReconcileOpts) > 0 {
 			phase.WithReconcileOptions(phaseReconcileOpts...)
 		}
@@ -463,7 +590,7 @@ func (r *COSReconciler) buildRevisionWithSiblings(
 	if len(reconcileOpts) > 0 {
 		rev.WithReconcileOptions(reconcileOpts...)
 	}
-	return rev, nil
+	return rev
 }
 
 func (r *COSReconciler) listGroupMembers(ctx context.Context, group string) ([]orbv1alpha1.ClusterObjectSet, error) {
@@ -500,21 +627,24 @@ func filterByControllerOwner(members []orbv1alpha1.ClusterObjectSet, key control
 	return result
 }
 
-func objectFromRawExtension(raw runtime.RawExtension) (*unstructured.Unstructured, error) {
-	if raw.Object != nil {
-		u := &unstructured.Unstructured{}
-		data, err := runtime.DefaultUnstructuredConverter.ToUnstructured(raw.Object)
-		if err != nil {
-			return nil, fmt.Errorf("converting to unstructured: %w", err)
-		}
-		u.Object = data
-		return u, nil
+func (r *COSReconciler) verifyContentHash(cos *orbv1alpha1.ClusterObjectSet, resolved *resolvedPhaseObjects) error {
+	if cos.Status.ResolvedContentHash == "" {
+		cos.Status.ResolvedContentHash = resolved.hash
+		return nil
 	}
-	u := &unstructured.Unstructured{}
-	if err := u.UnmarshalJSON(raw.Raw); err != nil {
-		return nil, fmt.Errorf("unmarshalling raw extension: %w", err)
+	if cos.Status.ResolvedContentHash != resolved.hash {
+		return fmt.Errorf("resolved content hash mismatch: expected %s, got %s", cos.Status.ResolvedContentHash, resolved.hash)
 	}
-	return u, nil
+	return nil
+}
+
+func (r *COSReconciler) handleResolutionError(cos *orbv1alpha1.ClusterObjectSet, err error) error {
+	if cos.Status.ResolvedContentHash == "" {
+		setCondition(cos, metav1.ConditionFalse, orbv1alpha1.ReasonInvalidRevision, err.Error())
+	} else {
+		setCondition(cos, metav1.ConditionUnknown, orbv1alpha1.ReasonInvalidRevision, err.Error())
+	}
+	return err
 }
 
 func setInternalErrorStatus(cos *orbv1alpha1.ClusterObjectSet, message string) {
