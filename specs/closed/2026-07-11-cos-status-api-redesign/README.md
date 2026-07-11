@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 ---
 # COS Status API Redesign: Preflight, Phase Gating, and Steady-State Drift Correction
 
