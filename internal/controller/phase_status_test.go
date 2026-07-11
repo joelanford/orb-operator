@@ -26,11 +26,12 @@ func TestBuildObservedPhases(t *testing.T) {
 		{Name: "phase-3"},
 	}
 
-	t.Run("all phases unknown when no results", func(t *testing.T) {
+	t.Run("all phases unknown with waiting message when no results", func(t *testing.T) {
 		result := buildObservedPhases(specPhases, nil)
 		require.Len(t, result, 3)
 		for _, op := range result {
 			assert.Equal(t, orbv1alpha1.PhaseStatusUnknown, op.Status)
+			assert.Equal(t, "Waiting for earlier phases to complete", op.Error)
 			assert.Empty(t, op.IncompleteObjects)
 		}
 	})
@@ -44,7 +45,9 @@ func TestBuildObservedPhases(t *testing.T) {
 		assert.Equal(t, orbv1alpha1.PhaseStatusAvailable, observed[0].Status)
 		assert.Empty(t, observed[0].IncompleteObjects)
 		assert.Equal(t, orbv1alpha1.PhaseStatusUnknown, observed[1].Status)
+		assert.Equal(t, "Waiting for earlier phases to complete", observed[1].Error)
 		assert.Equal(t, orbv1alpha1.PhaseStatusUnknown, observed[2].Status)
+		assert.Equal(t, "Waiting for earlier phases to complete", observed[2].Error)
 	})
 
 	t.Run("reconciling phase with incomplete objects", func(t *testing.T) {
@@ -81,6 +84,7 @@ func TestBuildObservedPhases(t *testing.T) {
 		assert.Contains(t, observed[1].IncompleteObjects[0].Messages[0], "condition Available is not True")
 
 		assert.Equal(t, orbv1alpha1.PhaseStatusUnknown, observed[2].Status)
+		assert.Equal(t, "Waiting for earlier phases to complete", observed[2].Error)
 	})
 
 	t.Run("collision produces message", func(t *testing.T) {
@@ -246,6 +250,167 @@ func TestBuildObservedPhases(t *testing.T) {
 		}
 	})
 }
+
+func TestInvalidPhasesFromValidationError(t *testing.T) {
+	specPhases := []orbv1alpha1.Phase{
+		{Name: "phase-1"},
+		{Name: "phase-2"},
+		{Name: "phase-3"},
+	}
+
+	t.Run("errored phase is Invalid, others are Unknown with blocked message", func(t *testing.T) {
+		verr := &validation.RevisionValidationError{
+			Phases: []validation.PhaseValidationError{
+				{
+					PhaseName:  "phase-2",
+					PhaseError: fmt.Errorf("invalid phase name"),
+					Objects: []validation.ObjectValidationError{
+						{
+							ObjectRef: boxcuttertypes.ObjectRef{
+								GroupVersionKind: corev1.SchemeGroupVersion.WithKind("ConfigMap"),
+								ObjectKey:        types.NamespacedName{Namespace: "default", Name: "bad-cm"},
+							},
+							Errors: []error{fmt.Errorf("dry-run failed")},
+						},
+					},
+				},
+			},
+		}
+		observed := invalidPhasesFromValidationError(specPhases, verr)
+		require.Len(t, observed, 3)
+
+		assert.Equal(t, orbv1alpha1.PhaseStatusUnknown, observed[0].Status)
+		assert.Equal(t, "Blocked by preflight errors in other phases", observed[0].Error)
+		assert.Empty(t, observed[0].IncompleteObjects)
+
+		assert.Equal(t, orbv1alpha1.PhaseStatusInvalid, observed[1].Status)
+		assert.Equal(t, "validation error: invalid phase name", observed[1].Error)
+		require.Len(t, observed[1].IncompleteObjects, 1)
+		assert.Equal(t, "ConfigMap", observed[1].IncompleteObjects[0].Kind)
+		assert.Equal(t, "bad-cm", observed[1].IncompleteObjects[0].Name)
+		assert.Contains(t, observed[1].IncompleteObjects[0].Messages[0], "validation error: dry-run failed")
+
+		assert.Equal(t, orbv1alpha1.PhaseStatusUnknown, observed[2].Status)
+		assert.Equal(t, "Blocked by preflight errors in other phases", observed[2].Error)
+		assert.Empty(t, observed[2].IncompleteObjects)
+	})
+
+	t.Run("multiple errored phases", func(t *testing.T) {
+		verr := &validation.RevisionValidationError{
+			Phases: []validation.PhaseValidationError{
+				{
+					PhaseName: "phase-1",
+					Objects: []validation.ObjectValidationError{
+						{
+							ObjectRef: boxcuttertypes.ObjectRef{
+								GroupVersionKind: corev1.SchemeGroupVersion.WithKind("ConfigMap"),
+								ObjectKey:        types.NamespacedName{Name: "dup-cm"},
+							},
+							Errors: []error{fmt.Errorf("duplicate across phases")},
+						},
+					},
+				},
+				{
+					PhaseName: "phase-3",
+					Objects: []validation.ObjectValidationError{
+						{
+							ObjectRef: boxcuttertypes.ObjectRef{
+								GroupVersionKind: corev1.SchemeGroupVersion.WithKind("ConfigMap"),
+								ObjectKey:        types.NamespacedName{Name: "dup-cm"},
+							},
+							Errors: []error{fmt.Errorf("duplicate across phases")},
+						},
+					},
+				},
+			},
+		}
+		observed := invalidPhasesFromValidationError(specPhases, verr)
+		require.Len(t, observed, 3)
+
+		assert.Equal(t, orbv1alpha1.PhaseStatusInvalid, observed[0].Status)
+		assert.Equal(t, orbv1alpha1.PhaseStatusUnknown, observed[1].Status)
+		assert.Equal(t, "Blocked by preflight errors in other phases", observed[1].Error)
+		assert.Equal(t, orbv1alpha1.PhaseStatusInvalid, observed[2].Status)
+	})
+}
+
+func TestObservedPhasesFromReconcileResult(t *testing.T) {
+	specPhases := []orbv1alpha1.Phase{
+		{Name: "phase-1"},
+		{Name: "phase-2"},
+	}
+
+	t.Run("nil result returns nil", func(t *testing.T) {
+		assert.Nil(t, observedPhasesFromReconcileResult(specPhases, nil))
+	})
+
+	t.Run("validation error maps to Invalid and Unknown", func(t *testing.T) {
+		result := &revisionResult{
+			gated: &fakeRevisionResult{
+				validationError: &validation.RevisionValidationError{
+					Phases: []validation.PhaseValidationError{
+						{PhaseName: "phase-1", PhaseError: fmt.Errorf("bad")},
+					},
+				},
+			},
+		}
+		observed := observedPhasesFromReconcileResult(specPhases, result)
+		require.Len(t, observed, 2)
+		assert.Equal(t, orbv1alpha1.PhaseStatusInvalid, observed[0].Status)
+		assert.Equal(t, orbv1alpha1.PhaseStatusUnknown, observed[1].Status)
+		assert.Equal(t, "Blocked by preflight errors in other phases", observed[1].Error)
+	})
+
+	t.Run("progressed maps to Superseded", func(t *testing.T) {
+		result := &revisionResult{
+			gated: &fakeRevisionResult{
+				progressed: true,
+				phases: []machinery.PhaseResult{
+					&fakePhaseResult{name: "phase-1", complete: true},
+					&fakePhaseResult{name: "phase-2", complete: true},
+				},
+			},
+		}
+		observed := observedPhasesFromReconcileResult(specPhases, result)
+		require.Len(t, observed, 2)
+		for _, op := range observed {
+			assert.Equal(t, orbv1alpha1.PhaseStatusSuperseded, op.Status)
+		}
+	})
+
+	t.Run("normal gated results with drift correction", func(t *testing.T) {
+		result := &revisionResult{
+			gated: &fakeRevisionResult{
+				phases: []machinery.PhaseResult{
+					&fakePhaseResult{name: "phase-1", complete: false},
+				},
+			},
+			driftResults: []machinery.PhaseResult{
+				&fakePhaseResult{name: "phase-2", complete: true},
+			},
+		}
+		observed := observedPhasesFromReconcileResult(specPhases, result)
+		require.Len(t, observed, 2)
+		assert.Equal(t, orbv1alpha1.PhaseStatusReconciling, observed[0].Status)
+		assert.Equal(t, orbv1alpha1.PhaseStatusAvailable, observed[1].Status)
+	})
+}
+
+type fakeRevisionResult struct {
+	validationError *validation.RevisionValidationError
+	phases          []machinery.PhaseResult
+	progressed      bool
+	complete        bool
+}
+
+func (f *fakeRevisionResult) GetValidationError() *validation.RevisionValidationError {
+	return f.validationError
+}
+func (f *fakeRevisionResult) GetPhases() []machinery.PhaseResult { return f.phases }
+func (f *fakeRevisionResult) InTransition() bool                 { return false }
+func (f *fakeRevisionResult) IsComplete() bool                   { return f.complete }
+func (f *fakeRevisionResult) HasProgressed() bool                { return f.progressed }
+func (f *fakeRevisionResult) String() string                     { return "" }
 
 type fakePhaseResult struct {
 	name            string

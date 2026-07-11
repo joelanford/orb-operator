@@ -9,7 +9,9 @@ Feature: COS phase status reports per-phase rollout state
     Then the COS should have 3 observed phases
     And the COS should have observed phase "crds" with status "Reconciling"
     And the COS should have observed phase "operators" with status "Unknown"
+    And observed phase "operators" should have error "Waiting for earlier phases to complete"
     And the COS should have observed phase "config" with status "Unknown"
+    And observed phase "config" should have error "Waiting for earlier phases to complete"
     And the COS should not have completedAt set
     When the gate on ConfigMap "cm-crds" is opened
     Then the COS should have observed phase "crds" with status "Available"
@@ -105,7 +107,10 @@ Feature: COS phase status reports per-phase rollout state
     And a phase "phase-2" with a ConfigMap "cm-dup"
     When the COS is created
     Then the COS should have condition "Available" with status "False" and reason "InvalidRevision" and message containing "duplicate object found in phases"
-    And the COS should have no observed phases
+    And the COS should have observed phase "phase-1" with status "Invalid"
+    And observed phase "phase-1" should have 1 incomplete objects
+    And the COS should have observed phase "phase-2" with status "Invalid"
+    And observed phase "phase-2" should have 1 incomplete objects
     And the ConfigMap "cm-dup" should not exist
 
   Scenario: Superseded COS shows all phases as Superseded
@@ -115,3 +120,38 @@ Feature: COS phase status reports per-phase rollout state
     When the COS is created and becomes Available
     Then revision 1 should have condition "Available" with status "False" and reason "Superseded"
     And revision 1 should have observed phase "install" with status "Superseded"
+
+  Scenario: Completed phase gets drift correction, in-progress phase keeps reconciling, later phases stay gated
+    Given a COS with group "ps-drift" and revision 1
+    And a phase "phase-1" with a gated ConfigMap "cm-drift-1"
+    And a phase "phase-2" with a ConfigMap "cm-drift-2"
+    And a phase "phase-3" with a gated ConfigMap "cm-drift-3"
+    And a phase "phase-4" with a ConfigMap "cm-drift-4"
+    When the COS is created
+    And the gate on ConfigMap "cm-drift-1" is opened
+    Then the COS should have observed phase "phase-1" with status "Available"
+    And the COS should have observed phase "phase-2" with status "Available"
+    And the COS should have observed phase "phase-3" with status "Reconciling"
+    And the COS should have observed phase "phase-4" with status "Unknown"
+    When the gate on ConfigMap "cm-drift-1" is closed
+    Then the COS should have condition "Available" with status "False"
+    And the COS should have observed phase "phase-1" with status "Reconciling"
+    And the COS should have observed phase "phase-2" with status "Available"
+    And the COS should have observed phase "phase-3" with status "Reconciling"
+    And the COS should have observed phase "phase-4" with status "Unknown"
+    And observed phase "phase-4" should have error "Waiting for earlier phases to complete"
+    And the ConfigMap "cm-drift-2" should exist
+    When the ConfigMap "cm-drift-2" is deleted
+    Then the ConfigMap "cm-drift-2" should be recreated
+
+  Scenario: InvalidRevision with mixed phase errors shows Invalid and Unknown
+    Given a COS with group "ps-mixed" and revision 1
+    And a phase "good-phase" with a ConfigMap "cm-mixed-good"
+    And a phase "bad-phase-1" with a ConfigMap "cm-mixed-dup"
+    And a phase "bad-phase-2" with a ConfigMap "cm-mixed-dup"
+    When the COS is created
+    Then the COS should have condition "Available" with status "False" and reason "InvalidRevision"
+    And the COS should have observed phase "good-phase" with status "Unknown"
+    And observed phase "good-phase" should have error "Blocked by preflight errors in other phases"
+    And the COS should have observed phase "bad-phase-1" with status "Invalid"
+    And the COS should have observed phase "bad-phase-2" with status "Invalid"

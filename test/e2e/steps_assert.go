@@ -44,6 +44,8 @@ func registerAssertSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^observed phase "([^"]*)" should have (\d+) incomplete objects$`, tc.observedPhaseShouldHaveIncompleteObjectCount)
 	sc.Step(`^observed phase "([^"]*)" should have an incomplete object "([^"]*)"$`, tc.observedPhaseShouldHaveIncompleteObjectNamed)
 	sc.Step(`^the COS should have no observed phases$`, tc.theCOSShouldHaveNoObservedPhases)
+	sc.Step(`^observed phase "([^"]*)" should have error "([^"]*)"$`, tc.observedPhaseShouldHaveError)
+	sc.Step(`^observed phase "([^"]*)" should have error containing "([^"]*)"$`, tc.observedPhaseShouldHaveErrorContaining)
 	sc.Step(`^the COS should have completedAt set$`, tc.theCOSShouldHaveCompletedAt)
 	sc.Step(`^the COS should not have completedAt set$`, tc.theCOSShouldNotHaveCompletedAt)
 	sc.Step(`^the COS completedAt should be preserved$`, tc.theCOSCompletedAtShouldBePreserved)
@@ -492,6 +494,32 @@ func (tc *testContext) observedPhaseShouldHaveIncompleteObjectNamed(phaseName, o
 						return true
 					}
 				}
+			}
+		}
+		return false
+	})
+}
+
+func (tc *testContext) observedPhaseShouldHaveError(phaseName, expectedError string) error {
+	name := tc.lastCreatedCOSName()
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	return pollForObjectMatching(tc, cos, types.NamespacedName{Name: name}, func() bool {
+		for _, op := range cos.Status.ObservedPhases {
+			if op.Name == phaseName {
+				return op.Error == expectedError
+			}
+		}
+		return false
+	})
+}
+
+func (tc *testContext) observedPhaseShouldHaveErrorContaining(phaseName, substring string) error {
+	name := tc.lastCreatedCOSName()
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	return pollForObjectMatching(tc, cos, types.NamespacedName{Name: name}, func() bool {
+		for _, op := range cos.Status.ObservedPhases {
+			if op.Name == phaseName {
+				return strings.Contains(op.Error, substring)
 			}
 		}
 		return false
