@@ -135,10 +135,16 @@ type ClusterObjectSetStatus struct {
 
 // PhaseStatus describes the current state of a phase in the rollout.
 //
-// +kubebuilder:validation:Enum=Reconciling;Available;Unknown;Superseded;TearingDown;TeardownComplete
+// +kubebuilder:validation:Enum=Invalid;Reconciling;Available;Unknown;Superseded;TearingDown;TeardownComplete
 type PhaseStatus string
 
 const (
+	// PhaseStatusInvalid indicates the phase failed preflight validation
+	// (e.g. bad metadata, namespace scope violations, dry-run failures,
+	// cross-phase duplication). This is terminal for the current COS
+	// revision; the only recovery is creating a new revision.
+	PhaseStatusInvalid PhaseStatus = "Invalid"
+
 	// PhaseStatusReconciling indicates the controller is actively evaluating
 	// this phase. Objects may or may not have failures.
 	PhaseStatusReconciling PhaseStatus = "Reconciling"

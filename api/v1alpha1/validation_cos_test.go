@@ -107,6 +107,7 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 	})
 
 	for _, status := range []orbv1alpha1.PhaseStatus{
+		orbv1alpha1.PhaseStatusInvalid,
 		orbv1alpha1.PhaseStatusReconciling,
 		orbv1alpha1.PhaseStatusAvailable,
 		orbv1alpha1.PhaseStatusUnknown,
@@ -132,7 +133,7 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 
 		cos.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
 			Name:   "install",
-			Status: orbv1alpha1.PhaseStatus("Invalid"),
+			Status: orbv1alpha1.PhaseStatus("Bogus"),
 		}}
 		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
 			"status.observedPhases[0].status", "Unsupported value")
