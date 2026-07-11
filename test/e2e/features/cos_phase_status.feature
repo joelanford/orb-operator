@@ -99,6 +99,15 @@ Feature: COS phase status reports per-phase rollout state
     Then the COS should have condition "Available" with status "Unknown" and reason "TeardownError"
     And the COS should have no observed phases
 
+  Scenario: InvalidRevision when same object appears in multiple phases
+    Given a COS with group "ps-dup" and revision 1
+    And a phase "phase-1" with a ConfigMap "cm-dup"
+    And a phase "phase-2" with a ConfigMap "cm-dup"
+    When the COS is created
+    Then the COS should have condition "Available" with status "False" and reason "InvalidRevision" and message containing "duplicate object found in phases"
+    And the COS should have no observed phases
+    And the ConfigMap "cm-dup" should not exist
+
   Scenario: Superseded COS shows all phases as Superseded
     Given an available COS with group "ps-super" and revision 1
     And a COS with group "ps-super" and revision 2

@@ -308,6 +308,24 @@ func (tc *testContext) pollForConditionWithReasonOn(ctx context.Context, obj cli
 	})
 }
 
+func (tc *testContext) pollForConditionWithReasonMessageOn(ctx context.Context, obj client.Object, key types.NamespacedName, accessor conditionAccessor, condType string, status metav1.ConditionStatus, reason, messageSubstring string) error {
+	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true, func(ctx context.Context) (bool, error) {
+		if err := tc.client.Get(ctx, key, obj); err != nil {
+			if errors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, err
+		}
+		conds, gen := accessor(obj)
+		for _, c := range conds {
+			if c.Type == condType && c.Status == status && c.Reason == reason && c.ObservedGeneration == gen && strings.Contains(c.Message, messageSubstring) {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+}
+
 func (tc *testContext) pollForCOSCondition(ctx context.Context, name string, condType string, status metav1.ConditionStatus) error {
 	return tc.pollForConditionOn(ctx, &orbv1alpha1.ClusterObjectSet{}, types.NamespacedName{Name: name}, cosConditions, condType, status)
 }

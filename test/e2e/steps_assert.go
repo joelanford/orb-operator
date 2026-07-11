@@ -33,7 +33,7 @@ func registerAssertSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the ConfigMap "([^"]*)" should have a controller owner reference to COS with group "([^"]*)" and revision (\d+)$`, tc.theConfigMapShouldBeOwnedByCOS)
 	sc.Step(`^the COS should not exist$`, tc.theCOSShouldNotExist)
 	sc.Step(`^the COS should have condition "([^"]*)" with status "([^"]*)"$`, tc.theCOSShouldHaveCondition)
-	sc.Step(`^the COS should have condition "([^"]*)" with status "([^"]*)" and reason "([^"]*)"$`, tc.theCOSShouldHaveConditionWithReason)
+	sc.Step(`^the COS should have condition "([^"]*)" with status "([^"]*)" and reason "([^"]*)"(?: and message containing "([^"]*)")?$`, tc.theCOSShouldHaveConditionWithReason)
 	sc.Step(`^the COS in group "([^"]*)" revision (\d+) should have condition "([^"]*)" with status "([^"]*)"$`, tc.theCOSInGroupShouldHaveCondition)
 	sc.Step(`^revision (\d+) should have condition "([^"]*)" with status "([^"]*)" and reason "([^"]*)"$`, tc.revisionShouldHaveConditionWithReason)
 	sc.Step(`^revision (\d+) should have observed phase "([^"]*)" with status "([^"]*)"$`, tc.revisionShouldHaveObservedPhase)
@@ -172,13 +172,13 @@ func (tc *testContext) theCOSInGroupShouldHaveCondition(group string, revision u
 	return tc.pollForCOSCondition(context.Background(), tc.cosName(group, revision), condType, metav1.ConditionStatus(status))
 }
 
-func (tc *testContext) theCOSShouldHaveConditionWithReason(condType, status, reason string) error {
+func (tc *testContext) theCOSShouldHaveConditionWithReason(condType, status, reason, messageSubstring string) error {
 	name := tc.lastCreatedCOSName()
-	return tc.pollForConditionWithReasonOn(
+	return tc.pollForConditionWithReasonMessageOn(
 		context.Background(),
 		&orbv1alpha1.ClusterObjectSet{},
 		types.NamespacedName{Name: name},
-		cosConditions, condType, metav1.ConditionStatus(status), reason,
+		cosConditions, condType, metav1.ConditionStatus(status), reason, messageSubstring,
 	)
 }
 

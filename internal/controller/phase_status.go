@@ -18,8 +18,8 @@ func observedPhasesFromReconcileResult(specPhases []orbv1alpha1.Phase, result ma
 	if result == nil {
 		return nil
 	}
-	if verr := result.GetValidationError(); verr != nil {
-		return buildValidationErrorObservedPhases(specPhases, verr)
+	if result.GetValidationError() != nil {
+		return nil
 	}
 	if result.HasProgressed() {
 		return allPhasesWithStatus(specPhases, orbv1alpha1.PhaseStatusSuperseded)
@@ -76,34 +76,6 @@ func applyValidationError(op *orbv1alpha1.ObservedPhase, verr *validation.PhaseV
 		os.Messages = msgs
 		op.IncompleteObjects = append(op.IncompleteObjects, os)
 	}
-}
-
-func buildValidationErrorObservedPhases(specPhases []orbv1alpha1.Phase, verr *validation.RevisionValidationError) []orbv1alpha1.ObservedPhase {
-	errsByPhase := make(map[string]*validation.PhaseValidationError, len(verr.Phases))
-	for i := range verr.Phases {
-		errsByPhase[verr.Phases[i].PhaseName] = &verr.Phases[i]
-	}
-
-	observed := make([]orbv1alpha1.ObservedPhase, 0, len(specPhases))
-	for _, sp := range specPhases {
-		perr, hasError := errsByPhase[sp.Name]
-		if !hasError {
-			observed = append(observed, orbv1alpha1.ObservedPhase{
-				Name:   sp.Name,
-				Status: orbv1alpha1.PhaseStatusUnknown,
-			})
-			continue
-		}
-
-		op := orbv1alpha1.ObservedPhase{
-			Name:   sp.Name,
-			Status: orbv1alpha1.PhaseStatusReconciling,
-		}
-		applyValidationError(&op, perr)
-		observed = append(observed, op)
-	}
-
-	return observed
 }
 
 func observedPhasesFromTeardownResult(specPhases []orbv1alpha1.Phase, result machinery.RevisionTeardownResult) []orbv1alpha1.ObservedPhase {
