@@ -35,11 +35,11 @@ When a phase is `Unknown`, the `ObservedPhase.Error` field explains why:
 
 ### Steady-state drift correction for completed phases
 
-After the gated `RevisionEngine.Reconcile` call, the COS controller calls `PhaseEngine.Reconcile` directly for any phases that:
-- Were skipped by the gated loop (an earlier phase is incomplete), AND
-- Have `completedAt` set in COS status (they previously completed initial rollout)
+After the gated `RevisionEngine.Reconcile` call, the COS controller calls `PhaseEngine.Reconcile` directly for phases that were skipped by the gated loop (an earlier phase is incomplete). Specifically, it reconciles:
+- All skipped phases that have `completedAt` set (previously completed — drift correction)
+- The first skipped phase after those that does NOT have `completedAt` (the phase the gated loop would have been actively reconciling before the regression)
 
-This gives completed phases active drift correction (writes, not just status) even when an earlier phase has regressed. The `completedAt` timestamp is the key — a phase that has never completed stays gated behind earlier phases (initial rollout safety), while a phase that has completed before gets independent maintenance.
+Phases beyond that first non-completed phase remain gated — they have never been reconciled and should not start until earlier phases complete.
 
 ### Preflight error flow
 

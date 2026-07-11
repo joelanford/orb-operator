@@ -18,13 +18,39 @@ func observedPhasesFromReconcileResult(specPhases []orbv1alpha1.Phase, result ma
 	if result == nil {
 		return nil
 	}
-	if result.GetValidationError() != nil {
-		return nil
+	if verr := result.GetValidationError(); verr != nil {
+		return invalidPhasesFromValidationError(specPhases, verr)
 	}
 	if result.HasProgressed() {
 		return allPhasesWithStatus(specPhases, orbv1alpha1.PhaseStatusSuperseded)
 	}
 	return buildObservedPhases(specPhases, result.GetPhases())
+}
+
+func invalidPhasesFromValidationError(specPhases []orbv1alpha1.Phase, verr *validation.RevisionValidationError) []orbv1alpha1.ObservedPhase {
+	phaseErrors := make(map[string]*validation.PhaseValidationError, len(verr.Phases))
+	for i := range verr.Phases {
+		phaseErrors[verr.Phases[i].PhaseName] = &verr.Phases[i]
+	}
+
+	observed := make([]orbv1alpha1.ObservedPhase, 0, len(specPhases))
+	for _, sp := range specPhases {
+		if pve, ok := phaseErrors[sp.Name]; ok {
+			op := orbv1alpha1.ObservedPhase{
+				Name:   sp.Name,
+				Status: orbv1alpha1.PhaseStatusInvalid,
+			}
+			applyValidationError(&op, pve)
+			observed = append(observed, op)
+		} else {
+			observed = append(observed, orbv1alpha1.ObservedPhase{
+				Name:   sp.Name,
+				Status: orbv1alpha1.PhaseStatusUnknown,
+				Error:  "Blocked by preflight errors in other phases",
+			})
+		}
+	}
+	return observed
 }
 
 func allPhasesWithStatus(specPhases []orbv1alpha1.Phase, status orbv1alpha1.PhaseStatus) []orbv1alpha1.ObservedPhase {
@@ -39,7 +65,7 @@ func allPhasesWithStatus(specPhases []orbv1alpha1.Phase, status orbv1alpha1.Phas
 }
 
 func buildObservedPhases(specPhases []orbv1alpha1.Phase, phaseResults []machinery.PhaseResult) []orbv1alpha1.ObservedPhase {
-	return mapSpecPhases(specPhases, phaseResults, orbv1alpha1.PhaseStatusAvailable, reconcilingPhase)
+	return mapSpecPhases(specPhases, phaseResults, orbv1alpha1.PhaseStatusAvailable, "Waiting for earlier phases to complete", reconcilingPhase)
 }
 
 func reconcilingPhase(_ orbv1alpha1.Phase, pr machinery.PhaseResult) orbv1alpha1.ObservedPhase {
@@ -86,7 +112,7 @@ func observedPhasesFromTeardownResult(specPhases []orbv1alpha1.Phase, result mac
 }
 
 func buildTeardownObservedPhases(specPhases []orbv1alpha1.Phase, phaseResults []machinery.PhaseTeardownResult) []orbv1alpha1.ObservedPhase {
-	return mapSpecPhases(specPhases, phaseResults, orbv1alpha1.PhaseStatusTeardownComplete, tearingDownPhase)
+	return mapSpecPhases(specPhases, phaseResults, orbv1alpha1.PhaseStatusTeardownComplete, "", tearingDownPhase)
 }
 
 func tearingDownPhase(_ orbv1alpha1.Phase, pr machinery.PhaseTeardownResult) orbv1alpha1.ObservedPhase {
@@ -109,6 +135,7 @@ func mapSpecPhases[T interface {
 	specPhases []orbv1alpha1.Phase,
 	results []T,
 	completeStatus orbv1alpha1.PhaseStatus,
+	unknownError string,
 	buildIncomplete func(orbv1alpha1.Phase, T) orbv1alpha1.ObservedPhase,
 ) []orbv1alpha1.ObservedPhase {
 	resultsByName := make(map[string]T, len(results))
@@ -123,6 +150,7 @@ func mapSpecPhases[T interface {
 			observed = append(observed, orbv1alpha1.ObservedPhase{
 				Name:   sp.Name,
 				Status: orbv1alpha1.PhaseStatusUnknown,
+				Error:  unknownError,
 			})
 			continue
 		}

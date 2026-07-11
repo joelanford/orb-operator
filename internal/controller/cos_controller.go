@@ -381,13 +381,13 @@ func (r *COSReconciler) releaseCOS(ctx context.Context, cos *orbv1alpha1.Cluster
 	return nil
 }
 
-func (r *COSReconciler) engineForCOS(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, resolved *resolvedPhaseObjects) (*boxcutter.RevisionEngine, error) {
+func (r *COSReconciler) engineForCOS(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, resolved *resolvedPhaseObjects) (*revisionEngine, error) {
 	usedFor := managedObjectsFromResolved(resolved)
 	accessor, err := r.accessManager.GetWithUser(ctx, cos, cos, usedFor)
 	if err != nil {
 		return nil, fmt.Errorf("getting accessor: %w", err)
 	}
-	engine, err := boxcutter.NewRevisionEngine(boxcutter.RevisionEngineOptions{
+	engine, err := newRevisionEngine(boxcutter.RevisionEngineOptions{
 		Scheme:           r.scheme,
 		FieldOwner:       "cos-group/" + cos.Spec.Group,
 		SystemPrefix:     systemPrefix,
@@ -397,7 +397,7 @@ func (r *COSReconciler) engineForCOS(ctx context.Context, cos *orbv1alpha1.Clust
 		Writer:           accessor,
 		Reader:           accessor,
 		UnfilteredReader: accessor.UnfilteredReader(),
-	})
+	}, cos.Status.ObservedPhases)
 	if err != nil {
 		return nil, fmt.Errorf("creating revision engine: %w", err)
 	}
