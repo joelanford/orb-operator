@@ -1,5 +1,5 @@
 ---
-status: idea
+status: in-progress
 ---
 # COS Status API Redesign: Preflight, Phase Gating, and Steady-State Drift Correction
 
@@ -81,6 +81,19 @@ This gives completed phases active drift correction (writes, not just status) ev
 - After gated reconcile, call `PhaseEngine.Reconcile` directly for completed-but-skipped phases
 - Update e2e tests covering preflight failures, normal gating, and steady-state regression scenarios
 
+## Architecture
+
+The implementation introduces a wrapper revision engine (`revisionEngine` in `internal/controller/`) that composes boxcutter's `RevisionEngine` and `PhaseEngine`. The wrapper satisfies the same call pattern as `RevisionEngine.Reconcile` today, making the change transparent to `doReconcileActive`. Internally it:
+
+1. Delegates to `RevisionEngine.Reconcile` for the gated reconcile loop
+2. Calls `PhaseEngine.Reconcile` directly for completed-but-skipped phases (drift correction)
+3. Returns a composite result that includes phase results from both the gated loop and drift correction
+
+Validation errors, `Invalid`/`Unknown` status mapping, and all other COS status concerns remain in `observedPhasesFromReconcileResult` — the wrapper is purely a reconcile-loop concern, not a status concern.
+
 ## Dependencies
 
-- Depends on `2026-06-28-boxcutter-phase-validation-error` for structured preflight errors to be capturable
+- Requires bumping boxcutter to latest `main` (`v0.14.1-0.20260710084406-8f7a02854da8`) for:
+  - Pointer-receiver fix on `PhaseValidationError` (value → `*validation.PhaseValidationError`)
+  - `PhaseResult.IsComplete()` correctly returns `false` when validation error is present
+  - `NoMatchError` handling in dry-run validation
