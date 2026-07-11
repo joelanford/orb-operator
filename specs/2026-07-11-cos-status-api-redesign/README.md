@@ -21,7 +21,7 @@ Three gaps in the current status reporting:
 
 ### New `PhaseStatus` value: `Invalid`
 
-Add `Invalid` to the `PhaseStatus` enum. A phase is `Invalid` when it fails preflight validation. Since the COS is immutable, this is a permanent state — the only recovery is creating a new COS revision.
+Add `Invalid` to the `PhaseStatus` enum. A phase is `Invalid` when it fails preflight validation. Some errors are permanent (e.g. cross-phase duplication), while others may resolve on a future reconcile (e.g. a missing CRD is installed).
 
 - `ObservedPhase.Error` carries the phase-level error (e.g. invalid phase name).
 - `ObservedPhase.IncompleteObjects` carries per-object validation errors (bad metadata, namespace scope violations, dry-run failures, cross-phase duplication) with details in `ObjectStatus.Messages`.
@@ -65,7 +65,7 @@ This gives completed phases active drift correction (writes, not just status) ev
 
 | Status | Meaning | Terminal? |
 |---|---|---|
-| `Invalid` | Failed preflight validation | Yes (for this COS) |
+| `Invalid` | Failed preflight validation | Depends on error |
 | `Unknown` | Not evaluated; message explains why | Depends on cause |
 | `Reconciling` | Actively evaluated, not yet complete | No |
 | `Available` | All objects reconciled, all assertions pass | No (can regress) |

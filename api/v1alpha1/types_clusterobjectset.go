@@ -139,10 +139,11 @@ type ClusterObjectSetStatus struct {
 type PhaseStatus string
 
 const (
-	// PhaseStatusInvalid indicates the phase failed preflight validation
-	// (e.g. bad metadata, namespace scope violations, dry-run failures,
-	// cross-phase duplication). This is terminal for the current COS
-	// revision; the only recovery is creating a new revision.
+	// PhaseStatusInvalid indicates the phase failed preflight validation.
+	// The error and incompleteObjects fields describe what went wrong.
+	// Some errors are permanent (e.g. cross-phase duplication), while
+	// others may resolve on a future reconcile (e.g. a missing CRD is
+	// installed).
 	PhaseStatusInvalid PhaseStatus = "Invalid"
 
 	// PhaseStatusReconciling indicates the controller is actively evaluating
