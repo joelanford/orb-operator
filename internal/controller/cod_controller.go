@@ -25,6 +25,7 @@ import (
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 	cosac "github.com/joelanford/orb-operator/applyconfigurations/api/v1alpha1"
+	codstatus "github.com/joelanford/orb-operator/internal/status/cod"
 )
 
 const (
@@ -214,7 +215,7 @@ func (r *CODReconciler) archiveOlderRevisions(ctx context.Context, _ *orbv1alpha
 	}
 
 	latest := &ownedCOSs[len(ownedCOSs)-1]
-	if !isCOSAvailable(latest) {
+	if !codstatus.IsAvailable(latest) {
 		return nil
 	}
 
@@ -305,110 +306,25 @@ func (r *CODReconciler) pruneArchivedCOSs(ctx context.Context, cod *orbv1alpha1.
 }
 
 func (r *CODReconciler) setStatus(cod *orbv1alpha1.ClusterObjectDeployment, ownedCOSs []orbv1alpha1.ClusterObjectSet) ctrl.Result {
-	var activeCOSs []orbv1alpha1.ClusterObjectSet
-	var active []orbv1alpha1.ClusterObjectSetStatusSummary
-	for i := range ownedCOSs {
-		if ownedCOSs[i].Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived {
-			continue
-		}
-		activeCOSs = append(activeCOSs, ownedCOSs[i])
-		active = append(active, orbv1alpha1.ClusterObjectSetStatusSummary{
-			Name:       ownedCOSs[i].Name,
-			Conditions: ownedCOSs[i].Status.Conditions,
-		})
-	}
-
+	active := codstatus.ActiveRevisionSummaries(ownedCOSs)
 	cod.Status.ActiveRevisions = active
 
-	meta.SetStatusCondition(&cod.Status.Conditions, evaluateAvailability(cod.Generation, active))
+	var activeCOSs []orbv1alpha1.ClusterObjectSet
+	for i := range ownedCOSs {
+		if ownedCOSs[i].Spec.LifecycleState != orbv1alpha1.LifecycleStateArchived {
+			activeCOSs = append(activeCOSs, ownedCOSs[i])
+		}
+	}
+
+	meta.SetStatusCondition(&cod.Status.Conditions, codstatus.EvaluateAvailability(cod.Generation, active))
 
 	var latestCOS *orbv1alpha1.ClusterObjectSet
 	if len(activeCOSs) > 0 {
 		latestCOS = &activeCOSs[len(activeCOSs)-1]
 	}
-	progressingCondition, requeueAfter := r.evaluateProgressDeadline(cod, latestCOS, time.Now())
+	progressingCondition, requeueAfter := codstatus.EvaluateDeadline(cod, latestCOS, time.Now(), r.deadlineUnit)
 	meta.SetStatusCondition(&cod.Status.Conditions, progressingCondition)
 
 	return requeueAfter
 }
 
-func evaluateAvailability(generation int64, active []orbv1alpha1.ClusterObjectSetStatusSummary) metav1.Condition {
-	condition := metav1.Condition{
-		Type:               orbv1alpha1.ConditionTypeAvailable,
-		ObservedGeneration: generation,
-	}
-
-	switch len(active) {
-	case 0:
-		condition.Status = metav1.ConditionFalse
-		condition.Reason = orbv1alpha1.ReasonUnavailable
-		condition.Message = "no active revisions"
-	case 1:
-		if meta.IsStatusConditionTrue(active[0].Conditions, orbv1alpha1.ConditionTypeAvailable) {
-			condition.Status = metav1.ConditionTrue
-			condition.Reason = orbv1alpha1.ReasonAvailable
-			condition.Message = "active revision is available"
-		} else {
-			condition.Status = metav1.ConditionFalse
-			condition.Reason = orbv1alpha1.ReasonUnavailable
-			condition.Message = "active revision is not yet available"
-		}
-	default:
-		condition.Status = metav1.ConditionUnknown
-		condition.Reason = orbv1alpha1.ReasonProgressing
-		condition.Message = "revision transition in progress"
-	}
-
-	return condition
-}
-
-func (r *CODReconciler) evaluateProgressDeadline(cod *orbv1alpha1.ClusterObjectDeployment, latestCOS *orbv1alpha1.ClusterObjectSet, now time.Time) (metav1.Condition, ctrl.Result) {
-	condition := metav1.Condition{
-		Type:               orbv1alpha1.ConditionTypeProgressing,
-		ObservedGeneration: cod.Generation,
-	}
-
-	if latestCOS == nil {
-		condition.Status = metav1.ConditionFalse
-		condition.Reason = orbv1alpha1.ReasonNoActiveRevisions
-		condition.Message = "no active revisions"
-		return condition, ctrl.Result{}
-	}
-
-	if latestCOS.Status.CompletedAt != nil {
-		condition.Status = metav1.ConditionTrue
-		condition.Reason = orbv1alpha1.ReasonNewClusterObjectSetProgressed
-		condition.Message = "latest revision has progressed"
-		return condition, ctrl.Result{}
-	}
-
-	var requeueAfter time.Duration
-	if cod.Spec.ProgressDeadlineMinutes != nil {
-		lastMilestone := latestCOS.CreationTimestamp
-		for _, phase := range latestCOS.Status.ObservedPhases {
-			if phase.CompletedAt != nil && phase.CompletedAt.After(lastMilestone.Time) {
-				lastMilestone = *phase.CompletedAt
-			}
-		}
-
-		deadline := time.Duration(*cod.Spec.ProgressDeadlineMinutes) * r.deadlineUnit
-		elapsed := now.Sub(lastMilestone.Time)
-
-		if elapsed >= deadline {
-			condition.Status = metav1.ConditionFalse
-			condition.Reason = orbv1alpha1.ReasonProgressDeadlineExceeded
-			condition.Message = "latest revision has not made progress within the deadline"
-			return condition, ctrl.Result{}
-		}
-		requeueAfter = deadline - elapsed
-	}
-
-	condition.Status = metav1.ConditionTrue
-	condition.Reason = orbv1alpha1.ReasonNewClusterObjectSetProgressing
-	condition.Message = "latest revision is progressing"
-	return condition, ctrl.Result{RequeueAfter: requeueAfter}
-}
-
-func isCOSAvailable(cos *orbv1alpha1.ClusterObjectSet) bool {
-	return meta.IsStatusConditionTrue(cos.Status.Conditions, orbv1alpha1.ConditionTypeAvailable)
-}

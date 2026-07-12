@@ -1,4 +1,4 @@
-package controller
+package cod
 
 import (
 	"testing"
@@ -11,9 +11,8 @@ import (
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 )
 
-func TestEvaluateProgressDeadline(t *testing.T) {
-	r := &CODReconciler{deadlineUnit: time.Millisecond}
-
+func TestEvaluateDeadline(t *testing.T) {
+	deadlineUnit := time.Millisecond
 	now := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
 
 	deadline := int32(500)
@@ -28,7 +27,7 @@ func TestEvaluateProgressDeadline(t *testing.T) {
 	}
 
 	t.Run("no active revisions", func(t *testing.T) {
-		cond, result := r.evaluateProgressDeadline(cod, nil, now)
+		cond, result := EvaluateDeadline(cod, nil, now, deadlineUnit)
 		assert.Equal(t, orbv1alpha1.ConditionTypeProgressing, cond.Type)
 		assert.Equal(t, metav1.ConditionFalse, cond.Status)
 		assert.Equal(t, orbv1alpha1.ReasonNoActiveRevisions, cond.Reason)
@@ -42,7 +41,7 @@ func TestEvaluateProgressDeadline(t *testing.T) {
 				CompletedAt: &completedAt,
 			},
 		}
-		cond, result := r.evaluateProgressDeadline(cod, cos, now)
+		cond, result := EvaluateDeadline(cod, cos, now, deadlineUnit)
 		assert.Equal(t, metav1.ConditionTrue, cond.Status)
 		assert.Equal(t, orbv1alpha1.ReasonNewClusterObjectSetProgressed, cond.Reason)
 		assert.Equal(t, ctrl.Result{}, result)
@@ -54,7 +53,7 @@ func TestEvaluateProgressDeadline(t *testing.T) {
 				CreationTimestamp: metav1.NewTime(now.Add(-time.Hour)),
 			},
 		}
-		cond, result := r.evaluateProgressDeadline(codNoDeadline, cos, now)
+		cond, result := EvaluateDeadline(codNoDeadline, cos, now, deadlineUnit)
 		assert.Equal(t, metav1.ConditionTrue, cond.Status)
 		assert.Equal(t, orbv1alpha1.ReasonNewClusterObjectSetProgressing, cond.Reason)
 		assert.Equal(t, ctrl.Result{}, result)
@@ -67,7 +66,7 @@ func TestEvaluateProgressDeadline(t *testing.T) {
 				CreationTimestamp: metav1.NewTime(created),
 			},
 		}
-		cond, result := r.evaluateProgressDeadline(cod, cos, now)
+		cond, result := EvaluateDeadline(cod, cos, now, deadlineUnit)
 		assert.Equal(t, metav1.ConditionTrue, cond.Status)
 		assert.Equal(t, orbv1alpha1.ReasonNewClusterObjectSetProgressing, cond.Reason)
 		assert.Equal(t, 300*time.Millisecond, result.RequeueAfter)
@@ -80,7 +79,7 @@ func TestEvaluateProgressDeadline(t *testing.T) {
 				CreationTimestamp: metav1.NewTime(created),
 			},
 		}
-		cond, result := r.evaluateProgressDeadline(cod, cos, now)
+		cond, result := EvaluateDeadline(cod, cos, now, deadlineUnit)
 		assert.Equal(t, metav1.ConditionFalse, cond.Status)
 		assert.Equal(t, orbv1alpha1.ReasonProgressDeadlineExceeded, cond.Reason)
 		assert.Equal(t, ctrl.Result{}, result)
@@ -101,14 +100,14 @@ func TestEvaluateProgressDeadline(t *testing.T) {
 				},
 			},
 		}
-		cond, result := r.evaluateProgressDeadline(cod, cos, now)
+		cond, result := EvaluateDeadline(cod, cos, now, deadlineUnit)
 		assert.Equal(t, metav1.ConditionTrue, cond.Status)
 		assert.Equal(t, orbv1alpha1.ReasonNewClusterObjectSetProgressing, cond.Reason)
 		assert.Equal(t, 400*time.Millisecond, result.RequeueAfter)
 	})
 
 	t.Run("observedGeneration is set", func(t *testing.T) {
-		cond, _ := r.evaluateProgressDeadline(cod, nil, now)
+		cond, _ := EvaluateDeadline(cod, nil, now, deadlineUnit)
 		assert.Equal(t, int64(1), cond.ObservedGeneration)
 	})
 }
