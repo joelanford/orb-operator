@@ -43,8 +43,18 @@ orb-operator/
 ├── cmd/
 │   └── operator/           # cobra entrypoint
 ├── internal/
-│   ├── controller/         # reconcilers (COD, COS)
-│   └── assertions/         # assertion evaluation logic
+│   ├── assertions/         # assertion evaluation logic
+│   ├── controller/
+│   │   ├── cod/            # COD reconciler
+│   │   └── cos/            # COS reconciler
+│   ├── cosutil/            # COS SSA + finalizer operations
+│   ├── errors/             # typed reconcile outcome errors
+│   ├── object/             # object resolution + slice transform
+│   ├── revision/           # revision chain, engine, builder
+│   ├── status/
+│   │   ├── cod/            # COD availability + progress evaluation
+│   │   └── cos/            # COS declarative status updater
+│   └── template/           # COD template hashing + COS construction
 ├── deploy/
 │   ├── lib/                # shared jsonnet libraries
 │   ├── operator.jsonnet    # main deployment manifest (Deployment, RBAC, etc.)

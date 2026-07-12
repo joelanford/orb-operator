@@ -1,12 +1,33 @@
 package cosutil
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
+	cosac "github.com/joelanford/orb-operator/applyconfigurations/api/v1alpha1"
 )
+
+func TestApply_SkipsWhenNotNeeded(t *testing.T) {
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	applied, err := Apply(context.Background(), nil, cos, "test",
+		func(_ *orbv1alpha1.ClusterObjectSet) bool { return false },
+		func(_ *cosac.ClusterObjectSetApplyConfiguration) {},
+	)
+	require.NoError(t, err)
+	assert.False(t, applied)
+}
+
+func TestRemoveFinalizer_SkipsWhenAbsent(t *testing.T) {
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	err := RemoveFinalizer(context.Background(), nil, cos, "test", "nonexistent-finalizer")
+	require.NoError(t, err)
+}
 
 func TestClearFinalizerFieldOwnership(t *testing.T) {
 	t.Run("removes finalizer from field ownership", func(t *testing.T) {
