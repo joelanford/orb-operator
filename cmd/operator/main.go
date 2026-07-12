@@ -25,6 +25,7 @@ import (
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 	"github.com/joelanford/orb-operator/internal/controller"
+	"github.com/joelanford/orb-operator/internal/object"
 )
 
 var scheme = runtime.NewScheme()
@@ -70,7 +71,7 @@ func run(cmd *cobra.Command, _ []string) error {
 		Cache: cache.Options{
 			ByObject: map[client.Object]cache.ByObject{
 				&orbv1alpha1.ClusterObjectSlice{}: {
-					Transform: controller.TransformClusterObjectSlice,
+					Transform: object.TransformClusterObjectSlice,
 				},
 			},
 		},
