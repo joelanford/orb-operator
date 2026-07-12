@@ -33,6 +33,7 @@ import (
 	cosac "github.com/joelanford/orb-operator/applyconfigurations/api/v1alpha1"
 	"github.com/joelanford/orb-operator/internal/assertions"
 	"github.com/joelanford/orb-operator/internal/object"
+	cosstatus "github.com/joelanford/orb-operator/internal/status/cos"
 )
 
 const (
@@ -603,4 +604,16 @@ func mapCollisionProtection(cp orbv1alpha1.CollisionProtection) boxcutter.WithCo
 	default:
 		return boxcutter.WithCollisionProtection(boxcutter.CollisionProtectionPrevent)
 	}
+}
+
+func observedPhasesFromReconcileResult(specPhases []orbv1alpha1.Phase, result machinery.RevisionResult) []orbv1alpha1.ObservedPhase {
+	return cosstatus.ObservedPhasesFromReconcileResult(specPhases, result)
+}
+
+func observedPhasesFromTeardownResult(specPhases []orbv1alpha1.Phase, result machinery.RevisionTeardownResult) []orbv1alpha1.ObservedPhase {
+	return cosstatus.ObservedPhasesFromTeardownResult(specPhases, result)
+}
+
+func preservePhaseCompletionTimes(existing, current []orbv1alpha1.ObservedPhase, now time.Time) {
+	cosstatus.PreserveCompletionTimes(existing, current, now)
 }

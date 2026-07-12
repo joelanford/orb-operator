@@ -1,20 +1,136 @@
-package controller
+package cos
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"pkg.package-operator.run/boxcutter/machinery"
 	"pkg.package-operator.run/boxcutter/machinery/types"
 	"pkg.package-operator.run/boxcutter/validation"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
+	orberrors "github.com/joelanford/orb-operator/internal/errors"
 )
 
-func observedPhasesFromReconcileResult(specPhases []orbv1alpha1.Phase, result machinery.RevisionResult) []orbv1alpha1.ObservedPhase {
+type Update struct {
+	Condition      metav1.Condition
+	ObservedPhases *[]orbv1alpha1.ObservedPhase
+	CompletedAt    *metav1.Time
+}
+
+func Apply(cos *orbv1alpha1.ClusterObjectSet, u Update) {
+	u.Condition.ObservedGeneration = cos.Generation
+	meta.SetStatusCondition(&cos.Status.Conditions, u.Condition)
+	if u.ObservedPhases != nil {
+		cos.Status.ObservedPhases = *u.ObservedPhases
+	}
+	if u.CompletedAt != nil && cos.Status.CompletedAt == nil {
+		cos.Status.CompletedAt = u.CompletedAt
+	}
+}
+
+func FromReconcile(cos *orbv1alpha1.ClusterObjectSet, result machinery.RevisionResult, err error, now time.Time) Update {
+	var resErr *orberrors.ObjectResolutionError
+	var intErr *orberrors.InternalError
+
+	switch {
+	case errors.As(err, &resErr):
+		return resolutionErrorUpdate(cos.Status.ResolvedContentHash, err)
+	case errors.As(err, &intErr):
+		return internalErrorUpdate(err)
+	}
+
+	phases := ObservedPhasesFromReconcileResult(cos.Spec.Phases, result)
+	PreserveCompletionTimes(cos.Status.ObservedPhases, phases, now)
+
+	u := Update{ObservedPhases: &phases}
+
+	if err != nil {
+		u.Condition = newCondition(metav1.ConditionUnknown, orbv1alpha1.ReasonReconcileError,
+			fmt.Sprintf("reconcile failed: %v", err))
+		return u
+	}
+
+	if verr := result.GetValidationError(); verr != nil {
+		u.Condition = newCondition(metav1.ConditionFalse, orbv1alpha1.ReasonInvalidRevision, verr.Error())
+		return u
+	}
+
+	switch {
+	case result.HasProgressed():
+		u.Condition = newCondition(metav1.ConditionFalse, orbv1alpha1.ReasonSuperseded,
+			"all objects adopted by a newer revision")
+	case result.IsComplete():
+		mt := metav1.NewTime(now)
+		u.CompletedAt = &mt
+		u.Condition = newCondition(metav1.ConditionTrue, orbv1alpha1.ReasonAvailable, "all phases complete")
+	default:
+		u.Condition = newCondition(metav1.ConditionFalse, orbv1alpha1.ReasonUnavailable, "phases not yet complete")
+	}
+	return u
+}
+
+func FromTeardown(cos *orbv1alpha1.ClusterObjectSet, result machinery.RevisionTeardownResult, err error, now time.Time) Update {
+	var resErr *orberrors.ObjectResolutionError
+	var intErr *orberrors.InternalError
+
+	switch {
+	case errors.As(err, &resErr):
+		return resolutionErrorUpdate(cos.Status.ResolvedContentHash, err)
+	case errors.As(err, &intErr):
+		return internalErrorUpdate(err)
+	}
+
+	phases := ObservedPhasesFromTeardownResult(cos.Spec.Phases, result)
+	PreserveCompletionTimes(cos.Status.ObservedPhases, phases, now)
+
+	u := Update{ObservedPhases: &phases}
+
+	switch {
+	case err != nil:
+		u.Condition = newCondition(metav1.ConditionUnknown, orbv1alpha1.ReasonTeardownError,
+			fmt.Sprintf("teardown failed: %v", err))
+	case result != nil && !result.IsComplete():
+		u.Condition = newCondition(metav1.ConditionFalse, orbv1alpha1.ReasonArchived, "teardown in progress")
+	default:
+		u.Condition = newCondition(metav1.ConditionFalse, orbv1alpha1.ReasonArchived, "teardown complete")
+	}
+	return u
+}
+
+func resolutionErrorUpdate(existingHash string, err error) Update {
+	status := metav1.ConditionFalse
+	if existingHash != "" {
+		status = metav1.ConditionUnknown
+	}
+	return Update{
+		Condition: newCondition(status, orbv1alpha1.ReasonInvalidRevision, err.Error()),
+	}
+}
+
+func internalErrorUpdate(err error) Update {
+	empty := []orbv1alpha1.ObservedPhase(nil)
+	return Update{
+		Condition:      newCondition(metav1.ConditionUnknown, orbv1alpha1.ReasonInternalError, err.Error()),
+		ObservedPhases: &empty,
+	}
+}
+
+func newCondition(status metav1.ConditionStatus, reason, message string) metav1.Condition {
+	return metav1.Condition{
+		Type:    orbv1alpha1.ConditionTypeAvailable,
+		Status:  status,
+		Reason:  reason,
+		Message: message,
+	}
+}
+
+func ObservedPhasesFromReconcileResult(specPhases []orbv1alpha1.Phase, result machinery.RevisionResult) []orbv1alpha1.ObservedPhase {
 	if result == nil {
 		return nil
 	}
@@ -104,7 +220,7 @@ func applyValidationError(op *orbv1alpha1.ObservedPhase, verr *validation.PhaseV
 	}
 }
 
-func observedPhasesFromTeardownResult(specPhases []orbv1alpha1.Phase, result machinery.RevisionTeardownResult) []orbv1alpha1.ObservedPhase {
+func ObservedPhasesFromTeardownResult(specPhases []orbv1alpha1.Phase, result machinery.RevisionTeardownResult) []orbv1alpha1.ObservedPhase {
 	if result == nil {
 		return nil
 	}
@@ -204,7 +320,7 @@ func messagesForObject(obj machinery.ObjectResult) []string {
 	return msgs
 }
 
-func preservePhaseCompletionTimes(existing, current []orbv1alpha1.ObservedPhase, now time.Time) {
+func PreserveCompletionTimes(existing, current []orbv1alpha1.ObservedPhase, now time.Time) {
 	completedAt := make(map[string]*metav1.Time, len(existing))
 	for i := range existing {
 		if existing[i].CompletedAt != nil {
