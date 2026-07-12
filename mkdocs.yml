@@ -1,0 +1,75 @@
+site_name: orb-operator
+site_description: Phased Kubernetes object management with safe revision transitions
+site_url: https://joelanford.github.io/orb-operator
+repo_url: https://github.com/joelanford/orb-operator
+repo_name: joelanford/orb-operator
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+    - search.highlight
+    - search.suggest
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets
+  - attr_list
+  - md_in_html
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
+  - Concepts:
+      - Overview: concepts/overview.md
+      - ClusterObjectDeployment: concepts/cluster-object-deployment.md
+      - ClusterObjectSet: concepts/cluster-object-set.md
+      - ClusterObjectSlice: concepts/cluster-object-slice.md
+      - Phases & Assertions: concepts/phases-and-assertions.md
+      - Collision Protection: concepts/collision-protection.md
+      - Revision Management: concepts/revision-management.md
+  - Guides:
+      - Phased Rollout: guides/phased-rollout.md
+      - Gated Rollout with CEL: guides/gated-rollout.md
+      - Large Bundles: guides/large-bundles.md
+      - Manual Revisions: guides/manual-revisions.md
+  - Reference:
+      - API Reference: reference/api.md
+  - Troubleshooting: troubleshooting.md
