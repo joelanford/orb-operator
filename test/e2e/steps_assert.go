@@ -39,13 +39,11 @@ func registerAssertSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^revision (\d+) should have observed phase "([^"]*)" with status "([^"]*)"$`, tc.revisionShouldHaveObservedPhase)
 
 	// Phase status assert steps
-	sc.Step(`^the COS should have observed phase "([^"]*)" with status "([^"]*)"$`, tc.theCOSShouldHaveObservedPhase)
+	sc.Step(`^the COS should have observed phase "([^"]*)" with status "([^"]*)"(?: and message "([^"]*)")?$`, tc.theCOSShouldHaveObservedPhase)
 	sc.Step(`^the COS should have (\d+) observed phases$`, tc.theCOSShouldHaveObservedPhaseCount)
-	sc.Step(`^observed phase "([^"]*)" should have (\d+) incomplete objects$`, tc.observedPhaseShouldHaveIncompleteObjectCount)
-	sc.Step(`^observed phase "([^"]*)" should have an incomplete object "([^"]*)"$`, tc.observedPhaseShouldHaveIncompleteObjectNamed)
+	sc.Step(`^observed phase "([^"]*)" should have object counts total:(\d+)/synced:(\d+)/available:(\d+)$`, tc.observedPhaseShouldHaveObjectCounts)
+	sc.Step(`^observed phase "([^"]*)" should have object details for "([^"]*)"$`, tc.observedPhaseShouldHaveObjectDetailsFor)
 	sc.Step(`^the COS should have no observed phases$`, tc.theCOSShouldHaveNoObservedPhases)
-	sc.Step(`^observed phase "([^"]*)" should have error "([^"]*)"$`, tc.observedPhaseShouldHaveError)
-	sc.Step(`^observed phase "([^"]*)" should have error containing "([^"]*)"$`, tc.observedPhaseShouldHaveErrorContaining)
 	sc.Step(`^the COS should have completedAt set$`, tc.theCOSShouldHaveCompletedAt)
 	sc.Step(`^the COS should not have completedAt set$`, tc.theCOSShouldNotHaveCompletedAt)
 	sc.Step(`^the COS completedAt should be preserved$`, tc.theCOSCompletedAtShouldBePreserved)
@@ -449,13 +447,13 @@ func (tc *testContext) theCODShouldHaveActiveRevision(codName string, revision u
 	})
 }
 
-func (tc *testContext) theCOSShouldHaveObservedPhase(phaseName, status string) error {
+func (tc *testContext) theCOSShouldHaveObservedPhase(phaseName, status, message string) error {
 	name := tc.lastCreatedCOSName()
 	cos := &orbv1alpha1.ClusterObjectSet{}
 	return pollForObjectMatching(tc, cos, types.NamespacedName{Name: name}, func() bool {
 		for _, op := range cos.Status.ObservedPhases {
 			if op.Name == phaseName && string(op.Status) == status {
-				return true
+				return message == "" || op.Message == message
 			}
 		}
 		return false
@@ -470,57 +468,42 @@ func (tc *testContext) theCOSShouldHaveObservedPhaseCount(count int) error {
 	})
 }
 
-func (tc *testContext) observedPhaseShouldHaveIncompleteObjectCount(phaseName string, count int) error {
+func (tc *testContext) observedPhaseShouldHaveObjectCounts(phaseName string, total, synced, available int) error {
 	name := tc.lastCreatedCOSName()
 	cos := &orbv1alpha1.ClusterObjectSet{}
 	return pollForObjectMatching(tc, cos, types.NamespacedName{Name: name}, func() bool {
 		for _, op := range cos.Status.ObservedPhases {
 			if op.Name == phaseName {
-				return len(op.IncompleteObjects) == count
+				return op.ObjectCounts.Total == int64(total) &&
+					op.ObjectCounts.Synced == int64(synced) &&
+					op.ObjectCounts.Available == int64(available)
 			}
 		}
 		return false
 	})
 }
 
-func (tc *testContext) observedPhaseShouldHaveIncompleteObjectNamed(phaseName, objectName string) error {
+func (tc *testContext) observedPhaseShouldHaveObjectDetailsFor(phaseName, objectNames string) error {
+	expected := make(map[string]struct{})
+	for _, n := range strings.Split(objectNames, `","`) {
+		expected[strings.Trim(n, `"`)] = struct{}{}
+	}
 	name := tc.lastCreatedCOSName()
 	cos := &orbv1alpha1.ClusterObjectSet{}
 	return pollForObjectMatching(tc, cos, types.NamespacedName{Name: name}, func() bool {
 		for _, op := range cos.Status.ObservedPhases {
-			if op.Name == phaseName {
-				for _, obj := range op.IncompleteObjects {
-					if obj.Name == objectName {
-						return true
-					}
+			if op.Name != phaseName {
+				continue
+			}
+			if len(op.ObjectDetails) != len(expected) {
+				return false
+			}
+			for _, obj := range op.ObjectDetails {
+				if _, ok := expected[obj.Name]; !ok {
+					return false
 				}
 			}
-		}
-		return false
-	})
-}
-
-func (tc *testContext) observedPhaseShouldHaveError(phaseName, expectedError string) error {
-	name := tc.lastCreatedCOSName()
-	cos := &orbv1alpha1.ClusterObjectSet{}
-	return pollForObjectMatching(tc, cos, types.NamespacedName{Name: name}, func() bool {
-		for _, op := range cos.Status.ObservedPhases {
-			if op.Name == phaseName {
-				return op.Error == expectedError
-			}
-		}
-		return false
-	})
-}
-
-func (tc *testContext) observedPhaseShouldHaveErrorContaining(phaseName, substring string) error {
-	name := tc.lastCreatedCOSName()
-	cos := &orbv1alpha1.ClusterObjectSet{}
-	return pollForObjectMatching(tc, cos, types.NamespacedName{Name: name}, func() bool {
-		for _, op := range cos.Status.ObservedPhases {
-			if op.Name == phaseName {
-				return strings.Contains(op.Error, substring)
-			}
+			return true
 		}
 		return false
 	})

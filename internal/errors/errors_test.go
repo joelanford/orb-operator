@@ -1,7 +1,6 @@
 package errors
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 
@@ -17,7 +16,7 @@ func TestObjectResolutionError(t *testing.T) {
 	assert.Equal(t, inner, err.Unwrap())
 
 	var target *ObjectResolutionError
-	require.True(t, errors.As(err, &target))
+	require.ErrorAs(t, err, &target)
 	assert.Equal(t, inner, target.Err)
 }
 
@@ -29,7 +28,7 @@ func TestInternalError(t *testing.T) {
 	assert.Equal(t, inner, err.Unwrap())
 
 	var target *InternalError
-	require.True(t, errors.As(err, &target))
+	require.ErrorAs(t, err, &target)
 	assert.Equal(t, inner, target.Err)
 }
 
@@ -40,9 +39,9 @@ func TestErrorTypeDisambiguation(t *testing.T) {
 	var resTarget *ObjectResolutionError
 	var intTarget *InternalError
 
-	assert.True(t, errors.As(resolution, &resTarget))
-	assert.False(t, errors.As(resolution, &intTarget))
+	require.ErrorAs(t, resolution, &resTarget)
+	require.NotErrorAs(t, resolution, &intTarget)
 
-	assert.False(t, errors.As(internal, &resTarget))
-	assert.True(t, errors.As(internal, &intTarget))
+	require.NotErrorAs(t, internal, &resTarget)
+	require.ErrorAs(t, internal, &intTarget)
 }

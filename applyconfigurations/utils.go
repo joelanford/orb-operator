@@ -48,6 +48,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.FieldsEqualAssertionApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("FieldValueAssertion"):
 		return &apiv1alpha1.FieldValueAssertionApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ObjectCounts"):
+		return &apiv1alpha1.ObjectCountsApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ObjectKey"):
 		return &apiv1alpha1.ObjectKeyApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ObjectRef"):

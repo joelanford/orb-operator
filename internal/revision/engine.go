@@ -2,7 +2,6 @@ package revision
 
 import (
 	"context"
-	"iter"
 
 	"pkg.package-operator.run/boxcutter"
 	"pkg.package-operator.run/boxcutter/machinery"
@@ -35,8 +34,9 @@ func NewEngine(opts boxcutter.RevisionEngineOptions, existingOPs []orbv1alpha1.O
 }
 
 type Result struct {
-	gated        machinery.RevisionResult
-	driftResults []machinery.PhaseResult
+	gated           machinery.RevisionResult
+	driftResults    []machinery.PhaseResult
+	readOnlyResults []machinery.PhaseResult
 }
 
 func (r *Result) GetValidationError() *validation.RevisionValidationError {
@@ -44,7 +44,8 @@ func (r *Result) GetValidationError() *validation.RevisionValidationError {
 }
 
 func (r *Result) GetPhases() []machinery.PhaseResult {
-	return append(r.gated.GetPhases(), r.driftResults...)
+	result := append(r.gated.GetPhases(), r.driftResults...)
+	return append(result, r.readOnlyResults...)
 }
 
 func (r *Result) InTransition() bool {
@@ -102,12 +103,14 @@ func (e *Engine) Reconcile(ctx context.Context, rev types.Revision, opts ...type
 		o.ApplyToRevisionReconcileOptions(&revOpts)
 	}
 
+	driftPhases, readOnlyPhases := splitPhases(rev, gatedPhaseNames, e.completedPhaseNames())
+
 	var driftResults []machinery.PhaseResult
 	var driftErr error
-	for phase := range driftPhases(rev, gatedPhaseNames, e.completedPhaseNames()) {
+	for _, phase := range driftPhases {
 		phaseOpts := revOpts.ForPhase(phase.GetName())
-		pr, pErr := e.phase.Reconcile(ctx, rev.GetRevisionNumber(), phase, phaseOpts...)
-		if pr != nil {
+		pr, pErr := e.phase.Reconcile(ctx, rev.GetRevisionNumber(), phase, phaseOpts...) //nolint:staticcheck
+		if pr != nil {                                                                   //nolint:staticcheck // defensive: boxcutter may return nil in future versions
 			driftResults = append(driftResults, pr)
 		}
 		if pErr != nil {
@@ -116,29 +119,68 @@ func (e *Engine) Reconcile(ctx context.Context, rev types.Revision, opts ...type
 		}
 	}
 
-	return &Result{
-		gated:        gatedResult,
-		driftResults: driftResults,
-	}, driftErr
-}
-
-func driftPhases(rev types.Revision, gatedPhaseNames map[string]struct{}, completedPhases map[string]bool) iter.Seq[types.Phase] {
-	return func(yield func(types.Phase) bool) {
-		sawCompleted := false
-		for _, phase := range rev.GetPhases() {
-			if _, inGated := gatedPhaseNames[phase.GetName()]; inGated {
-				continue
+	var readOnlyResults []machinery.PhaseResult
+	if driftErr == nil {
+		for _, phase := range readOnlyPhases {
+			phaseOpts := append(revOpts.ForPhase(phase.GetName()), types.WithPaused{})
+			pr, pErr := e.phase.Reconcile(ctx, rev.GetRevisionNumber(), phase, phaseOpts...) //nolint:staticcheck
+			if pr != nil {                                                                   //nolint:staticcheck // defensive: boxcutter may return nil in future versions
+				readOnlyResults = append(readOnlyResults, pr)
 			}
-			isCompleted := completedPhases[phase.GetName()]
-			if !isCompleted && !sawCompleted {
+			if pErr != nil {
 				break
-			}
-			sawCompleted = true
-			if !yield(phase) || !isCompleted {
-				return
 			}
 		}
 	}
+
+	return &Result{
+		gated:           gatedResult,
+		driftResults:    driftResults,
+		readOnlyResults: readOnlyResults,
+	}, driftErr
+}
+
+func splitPhases(rev types.Revision, gatedPhaseNames map[string]struct{}, completedPhases map[string]bool) ([]types.Phase, []types.Phase) {
+	var drift, readOnly []types.Phase
+	sawCompleted := false
+	for _, phase := range rev.GetPhases() {
+		if _, inGated := gatedPhaseNames[phase.GetName()]; inGated {
+			continue
+		}
+		isCompleted := completedPhases[phase.GetName()]
+		if !isCompleted && !sawCompleted {
+			readOnly = append(readOnly, phase)
+			readOnly = append(readOnly, phasesAfter(rev, gatedPhaseNames, phase.GetName())...)
+			return drift, readOnly
+		}
+		sawCompleted = true
+		drift = append(drift, phase)
+		if !isCompleted {
+			readOnly = append(readOnly, phasesAfter(rev, gatedPhaseNames, phase.GetName())...)
+			return drift, readOnly
+		}
+	}
+	return drift, readOnly
+}
+
+// phasesAfter returns all non-gated phases that follow the phase named afterName in the revision's phase order.
+func phasesAfter(rev types.Revision, gatedPhaseNames map[string]struct{}, afterName string) []types.Phase {
+	var result []types.Phase
+	found := false
+	for _, phase := range rev.GetPhases() {
+		if phase.GetName() == afterName {
+			found = true
+			continue
+		}
+		if !found {
+			continue
+		}
+		if _, inGated := gatedPhaseNames[phase.GetName()]; inGated {
+			continue
+		}
+		result = append(result, phase)
+	}
+	return result
 }
 
 func (e *Engine) completedPhaseNames() map[string]bool {

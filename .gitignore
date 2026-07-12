@@ -1,3 +1,4 @@
 /dist/
 /_output/
 /operator
+/examples/gated-rollout/gated-rollout

@@ -14,6 +14,8 @@ import (
 	"pkg.package-operator.run/boxcutter/machinery"
 	boxcuttertypes "pkg.package-operator.run/boxcutter/machinery/types"
 	"pkg.package-operator.run/boxcutter/validation"
+	"sigs.k8s.io/structured-merge-diff/v6/fieldpath"
+	"sigs.k8s.io/structured-merge-diff/v6/typed"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 	orberrors "github.com/joelanford/orb-operator/internal/errors"
@@ -256,17 +258,17 @@ func TestFromTeardown(t *testing.T) {
 
 func TestBuildObservedPhases(t *testing.T) {
 	specPhases := []orbv1alpha1.Phase{
-		{Name: "phase-1"},
-		{Name: "phase-2"},
-		{Name: "phase-3"},
+		{Name: "phase-1", Objects: make([]orbv1alpha1.PhaseObject, 1)},
+		{Name: "phase-2", Objects: make([]orbv1alpha1.PhaseObject, 1)},
+		{Name: "phase-3", Objects: make([]orbv1alpha1.PhaseObject, 1)},
 	}
 
-	t.Run("all phases unknown with waiting message when no results", func(t *testing.T) {
+	t.Run("all phases unknown with unevaluated message when no results", func(t *testing.T) {
 		result := buildObservedPhases(specPhases, nil)
 		require.Len(t, result, 3)
 		for _, op := range result {
 			assert.Equal(t, orbv1alpha1.PhaseStatusUnknown, op.Status)
-			assert.Equal(t, "Waiting for earlier phases to complete", op.Error)
+			assert.Equal(t, "Phase was not evaluated", op.Message)
 		}
 	})
 
@@ -280,7 +282,7 @@ func TestBuildObservedPhases(t *testing.T) {
 		assert.Equal(t, orbv1alpha1.PhaseStatusUnknown, observed[1].Status)
 	})
 
-	t.Run("reconciling phase with incomplete objects", func(t *testing.T) {
+	t.Run("synced phase with failing assertions lists object details", func(t *testing.T) {
 		obj := &unstructured.Unstructured{}
 		obj.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
 		obj.SetName("my-cm")
@@ -292,16 +294,32 @@ func TestBuildObservedPhases(t *testing.T) {
 				name:     "phase-2",
 				complete: false,
 				objects: []machinery.ObjectResult{
-					&fakeObjectResult{obj: obj, complete: false, probes: boxcuttertypes.ProbeResultContainer{
+					&fakeObjectResult{obj: obj, complete: false, action: machinery.ActionIdle, probes: boxcuttertypes.ProbeResultContainer{
 						boxcuttertypes.ProgressProbeType: {Status: boxcuttertypes.ProbeStatusFalse, Messages: []string{"condition Available is not True"}},
 					}},
 				},
 			},
 		}
 		observed := buildObservedPhases(specPhases, results)
-		assert.Equal(t, orbv1alpha1.PhaseStatusReconciling, observed[1].Status)
-		require.Len(t, observed[1].IncompleteObjects, 1)
-		assert.Equal(t, "my-cm", observed[1].IncompleteObjects[0].Name)
+		assert.Equal(t, orbv1alpha1.PhaseStatusWaitingForAssertions, observed[1].Status)
+		require.Len(t, observed[1].ObjectDetails, 1)
+		assert.Equal(t, "my-cm", observed[1].ObjectDetails[0].Name)
+	})
+
+	t.Run("phase-level validation error produces Invalid status", func(t *testing.T) {
+		results := []machinery.PhaseResult{
+			&fakePhaseResult{
+				name:     "phase-1",
+				complete: false,
+				validationError: &validation.PhaseValidationError{
+					PhaseName:  "phase-1",
+					PhaseError: fmt.Errorf("missing CRD"),
+				},
+			},
+		}
+		observed := buildObservedPhases(specPhases, results)
+		assert.Equal(t, orbv1alpha1.PhaseStatusInvalid, observed[0].Status)
+		assert.Equal(t, "validation error: missing CRD", observed[0].Message)
 	})
 
 	t.Run("collision produces message", func(t *testing.T) {
@@ -321,7 +339,8 @@ func TestBuildObservedPhases(t *testing.T) {
 			},
 		}
 		observed := buildObservedPhases(specPhases, results)
-		assert.Contains(t, observed[0].IncompleteObjects[0].Messages, "object ownership collision")
+		assert.Equal(t, orbv1alpha1.PhaseStatusReconciling, observed[0].Status)
+		assert.Contains(t, observed[0].ObjectDetails[0].Messages, "object ownership collision")
 	})
 }
 
@@ -401,13 +420,14 @@ func (f *fakePhaseResult) GetValidationError() *validation.PhaseValidationError 
 type fakeObjectResult struct {
 	obj      machinery.Object
 	complete bool
+	paused   bool
 	probes   boxcuttertypes.ProbeResultContainer
 	action   machinery.Action
 }
 
 func (f *fakeObjectResult) Object() machinery.Object                          { return f.obj }
 func (f *fakeObjectResult) IsComplete() bool                                  { return f.complete }
-func (f *fakeObjectResult) IsPaused() bool                                    { return false }
+func (f *fakeObjectResult) IsPaused() bool                                    { return f.paused }
 func (f *fakeObjectResult) ProbeResults() boxcuttertypes.ProbeResultContainer { return f.probes }
 func (f *fakeObjectResult) Action() machinery.Action                          { return f.action }
 func (f *fakeObjectResult) String() string                                    { return "" }
@@ -441,6 +461,265 @@ func (f *fakePhaseTeardownResult) IsComplete() bool                    { return 
 func (f *fakePhaseTeardownResult) Gone() []boxcuttertypes.ObjectRef    { return nil }
 func (f *fakePhaseTeardownResult) Waiting() []boxcuttertypes.ObjectRef { return f.waiting }
 func (f *fakePhaseTeardownResult) String() string                      { return f.name }
+
+func cosSpecWithPhaseObjects(phaseDefs ...struct {
+	name    string
+	objects int
+}) orbv1alpha1.ClusterObjectSetSpec {
+	phases := make([]orbv1alpha1.Phase, len(phaseDefs))
+	for i, pd := range phaseDefs {
+		objs := make([]orbv1alpha1.PhaseObject, pd.objects)
+		phases[i] = orbv1alpha1.Phase{Name: pd.name, Objects: objs}
+	}
+	return orbv1alpha1.ClusterObjectSetSpec{
+		ClusterObjectDeploymentTemplateSpec: orbv1alpha1.ClusterObjectDeploymentTemplateSpec{
+			Phases: phases,
+		},
+	}
+}
+
+func TestBuildObservedPhases_ReadOnly(t *testing.T) {
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
+	obj.SetName("my-cm")
+
+	spec := cosSpecWithPhaseObjects(
+		struct {
+			name    string
+			objects int
+		}{"phase-1", 2},
+		struct {
+			name    string
+			objects int
+		}{"phase-2", 3},
+	)
+
+	t.Run("read-only phase all objects idle and complete", func(t *testing.T) {
+		results := []machinery.PhaseResult{
+			&fakePhaseResult{name: "phase-1", complete: true},
+			&fakePhaseResult{
+				name:     "phase-2",
+				complete: true,
+				objects: []machinery.ObjectResult{
+					&fakeObjectResult{obj: obj, complete: true, paused: true, action: machinery.ActionIdle},
+					&fakeObjectResult{obj: obj, complete: true, paused: true, action: machinery.ActionIdle},
+					&fakeObjectResult{obj: obj, complete: true, paused: true, action: machinery.ActionIdle},
+				},
+			},
+		}
+		observed := buildObservedPhases(spec.Phases, results)
+		require.Len(t, observed, 2)
+		assert.Equal(t, orbv1alpha1.PhaseStatusAvailable, observed[1].Status)
+		assert.Equal(t, int64(3), observed[1].ObjectCounts.Total)
+		assert.Equal(t, int64(3), observed[1].ObjectCounts.Synced)
+		assert.Equal(t, int64(3), observed[1].ObjectCounts.Available)
+	})
+
+	t.Run("read-only phase with objects needing updates", func(t *testing.T) {
+		results := []machinery.PhaseResult{
+			&fakePhaseResult{name: "phase-1", complete: true},
+			&fakePhaseResult{
+				name:     "phase-2",
+				complete: false,
+				objects: []machinery.ObjectResult{
+					&fakeObjectResult{obj: obj, complete: true, paused: true, action: machinery.ActionIdle},
+					&fakeObjectResult{obj: obj, complete: false, paused: true, action: machinery.ActionUpdated},
+					&fakeObjectResult{obj: obj, complete: false, paused: true, action: machinery.ActionCreated},
+				},
+			},
+		}
+		observed := buildObservedPhases(spec.Phases, results)
+		require.Len(t, observed, 2)
+		assert.Equal(t, orbv1alpha1.PhaseStatusPending, observed[1].Status)
+		assert.Equal(t, int64(3), observed[1].ObjectCounts.Total)
+		assert.Equal(t, int64(1), observed[1].ObjectCounts.Synced)
+		assert.Equal(t, int64(1), observed[1].ObjectCounts.Available)
+		assert.Len(t, observed[1].ObjectDetails, 2)
+	})
+
+	t.Run("active phase synced but one probe failing reports WaitingForAssertions", func(t *testing.T) {
+		results := []machinery.PhaseResult{
+			&fakePhaseResult{
+				name:     "phase-1",
+				complete: false,
+				objects: []machinery.ObjectResult{
+					&fakeObjectResult{obj: obj, complete: true, action: machinery.ActionIdle},
+					&fakeObjectResult{obj: obj, complete: false, action: machinery.ActionUpdated},
+				},
+			},
+		}
+		observed := buildObservedPhases(spec.Phases, results)
+		assert.Equal(t, orbv1alpha1.PhaseStatusWaitingForAssertions, observed[0].Status)
+		assert.Equal(t, int64(2), observed[0].ObjectCounts.Total)
+		assert.Equal(t, int64(2), observed[0].ObjectCounts.Synced)
+		assert.Equal(t, int64(1), observed[0].ObjectCounts.Available)
+	})
+
+	t.Run("active phase fully synced but probes failing", func(t *testing.T) {
+		results := []machinery.PhaseResult{
+			&fakePhaseResult{
+				name:     "phase-1",
+				complete: false,
+				objects: []machinery.ObjectResult{
+					&fakeObjectResult{obj: obj, complete: true, action: machinery.ActionIdle},
+					&fakeObjectResult{obj: obj, complete: false, action: machinery.ActionIdle},
+				},
+			},
+		}
+		observed := buildObservedPhases(spec.Phases, results)
+		assert.Equal(t, orbv1alpha1.PhaseStatusWaitingForAssertions, observed[0].Status)
+		assert.Equal(t, int64(2), observed[0].ObjectCounts.Total)
+		assert.Equal(t, int64(2), observed[0].ObjectCounts.Synced)
+		assert.Equal(t, int64(1), observed[0].ObjectCounts.Available)
+	})
+
+	t.Run("complete phase has all counts equal to total", func(t *testing.T) {
+		results := []machinery.PhaseResult{
+			&fakePhaseResult{name: "phase-1", complete: true},
+		}
+		observed := buildObservedPhases(spec.Phases, results)
+		assert.Equal(t, orbv1alpha1.PhaseStatusAvailable, observed[0].Status)
+		assert.Equal(t, int64(2), observed[0].ObjectCounts.Total)
+		assert.Equal(t, int64(2), observed[0].ObjectCounts.Synced)
+		assert.Equal(t, int64(2), observed[0].ObjectCounts.Available)
+	})
+
+	t.Run("unknown phase has total but zero synced and available", func(t *testing.T) {
+		observed := buildObservedPhases(spec.Phases, nil)
+		assert.Equal(t, orbv1alpha1.PhaseStatusUnknown, observed[0].Status)
+		assert.Equal(t, int64(2), observed[0].ObjectCounts.Total)
+		assert.Equal(t, int64(0), observed[0].ObjectCounts.Synced)
+		assert.Equal(t, int64(0), observed[0].ObjectCounts.Available)
+	})
+}
+
+type fakeCompareObjectResult struct {
+	fakeObjectResult
+	compareResult machinery.CompareResult
+}
+
+func (f *fakeCompareObjectResult) CompareResult() machinery.CompareResult { return f.compareResult }
+
+func TestPausedObjectMessages(t *testing.T) {
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
+	obj.SetName("my-cm")
+
+	t.Run("ActionCreated returns object does not exist", func(t *testing.T) {
+		msgs := pausedObjectMessages(&fakeObjectResult{obj: obj, paused: true, action: machinery.ActionCreated})
+		assert.Equal(t, []string{"object does not exist"}, msgs)
+	})
+
+	t.Run("ActionRecovered without compare result", func(t *testing.T) {
+		msgs := pausedObjectMessages(&fakeObjectResult{obj: obj, paused: true, action: machinery.ActionRecovered})
+		assert.Equal(t, []string{"object was modified by another actor"}, msgs)
+	})
+
+	t.Run("ActionRecovered with compare result", func(t *testing.T) {
+		msgs := pausedObjectMessages(&fakeCompareObjectResult{
+			fakeObjectResult: fakeObjectResult{obj: obj, paused: true, action: machinery.ActionRecovered},
+			compareResult: machinery.CompareResult{
+				Comparison: &typed.Comparison{
+					Modified: fieldpath.NewSet(fieldpath.MakePathOrDie("data", "key")),
+				},
+			},
+		})
+		require.Len(t, msgs, 1)
+		assert.Contains(t, msgs[0], "object was modified by another actor")
+		assert.Contains(t, msgs[0], " - modified: .data.key")
+	})
+
+	t.Run("default action without compare result", func(t *testing.T) {
+		msgs := pausedObjectMessages(&fakeObjectResult{obj: obj, paused: true, action: machinery.ActionUpdated})
+		assert.Equal(t, []string{"object content has changed"}, msgs)
+	})
+
+	t.Run("default action with compare result", func(t *testing.T) {
+		msgs := pausedObjectMessages(&fakeCompareObjectResult{
+			fakeObjectResult: fakeObjectResult{obj: obj, paused: true, action: machinery.ActionUpdated},
+			compareResult: machinery.CompareResult{
+				Comparison: &typed.Comparison{
+					Added: fieldpath.NewSet(fieldpath.MakePathOrDie("data", "new-key")),
+				},
+			},
+		})
+		require.Len(t, msgs, 1)
+		assert.Contains(t, msgs[0], "object content has changed")
+		assert.Contains(t, msgs[0], " - added: .data.new-key")
+	})
+}
+
+func TestCompareDetails(t *testing.T) {
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
+	obj.SetName("my-cm")
+
+	t.Run("object without compareResulter returns nil", func(t *testing.T) {
+		result := compareDetails(&fakeObjectResult{obj: obj})
+		assert.Nil(t, result)
+	})
+
+	t.Run("nil Comparison returns nil", func(t *testing.T) {
+		result := compareDetails(&fakeCompareObjectResult{
+			fakeObjectResult: fakeObjectResult{obj: obj},
+			compareResult:    machinery.CompareResult{Comparison: nil},
+		})
+		assert.Nil(t, result)
+	})
+
+	t.Run("added fields only", func(t *testing.T) {
+		result := compareDetails(&fakeCompareObjectResult{
+			fakeObjectResult: fakeObjectResult{obj: obj},
+			compareResult: machinery.CompareResult{
+				Comparison: &typed.Comparison{
+					Added: fieldpath.NewSet(fieldpath.MakePathOrDie("data", "foo")),
+				},
+			},
+		})
+		assert.Equal(t, []string{" - added: .data.foo"}, result)
+	})
+
+	t.Run("modified fields only", func(t *testing.T) {
+		result := compareDetails(&fakeCompareObjectResult{
+			fakeObjectResult: fakeObjectResult{obj: obj},
+			compareResult: machinery.CompareResult{
+				Comparison: &typed.Comparison{
+					Modified: fieldpath.NewSet(fieldpath.MakePathOrDie("data", "bar")),
+				},
+			},
+		})
+		assert.Equal(t, []string{" - modified: .data.bar"}, result)
+	})
+
+	t.Run("removed fields only", func(t *testing.T) {
+		result := compareDetails(&fakeCompareObjectResult{
+			fakeObjectResult: fakeObjectResult{obj: obj},
+			compareResult: machinery.CompareResult{
+				Comparison: &typed.Comparison{
+					Removed: fieldpath.NewSet(fieldpath.MakePathOrDie("data", "old")),
+				},
+			},
+		})
+		assert.Equal(t, []string{" - removed: .data.old"}, result)
+	})
+
+	t.Run("all three field types", func(t *testing.T) {
+		result := compareDetails(&fakeCompareObjectResult{
+			fakeObjectResult: fakeObjectResult{obj: obj},
+			compareResult: machinery.CompareResult{
+				Comparison: &typed.Comparison{
+					Added:    fieldpath.NewSet(fieldpath.MakePathOrDie("data", "new")),
+					Modified: fieldpath.NewSet(fieldpath.MakePathOrDie("data", "changed")),
+					Removed:  fieldpath.NewSet(fieldpath.MakePathOrDie("data", "gone")),
+				},
+			},
+		})
+		require.Len(t, result, 3)
+		assert.Equal(t, " - added: .data.new", result[0])
+		assert.Equal(t, " - modified: .data.changed", result[1])
+		assert.Equal(t, " - removed: .data.gone", result[2])
+	})
+}
 
 func cosSpecWithPhases(names ...string) orbv1alpha1.ClusterObjectSetSpec {
 	phases := make([]orbv1alpha1.Phase, len(names))

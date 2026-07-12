@@ -262,6 +262,18 @@ var schemaYAML = typed.YAMLObject(`types:
         scalar: string
 - name: com.github.joelanford.orb-operator.api.v1alpha1.LifecycleState
   scalar: string
+- name: com.github.joelanford.orb-operator.api.v1alpha1.ObjectCounts
+  map:
+    fields:
+    - name: available
+      type:
+        scalar: numeric
+    - name: synced
+      type:
+        scalar: numeric
+    - name: total
+      type:
+        scalar: numeric
 - name: com.github.joelanford.orb-operator.api.v1alpha1.ObjectRef
   map:
     fields:
@@ -311,18 +323,21 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: completedAt
       type:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
-    - name: error
+    - name: message
       type:
         scalar: string
-    - name: incompleteObjects
+    - name: name
+      type:
+        scalar: string
+    - name: objectCounts
+      type:
+        namedType: com.github.joelanford.orb-operator.api.v1alpha1.ObjectCounts
+    - name: objectDetails
       type:
         list:
           elementType:
             namedType: com.github.joelanford.orb-operator.api.v1alpha1.ObjectStatus
           elementRelationship: atomic
-    - name: name
-      type:
-        scalar: string
     - name: status
       type:
         namedType: com.github.joelanford.orb-operator.api.v1alpha1.PhaseStatus

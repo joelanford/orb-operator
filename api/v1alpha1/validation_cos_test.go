@@ -108,7 +108,9 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 
 	for _, status := range []orbv1alpha1.PhaseStatus{
 		orbv1alpha1.PhaseStatusInvalid,
+		orbv1alpha1.PhaseStatusPending,
 		orbv1alpha1.PhaseStatusReconciling,
+		orbv1alpha1.PhaseStatusWaitingForAssertions,
 		orbv1alpha1.PhaseStatusAvailable,
 		orbv1alpha1.PhaseStatusUnknown,
 		orbv1alpha1.PhaseStatusSuperseded,
@@ -144,9 +146,9 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 		createCOS(t, ctx, cos)
 
 		cos.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
-			Name:   "install",
-			Status: orbv1alpha1.PhaseStatusReconciling,
-			Error:  strings.Repeat("e", 1024),
+			Name:    "install",
+			Status:  orbv1alpha1.PhaseStatusReconciling,
+			Message: strings.Repeat("e", 1024),
 		}}
 		require.NoError(t, k8sClient.Status().Update(ctx, cos))
 	})
@@ -156,12 +158,12 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 		createCOS(t, ctx, cos)
 
 		cos.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
-			Name:   "install",
-			Status: orbv1alpha1.PhaseStatusReconciling,
-			Error:  strings.Repeat("e", 1025),
+			Name:    "install",
+			Status:  orbv1alpha1.PhaseStatusReconciling,
+			Message: strings.Repeat("e", 1025),
 		}}
 		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
-			"status.observedPhases[0].error", "may not be more than 1024")
+			"status.observedPhases[0].message", "may not be more than 1024")
 	})
 
 	t.Run("observedPhases exceeding 20 is rejected", func(t *testing.T) {
@@ -180,7 +182,7 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 			"status.observedPhases", "must have at most 20 items")
 	})
 
-	t.Run("incompleteObjects at max (50) succeeds", func(t *testing.T) {
+	t.Run("objectDetails at max (50) succeeds", func(t *testing.T) {
 		cos := newCOS("op-max-objects")
 		createCOS(t, ctx, cos)
 
@@ -193,14 +195,14 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 			}
 		}
 		cos.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
-			Name:              "install",
-			Status:            orbv1alpha1.PhaseStatusReconciling,
-			IncompleteObjects: objects,
+			Name:          "install",
+			Status:        orbv1alpha1.PhaseStatusReconciling,
+			ObjectDetails: objects,
 		}}
 		require.NoError(t, k8sClient.Status().Update(ctx, cos))
 	})
 
-	t.Run("incompleteObjects exceeding 50 is rejected", func(t *testing.T) {
+	t.Run("objectDetails exceeding 50 is rejected", func(t *testing.T) {
 		cos := newCOS("op-too-many-obj")
 		createCOS(t, ctx, cos)
 
@@ -213,12 +215,12 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 			}
 		}
 		cos.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
-			Name:              "install",
-			Status:            orbv1alpha1.PhaseStatusReconciling,
-			IncompleteObjects: objects,
+			Name:          "install",
+			Status:        orbv1alpha1.PhaseStatusReconciling,
+			ObjectDetails: objects,
 		}}
 		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
-			"status.observedPhases[0].incompleteObjects", "must have at most 50 items")
+			"status.observedPhases[0].objectDetails", "must have at most 50 items")
 	})
 
 	t.Run("setting phase completedAt succeeds", func(t *testing.T) {
@@ -278,15 +280,15 @@ func TestCOS_Status_ObjectStatus_Validation(t *testing.T) {
 		cos := newCOS(name)
 		createCOS(t, ctx, cos)
 		cos.Status.ObservedPhases = []orbv1alpha1.ObservedPhase{{
-			Name:              "install",
-			Status:            orbv1alpha1.PhaseStatusReconciling,
-			IncompleteObjects: []orbv1alpha1.ObjectStatus{os},
+			Name:          "install",
+			Status:        orbv1alpha1.PhaseStatusReconciling,
+			ObjectDetails: []orbv1alpha1.ObjectStatus{os},
 		}}
 		return k8sClient.Status().Update(ctx, cos)
 	}
 
 	objField := func(f string) string {
-		return "status.observedPhases[0].incompleteObjects[0]." + f
+		return "status.observedPhases[0].objectDetails[0]." + f
 	}
 
 	t.Run("valid object status succeeds", func(t *testing.T) {

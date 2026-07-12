@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -12,6 +13,7 @@ import (
 	"pkg.package-operator.run/boxcutter/machinery"
 	"pkg.package-operator.run/boxcutter/machinery/types"
 	"pkg.package-operator.run/boxcutter/validation"
+	"sigs.k8s.io/structured-merge-diff/v6/fieldpath"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 	orberrors "github.com/joelanford/orb-operator/internal/errors"
@@ -153,16 +155,15 @@ func invalidPhasesFromValidationError(specPhases []orbv1alpha1.Phase, verr *vali
 	for _, sp := range specPhases {
 		if pve, ok := phaseErrors[sp.Name]; ok {
 			op := orbv1alpha1.ObservedPhase{
-				Name:   sp.Name,
-				Status: orbv1alpha1.PhaseStatusInvalid,
+				Name: sp.Name,
 			}
 			applyValidationError(&op, pve)
 			observed = append(observed, op)
 		} else {
 			observed = append(observed, orbv1alpha1.ObservedPhase{
-				Name:   sp.Name,
-				Status: orbv1alpha1.PhaseStatusUnknown,
-				Error:  "Blocked by preflight errors in other phases",
+				Name:    sp.Name,
+				Status:  orbv1alpha1.PhaseStatusUnknown,
+				Message: "Blocked by preflight errors in other phases",
 			})
 		}
 	}
@@ -173,41 +174,67 @@ func allPhasesWithStatus(specPhases []orbv1alpha1.Phase, status orbv1alpha1.Phas
 	observed := make([]orbv1alpha1.ObservedPhase, len(specPhases))
 	for i, sp := range specPhases {
 		observed[i] = orbv1alpha1.ObservedPhase{
-			Name:   sp.Name,
-			Status: status,
+			Name:         sp.Name,
+			Status:       status,
+			ObjectCounts: orbv1alpha1.ObjectCounts{Total: int64(len(sp.Objects))},
 		}
 	}
 	return observed
 }
 
 func buildObservedPhases(specPhases []orbv1alpha1.Phase, phaseResults []machinery.PhaseResult) []orbv1alpha1.ObservedPhase {
-	return mapSpecPhases(specPhases, phaseResults, orbv1alpha1.PhaseStatusAvailable, "Waiting for earlier phases to complete", reconcilingPhase)
+	return mapSpecPhases(specPhases, phaseResults, orbv1alpha1.PhaseStatusAvailable, "Phase was not evaluated", incompletePhase)
 }
 
-func reconcilingPhase(_ orbv1alpha1.Phase, pr machinery.PhaseResult) orbv1alpha1.ObservedPhase {
+func incompletePhase(sp orbv1alpha1.Phase, pr machinery.PhaseResult) orbv1alpha1.ObservedPhase {
 	op := orbv1alpha1.ObservedPhase{
-		Name:   pr.GetName(),
-		Status: orbv1alpha1.PhaseStatusReconciling,
+		Name:         pr.GetName(),
+		ObjectCounts: orbv1alpha1.ObjectCounts{Total: int64(len(sp.Objects))},
 	}
 
 	if verr := pr.GetValidationError(); verr != nil {
 		applyValidationError(&op, verr)
+		return op
 	}
 
+	paused := false
 	for _, obj := range pr.GetObjects() {
+		if obj.IsPaused() {
+			paused = true
+			if obj.Action() == machinery.ActionIdle {
+				op.ObjectCounts.Synced++
+			}
+		} else {
+			switch obj.Action() {
+			case machinery.ActionIdle, machinery.ActionUpdated, machinery.ActionCreated, machinery.ActionRecovered:
+				op.ObjectCounts.Synced++
+			}
+		}
 		if obj.IsComplete() {
+			op.ObjectCounts.Available++
 			continue
 		}
 		os := objectStatusFromRef(types.ToObjectRef(obj.Object()))
-		os.Messages = messagesForObject(obj)
-		op.IncompleteObjects = append(op.IncompleteObjects, os)
+		os.Messages = objectMessages(obj)
+		op.ObjectDetails = append(op.ObjectDetails, os)
+	}
+
+	switch {
+	case paused:
+		op.Status = orbv1alpha1.PhaseStatusPending
+		op.Message = "Waiting for earlier phases to complete"
+	case op.ObjectCounts.Synced == op.ObjectCounts.Total:
+		op.Status = orbv1alpha1.PhaseStatusWaitingForAssertions
+	default:
+		op.Status = orbv1alpha1.PhaseStatusReconciling
 	}
 	return op
 }
 
 func applyValidationError(op *orbv1alpha1.ObservedPhase, verr *validation.PhaseValidationError) {
+	op.Status = orbv1alpha1.PhaseStatusInvalid
 	if verr.PhaseError != nil {
-		op.Error = truncateMessage(fmt.Sprintf("validation error: %v", verr.PhaseError))
+		op.Message = truncateMessage(fmt.Sprintf("validation error: %v", verr.PhaseError))
 	}
 	for _, objErr := range verr.Objects {
 		msgs := make([]string, 0, len(objErr.Errors))
@@ -216,7 +243,7 @@ func applyValidationError(op *orbv1alpha1.ObservedPhase, verr *validation.PhaseV
 		}
 		os := objectStatusFromRef(objErr.ObjectRef)
 		os.Messages = msgs
-		op.IncompleteObjects = append(op.IncompleteObjects, os)
+		op.ObjectDetails = append(op.ObjectDetails, os)
 	}
 }
 
@@ -239,7 +266,7 @@ func tearingDownPhase(_ orbv1alpha1.Phase, pr machinery.PhaseTeardownResult) orb
 	for _, ref := range pr.Waiting() {
 		os := objectStatusFromRef(ref)
 		os.Messages = []string{"awaiting deletion"}
-		op.IncompleteObjects = append(op.IncompleteObjects, os)
+		op.ObjectDetails = append(op.ObjectDetails, os)
 	}
 	return op
 }
@@ -251,7 +278,7 @@ func mapSpecPhases[T interface {
 	specPhases []orbv1alpha1.Phase,
 	results []T,
 	completeStatus orbv1alpha1.PhaseStatus,
-	unknownError string,
+	unevaluatedMessage string,
 	buildIncomplete func(orbv1alpha1.Phase, T) orbv1alpha1.ObservedPhase,
 ) []orbv1alpha1.ObservedPhase {
 	resultsByName := make(map[string]T, len(results))
@@ -261,19 +288,22 @@ func mapSpecPhases[T interface {
 
 	observed := make([]orbv1alpha1.ObservedPhase, 0, len(specPhases))
 	for _, sp := range specPhases {
+		total := int64(len(sp.Objects))
 		r, evaluated := resultsByName[sp.Name]
 		if !evaluated {
 			observed = append(observed, orbv1alpha1.ObservedPhase{
-				Name:   sp.Name,
-				Status: orbv1alpha1.PhaseStatusUnknown,
-				Error:  unknownError,
+				Name:         sp.Name,
+				Status:       orbv1alpha1.PhaseStatusUnknown,
+				Message:      unevaluatedMessage,
+				ObjectCounts: orbv1alpha1.ObjectCounts{Total: total},
 			})
 			continue
 		}
 		if r.IsComplete() {
 			observed = append(observed, orbv1alpha1.ObservedPhase{
-				Name:   sp.Name,
-				Status: completeStatus,
+				Name:         sp.Name,
+				Status:       completeStatus,
+				ObjectCounts: orbv1alpha1.ObjectCounts{Total: total, Synced: total, Available: total},
 			})
 			continue
 		}
@@ -292,7 +322,11 @@ func objectStatusFromRef(ref types.ObjectRef) orbv1alpha1.ObjectStatus {
 	}
 }
 
-func messagesForObject(obj machinery.ObjectResult) []string {
+func objectMessages(obj machinery.ObjectResult) []string {
+	if obj.IsPaused() && obj.Action() != machinery.ActionIdle {
+		return pausedObjectMessages(obj)
+	}
+
 	var msgs []string
 
 	if obj.Action() == machinery.ActionCollision {
@@ -335,6 +369,55 @@ func PreserveCompletionTimes(existing, current []orbv1alpha1.ObservedPhase, now 
 			current[i].CompletedAt = &mt
 		}
 	}
+}
+
+type compareResulter interface {
+	CompareResult() machinery.CompareResult
+}
+
+func pausedObjectMessages(obj machinery.ObjectResult) []string {
+	var summary string
+	switch obj.Action() {
+	case machinery.ActionCreated:
+		return []string{"object does not exist"}
+	case machinery.ActionRecovered:
+		summary = "object was modified by another actor"
+	default:
+		summary = "object content has changed"
+	}
+
+	if details := compareDetails(obj); len(details) > 0 {
+		summary += "\n" + strings.Join(details, "\n")
+	}
+	return []string{summary}
+}
+
+func compareDetails(obj machinery.ObjectResult) []string {
+	cr, ok := obj.(compareResulter)
+	if !ok {
+		return nil
+	}
+	comp := cr.CompareResult().Comparison
+	if comp == nil {
+		return nil
+	}
+	var details []string
+	if comp.Added != nil && !comp.Added.Empty() {
+		comp.Added.Leaves().Iterate(func(p fieldpath.Path) {
+			details = append(details, fmt.Sprintf(" - added: %s", p))
+		})
+	}
+	if comp.Modified != nil && !comp.Modified.Empty() {
+		comp.Modified.Leaves().Iterate(func(p fieldpath.Path) {
+			details = append(details, fmt.Sprintf(" - modified: %s", p))
+		})
+	}
+	if comp.Removed != nil && !comp.Removed.Empty() {
+		comp.Removed.Leaves().Iterate(func(p fieldpath.Path) {
+			details = append(details, fmt.Sprintf(" - removed: %s", p))
+		})
+	}
+	return details
 }
 
 const maxMessageLength = 1024

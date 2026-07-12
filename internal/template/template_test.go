@@ -83,7 +83,7 @@ func TestBuildCOS(t *testing.T) {
 
 	cos, err := BuildCOS(cod, 3, "abcd1234")
 	require.NoError(t, err)
-	assert.Equal(t, "my-cod-3", *cos.ObjectMetaApplyConfiguration.Name)
+	assert.Equal(t, "my-cod-3", *cos.Name)
 	assert.Equal(t, "abcd1234", cos.Labels[LabelTemplateHash])
 	assert.Equal(t, "test", cos.Labels["app"])
 	assert.Equal(t, "hello", cos.Annotations["note"])

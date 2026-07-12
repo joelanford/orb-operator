@@ -486,25 +486,62 @@ spec:
                         Available.
                       format: date-time
                       type: string
-                    error:
+                    message:
                       description: |-
-                        error is a phase-level error message describing a validation or
-                        configuration problem with the phase itself (as opposed to
-                        individual objects). At most 1024 characters; longer messages
-                        are truncated by the controller.
+                        message is a phase-level message providing context about the
+                        current status (e.g. a validation error for Invalid phases, or
+                        a summary for Pending phases). At most 1024 characters; longer
+                        messages are truncated by the controller.
                       maxLength: 1024
                       type: string
-                    incompleteObjects:
+                    name:
                       description: |-
-                        incompleteObjects lists objects in this phase that are not
-                        yet complete. For Reconciling phases, this includes probe
+                        name is the name of the phase from the spec. Must be a valid DNS-1035
+                        label: lowercase alphanumeric characters or '-', must start with a
+                        letter and end with an alphanumeric character (e.g. "my-phase",
+                        "phase1"), matching the Phase name constraints.
+                      maxLength: 63
+                      minLength: 1
+                      type: string
+                      x-kubernetes-validations:
+                      - message: 'name must be a valid DNS-1035 label: lowercase alphanumeric
+                          or ''-'', starting with a letter, ending with an alphanumeric'
+                        rule: self.matches('^[a-z]([a-z0-9-]*[a-z0-9])?$')
+                    objectCounts:
+                      description: objectCounts reports the number of objects in this
+                        phase by state.
+                      properties:
+                        available:
+                          description: |-
+                            available is the number of objects in this phase that are synced
+                            and pass their assertions.
+                          format: int64
+                          type: integer
+                        synced:
+                          description: |-
+                            synced is the number of objects in this phase whose cluster state
+                            matches the desired state.
+                          format: int64
+                          type: integer
+                        total:
+                          description: total is the number of objects in this phase.
+                          format: int64
+                          type: integer
+                      required:
+                      - available
+                      - synced
+                      - total
+                      type: object
+                    objectDetails:
+                      description: |-
+                        objectDetails lists objects in this phase that are not yet
+                        complete. For Reconciling and Pending phases, this includes probe
                         failures, collisions, creation/update errors, and any other
-                        condition preventing completion. For TearingDown phases,
-                        this lists objects still awaiting deletion. Each entry
-                        identifies the object and carries failure messages. Empty
-                        when status is Available, TeardownComplete, or Unknown.
-                        The list may contain at most 50 entries, matching the maximum
-                        number of objects per phase.
+                        condition preventing completion. For TearingDown phases, this
+                        lists objects still awaiting deletion. Each entry identifies the
+                        object and carries failure messages. Empty when status is
+                        Available, TeardownComplete, or Unknown. The list may contain at
+                        most 50 entries, matching the maximum number of objects per phase.
                       items:
                         description: ObjectStatus identifies a managed object and
                           its failure messages.
@@ -560,27 +597,16 @@ spec:
                         type: object
                       maxItems: 50
                       type: array
-                    name:
-                      description: |-
-                        name is the name of the phase from the spec. Must be a valid DNS-1035
-                        label: lowercase alphanumeric characters or '-', must start with a
-                        letter and end with an alphanumeric character (e.g. "my-phase",
-                        "phase1"), matching the Phase name constraints.
-                      maxLength: 63
-                      minLength: 1
-                      type: string
-                      x-kubernetes-validations:
-                      - message: 'name must be a valid DNS-1035 label: lowercase alphanumeric
-                          or ''-'', starting with a letter, ending with an alphanumeric'
-                        rule: self.matches('^[a-z]([a-z0-9-]*[a-z0-9])?$')
                     status:
                       description: |-
                         status is the current state of this phase in the rollout. Must be
-                        one of Reconciling, Available, Unknown, Superseded, TearingDown, or
-                        TeardownComplete.
+                        one of Invalid, Pending, Reconciling, WaitingForAssertions,
+                        Available, Unknown, Superseded, TearingDown, or TeardownComplete.
                       enum:
                       - Invalid
+                      - Pending
                       - Reconciling
+                      - WaitingForAssertions
                       - Available
                       - Unknown
                       - Superseded
@@ -589,6 +615,7 @@ spec:
                       type: string
                   required:
                   - name
+                  - objectCounts
                   - status
                   type: object
                   x-kubernetes-validations:

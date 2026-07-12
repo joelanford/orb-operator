@@ -18,28 +18,29 @@ type ObservedPhaseApplyConfiguration struct {
 	// "phase1"), matching the Phase name constraints.
 	Name *string `json:"name,omitempty"`
 	// status is the current state of this phase in the rollout. Must be
-	// one of Reconciling, Available, Unknown, Superseded, TearingDown, or
-	// TeardownComplete.
+	// one of Invalid, Pending, Reconciling, WaitingForAssertions,
+	// Available, Unknown, Superseded, TearingDown, or TeardownComplete.
 	Status *apiv1alpha1.PhaseStatus `json:"status,omitempty"`
 	// completedAt is the timestamp when this phase first became Available.
 	// Set once and never cleared. Nil means the phase has never been
 	// Available.
 	CompletedAt *v1.Time `json:"completedAt,omitempty"`
-	// error is a phase-level error message describing a validation or
-	// configuration problem with the phase itself (as opposed to
-	// individual objects). At most 1024 characters; longer messages
-	// are truncated by the controller.
-	Error *string `json:"error,omitempty"`
-	// incompleteObjects lists objects in this phase that are not
-	// yet complete. For Reconciling phases, this includes probe
+	// message is a phase-level message providing context about the
+	// current status (e.g. a validation error for Invalid phases, or
+	// a summary for Pending phases). At most 1024 characters; longer
+	// messages are truncated by the controller.
+	Message *string `json:"message,omitempty"`
+	// objectCounts reports the number of objects in this phase by state.
+	ObjectCounts *ObjectCountsApplyConfiguration `json:"objectCounts,omitempty"`
+	// objectDetails lists objects in this phase that are not yet
+	// complete. For Reconciling and Pending phases, this includes probe
 	// failures, collisions, creation/update errors, and any other
-	// condition preventing completion. For TearingDown phases,
-	// this lists objects still awaiting deletion. Each entry
-	// identifies the object and carries failure messages. Empty
-	// when status is Available, TeardownComplete, or Unknown.
-	// The list may contain at most 50 entries, matching the maximum
-	// number of objects per phase.
-	IncompleteObjects []ObjectStatusApplyConfiguration `json:"incompleteObjects,omitempty"`
+	// condition preventing completion. For TearingDown phases, this
+	// lists objects still awaiting deletion. Each entry identifies the
+	// object and carries failure messages. Empty when status is
+	// Available, TeardownComplete, or Unknown. The list may contain at
+	// most 50 entries, matching the maximum number of objects per phase.
+	ObjectDetails []ObjectStatusApplyConfiguration `json:"objectDetails,omitempty"`
 }
 
 // ObservedPhaseApplyConfiguration constructs a declarative configuration of the ObservedPhase type for use with
@@ -72,23 +73,31 @@ func (b *ObservedPhaseApplyConfiguration) WithCompletedAt(value v1.Time) *Observ
 	return b
 }
 
-// WithError sets the Error field in the declarative configuration to the given value
+// WithMessage sets the Message field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the Error field is set to the value of the last call.
-func (b *ObservedPhaseApplyConfiguration) WithError(value string) *ObservedPhaseApplyConfiguration {
-	b.Error = &value
+// If called multiple times, the Message field is set to the value of the last call.
+func (b *ObservedPhaseApplyConfiguration) WithMessage(value string) *ObservedPhaseApplyConfiguration {
+	b.Message = &value
 	return b
 }
 
-// WithIncompleteObjects adds the given value to the IncompleteObjects field in the declarative configuration
+// WithObjectCounts sets the ObjectCounts field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ObjectCounts field is set to the value of the last call.
+func (b *ObservedPhaseApplyConfiguration) WithObjectCounts(value *ObjectCountsApplyConfiguration) *ObservedPhaseApplyConfiguration {
+	b.ObjectCounts = value
+	return b
+}
+
+// WithObjectDetails adds the given value to the ObjectDetails field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
-// If called multiple times, values provided by each call will be appended to the IncompleteObjects field.
-func (b *ObservedPhaseApplyConfiguration) WithIncompleteObjects(values ...*ObjectStatusApplyConfiguration) *ObservedPhaseApplyConfiguration {
+// If called multiple times, values provided by each call will be appended to the ObjectDetails field.
+func (b *ObservedPhaseApplyConfiguration) WithObjectDetails(values ...*ObjectStatusApplyConfiguration) *ObservedPhaseApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
-			panic("nil value passed to WithIncompleteObjects")
+			panic("nil value passed to WithObjectDetails")
 		}
-		b.IncompleteObjects = append(b.IncompleteObjects, *values[i])
+		b.ObjectDetails = append(b.ObjectDetails, *values[i])
 	}
 	return b
 }

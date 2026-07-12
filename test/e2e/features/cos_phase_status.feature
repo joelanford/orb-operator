@@ -1,36 +1,53 @@
 Feature: COS phase status reports per-phase rollout state
 
-  Scenario: Phase status shows progression from Unknown to Reconciling to Complete
+  Scenario: Phase status shows progression from Pending to WaitingForAssertions to Available
     Given a COS with group "ps" and revision 1
     And a phase "crds" with a gated ConfigMap "cm-crds"
     And a phase "operators" with a gated ConfigMap "cm-operators"
     And a phase "config" with a gated ConfigMap "cm-config"
     When the COS is created
     Then the COS should have 3 observed phases
-    And the COS should have observed phase "crds" with status "Reconciling"
-    And the COS should have observed phase "operators" with status "Unknown"
-    And observed phase "operators" should have error "Waiting for earlier phases to complete"
-    And the COS should have observed phase "config" with status "Unknown"
-    And observed phase "config" should have error "Waiting for earlier phases to complete"
+    And the COS should have observed phase "crds" with status "WaitingForAssertions"
+    And observed phase "crds" should have object counts total:1/synced:1/available:0
+    And the COS should have observed phase "operators" with status "Pending" and message "Waiting for earlier phases to complete"
+    And observed phase "operators" should have object counts total:1/synced:0/available:0
+    And the COS should have observed phase "config" with status "Pending" and message "Waiting for earlier phases to complete"
+    And observed phase "config" should have object counts total:1/synced:0/available:0
     And the COS should not have completedAt set
     When the gate on ConfigMap "cm-crds" is opened
     Then the COS should have observed phase "crds" with status "Available"
-    And the COS should have observed phase "operators" with status "Reconciling"
-    And the COS should have observed phase "config" with status "Unknown"
+    And observed phase "crds" should have object counts total:1/synced:1/available:1
+    And the COS should have observed phase "operators" with status "WaitingForAssertions"
+    And observed phase "operators" should have object counts total:1/synced:1/available:0
+    And the COS should have observed phase "config" with status "Pending" and message "Waiting for earlier phases to complete"
+    And observed phase "config" should have object counts total:1/synced:0/available:0
     When the gate on ConfigMap "cm-operators" is opened
     And the gate on ConfigMap "cm-config" is opened
     Then the COS should have condition "Available" with status "True"
     And the COS should have observed phase "crds" with status "Available"
+    And observed phase "crds" should have object counts total:1/synced:1/available:1
     And the COS should have observed phase "operators" with status "Available"
+    And observed phase "operators" should have object counts total:1/synced:1/available:1
     And the COS should have observed phase "config" with status "Available"
+    And observed phase "config" should have object counts total:1/synced:1/available:1
     And the COS should have completedAt set
 
-  Scenario: Incomplete objects listed in Reconciling phases
+  Scenario: Object details listed in WaitingForAssertions phases
     Given a COS with group "ps-unavail" and revision 1
     And a phase "install" with a gated ConfigMap "cm-unavail"
     When the COS is created
-    Then the COS should have observed phase "install" with status "Reconciling"
-    And observed phase "install" should have 1 incomplete objects
+    Then the COS should have observed phase "install" with status "WaitingForAssertions"
+    And observed phase "install" should have object counts total:1/synced:1/available:0
+    And observed phase "install" should have object details for "cm-unavail"
+
+  Scenario: Object details listed in Pending phases
+    Given a COS with group "ps-pending" and revision 1
+    And a phase "phase-1" with a gated ConfigMap "cm-pending-1"
+    And a phase "phase-2" with a ConfigMap "cm-pending-2"
+    When the COS is created
+    Then the COS should have observed phase "phase-2" with status "Pending"
+    And observed phase "phase-2" should have object counts total:1/synced:0/available:0
+    And observed phase "phase-2" should have object details for "cm-pending-2"
 
   Scenario: completedAt is preserved through regression
     Given a COS with group "ps-regress" and revision 1
@@ -42,7 +59,8 @@ Feature: COS phase status reports per-phase rollout state
     And the COS completedAt is tracked
     When the gate on ConfigMap "cm-regress" is closed
     Then the COS should have condition "Available" with status "False"
-    And the COS should have observed phase "install" with status "Reconciling"
+    And the COS should have observed phase "install" with status "WaitingForAssertions"
+    And observed phase "install" should have object counts total:1/synced:1/available:0
     And the COS completedAt should be preserved
 
   Scenario: Archived COS shows all phases TeardownComplete after teardown and keeps completedAt
@@ -64,7 +82,7 @@ Feature: COS phase status reports per-phase rollout state
     And the COS lifecycleState is set to "Archived"
     Then the COS should have observed phase "phase-3" with status "TeardownComplete"
     And the COS should have observed phase "phase-2" with status "TearingDown"
-    And observed phase "phase-2" should have an incomplete object "cm-td-archive-2"
+    And observed phase "phase-2" should have object details for "cm-td-archive-2"
     And the COS should have observed phase "phase-1" with status "Unknown"
     When the finalizer "e2e.orb.dev/block" is removed from ConfigMap "cm-td-archive-2"
     Then the COS should have condition "Available" with status "False" and reason "Archived"
@@ -82,7 +100,7 @@ Feature: COS phase status reports per-phase rollout state
     And the COS is deleted
     Then the COS should have observed phase "phase-3" with status "TeardownComplete"
     And the COS should have observed phase "phase-2" with status "TearingDown"
-    And observed phase "phase-2" should have an incomplete object "cm-td-delete-2"
+    And observed phase "phase-2" should have object details for "cm-td-delete-2"
     And the COS should have observed phase "phase-1" with status "Unknown"
     When the finalizer "e2e.orb.dev/block" is removed from ConfigMap "cm-td-delete-2"
     Then the COS should not exist
@@ -108,9 +126,9 @@ Feature: COS phase status reports per-phase rollout state
     When the COS is created
     Then the COS should have condition "Available" with status "False" and reason "InvalidRevision" and message containing "duplicate object found in phases"
     And the COS should have observed phase "phase-1" with status "Invalid"
-    And observed phase "phase-1" should have 1 incomplete objects
+    And observed phase "phase-1" should have object details for "cm-dup"
     And the COS should have observed phase "phase-2" with status "Invalid"
-    And observed phase "phase-2" should have 1 incomplete objects
+    And observed phase "phase-2" should have object details for "cm-dup"
     And the ConfigMap "cm-dup" should not exist
 
   Scenario: Superseded COS shows all phases as Superseded
@@ -121,7 +139,7 @@ Feature: COS phase status reports per-phase rollout state
     Then revision 1 should have condition "Available" with status "False" and reason "Superseded"
     And revision 1 should have observed phase "install" with status "Superseded"
 
-  Scenario: Completed phase gets drift correction, in-progress phase keeps reconciling, later phases stay gated
+  Scenario: Completed phase gets drift correction, in-progress phase keeps waiting, later phases stay pending
     Given a COS with group "ps-drift" and revision 1
     And a phase "phase-1" with a gated ConfigMap "cm-drift-1"
     And a phase "phase-2" with a ConfigMap "cm-drift-2"
@@ -130,16 +148,23 @@ Feature: COS phase status reports per-phase rollout state
     When the COS is created
     And the gate on ConfigMap "cm-drift-1" is opened
     Then the COS should have observed phase "phase-1" with status "Available"
+    And observed phase "phase-1" should have object counts total:1/synced:1/available:1
     And the COS should have observed phase "phase-2" with status "Available"
-    And the COS should have observed phase "phase-3" with status "Reconciling"
-    And the COS should have observed phase "phase-4" with status "Unknown"
+    And observed phase "phase-2" should have object counts total:1/synced:1/available:1
+    And the COS should have observed phase "phase-3" with status "WaitingForAssertions"
+    And observed phase "phase-3" should have object counts total:1/synced:1/available:0
+    And the COS should have observed phase "phase-4" with status "Pending" and message "Waiting for earlier phases to complete"
+    And observed phase "phase-4" should have object counts total:1/synced:0/available:0
     When the gate on ConfigMap "cm-drift-1" is closed
     Then the COS should have condition "Available" with status "False"
-    And the COS should have observed phase "phase-1" with status "Reconciling"
+    And the COS should have observed phase "phase-1" with status "WaitingForAssertions"
+    And observed phase "phase-1" should have object counts total:1/synced:1/available:0
     And the COS should have observed phase "phase-2" with status "Available"
-    And the COS should have observed phase "phase-3" with status "Reconciling"
-    And the COS should have observed phase "phase-4" with status "Unknown"
-    And observed phase "phase-4" should have error "Waiting for earlier phases to complete"
+    And observed phase "phase-2" should have object counts total:1/synced:1/available:1
+    And the COS should have observed phase "phase-3" with status "WaitingForAssertions"
+    And observed phase "phase-3" should have object counts total:1/synced:1/available:0
+    And the COS should have observed phase "phase-4" with status "Pending" and message "Waiting for earlier phases to complete"
+    And observed phase "phase-4" should have object counts total:1/synced:0/available:0
     And the ConfigMap "cm-drift-2" should exist
     When the ConfigMap "cm-drift-2" is deleted
     Then the ConfigMap "cm-drift-2" should be recreated
@@ -151,7 +176,6 @@ Feature: COS phase status reports per-phase rollout state
     And a phase "bad-phase-2" with a ConfigMap "cm-mixed-dup"
     When the COS is created
     Then the COS should have condition "Available" with status "False" and reason "InvalidRevision"
-    And the COS should have observed phase "good-phase" with status "Unknown"
-    And observed phase "good-phase" should have error "Blocked by preflight errors in other phases"
+    And the COS should have observed phase "good-phase" with status "Unknown" and message "Blocked by preflight errors in other phases"
     And the COS should have observed phase "bad-phase-1" with status "Invalid"
     And the COS should have observed phase "bad-phase-2" with status "Invalid"

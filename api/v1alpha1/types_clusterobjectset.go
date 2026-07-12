@@ -135,23 +135,34 @@ type ClusterObjectSetStatus struct {
 
 // PhaseStatus describes the current state of a phase in the rollout.
 //
-// +kubebuilder:validation:Enum=Invalid;Reconciling;Available;Unknown;Superseded;TearingDown;TeardownComplete
+// +kubebuilder:validation:Enum=Invalid;Pending;Reconciling;WaitingForAssertions;Available;Unknown;Superseded;TearingDown;TeardownComplete
 type PhaseStatus string
 
 const (
 	// PhaseStatusInvalid indicates the phase failed preflight validation.
-	// The error and incompleteObjects fields describe what went wrong.
-	// Some errors are permanent (e.g. cross-phase duplication), while
-	// others may resolve on a future reconcile (e.g. a missing CRD is
-	// installed).
+	// The error and objectDetails fields describe what went wrong. Some
+	// errors are permanent (e.g. cross-phase duplication), while others
+	// may resolve on a future reconcile (e.g. a missing CRD is installed).
 	PhaseStatusInvalid PhaseStatus = "Invalid"
 
-	// PhaseStatusReconciling indicates the controller is actively evaluating
-	// this phase. Objects may or may not have failures.
+	// PhaseStatusPending indicates the phase is not being actively
+	// reconciled, but the controller has checked and some objects do not
+	// match the desired state. The objectDetails field lists what would
+	// need to change.
+	PhaseStatusPending PhaseStatus = "Pending"
+
+	// PhaseStatusReconciling indicates the controller is actively applying
+	// objects in this phase and not all objects are synced yet.
 	PhaseStatusReconciling PhaseStatus = "Reconciling"
 
-	// PhaseStatusAvailable indicates all objects in this phase have been
-	// successfully reconciled and pass their assertions.
+	// PhaseStatusWaitingForAssertions indicates all objects in this phase are
+	// synced but some assertions are not yet passing. The controller is
+	// not actively writing; it is waiting for other controllers or
+	// external actions to bring the objects into the expected state.
+	PhaseStatusWaitingForAssertions PhaseStatus = "WaitingForAssertions"
+
+	// PhaseStatusAvailable indicates all objects in this phase are synced
+	// and pass their assertions.
 	PhaseStatusAvailable PhaseStatus = "Available"
 
 	// PhaseStatusUnknown indicates this phase was not evaluated during
@@ -164,7 +175,7 @@ const (
 
 	// PhaseStatusTearingDown indicates the controller is actively deleting
 	// objects in this phase. Objects still awaiting deletion are listed
-	// in incompleteObjects.
+	// in objectDetails.
 	PhaseStatusTearingDown PhaseStatus = "TearingDown"
 
 	// PhaseStatusTeardownComplete indicates all objects in this phase have
@@ -187,8 +198,8 @@ type ObservedPhase struct {
 	Name string `json:"name"`
 
 	// status is the current state of this phase in the rollout. Must be
-	// one of Reconciling, Available, Unknown, Superseded, TearingDown, or
-	// TeardownComplete.
+	// one of Invalid, Pending, Reconciling, WaitingForAssertions,
+	// Available, Unknown, Superseded, TearingDown, or TeardownComplete.
 	// +required
 	Status PhaseStatus `json:"status"`
 
@@ -198,26 +209,42 @@ type ObservedPhase struct {
 	// +optional
 	CompletedAt *metav1.Time `json:"completedAt,omitempty"`
 
-	// error is a phase-level error message describing a validation or
-	// configuration problem with the phase itself (as opposed to
-	// individual objects). At most 1024 characters; longer messages
-	// are truncated by the controller.
+	// message is a phase-level message providing context about the
+	// current status (e.g. a validation error for Invalid phases, or
+	// a summary for Pending phases). At most 1024 characters; longer
+	// messages are truncated by the controller.
 	// +kubebuilder:validation:MaxLength=1024
 	// +optional
-	Error string `json:"error,omitempty"`
+	Message string `json:"message,omitempty"`
 
-	// incompleteObjects lists objects in this phase that are not
-	// yet complete. For Reconciling phases, this includes probe
+	// objectCounts reports the number of objects in this phase by state.
+	ObjectCounts ObjectCounts `json:"objectCounts"`
+
+	// objectDetails lists objects in this phase that are not yet
+	// complete. For Reconciling and Pending phases, this includes probe
 	// failures, collisions, creation/update errors, and any other
-	// condition preventing completion. For TearingDown phases,
-	// this lists objects still awaiting deletion. Each entry
-	// identifies the object and carries failure messages. Empty
-	// when status is Available, TeardownComplete, or Unknown.
-	// The list may contain at most 50 entries, matching the maximum
-	// number of objects per phase.
+	// condition preventing completion. For TearingDown phases, this
+	// lists objects still awaiting deletion. Each entry identifies the
+	// object and carries failure messages. Empty when status is
+	// Available, TeardownComplete, or Unknown. The list may contain at
+	// most 50 entries, matching the maximum number of objects per phase.
 	// +kubebuilder:validation:MaxItems=50
 	// +optional
-	IncompleteObjects []ObjectStatus `json:"incompleteObjects,omitempty"`
+	ObjectDetails []ObjectStatus `json:"objectDetails,omitempty"`
+}
+
+// ObjectCounts reports the number of objects in a phase by state.
+type ObjectCounts struct {
+	// total is the number of objects in this phase.
+	Total int64 `json:"total"`
+
+	// synced is the number of objects in this phase whose cluster state
+	// matches the desired state.
+	Synced int64 `json:"synced"`
+
+	// available is the number of objects in this phase that are synced
+	// and pass their assertions.
+	Available int64 `json:"available"`
 }
 
 // ObjectStatus identifies a managed object and its failure messages.
