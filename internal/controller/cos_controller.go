@@ -22,7 +22,6 @@ import (
 	"pkg.package-operator.run/boxcutter/machinery/types"
 	"pkg.package-operator.run/boxcutter/managedcache"
 	"pkg.package-operator.run/boxcutter/ownerhandling"
-	"pkg.package-operator.run/boxcutter/probing"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -31,8 +30,8 @@ import (
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 	cosac "github.com/joelanford/orb-operator/applyconfigurations/api/v1alpha1"
-	"github.com/joelanford/orb-operator/internal/assertions"
 	"github.com/joelanford/orb-operator/internal/object"
+	"github.com/joelanford/orb-operator/internal/revision"
 	cosstatus "github.com/joelanford/orb-operator/internal/status/cos"
 )
 
@@ -151,59 +150,17 @@ func (r *COSReconciler) reconcile(ctx context.Context, log logr.Logger, cos *orb
 		return ctrl.Result{}, err
 	}
 
-	ownerKey := controllerOwnerKeyOf(cos)
-	members := filterByControllerOwner(groupMembers, ownerKey)
-	chain := buildChain(members)
+	members := revision.FilterByOwner(groupMembers, cos)
+	chain := revision.BuildChain(members)
 
 	if applied, err := r.ensureFinalizer(ctx, cos); applied || err != nil {
 		return ctrl.Result{}, err
 	}
 
-	siblings := chain.siblingsOf(cos)
+	siblings := chain.SiblingsOf(cos)
 	return ctrl.Result{}, r.reconcileActive(ctx, log, cos, siblings)
 }
 
-type revisionChain struct {
-	latestActive *orbv1alpha1.ClusterObjectSet
-	predecessors []*orbv1alpha1.ClusterObjectSet
-	archived     []*orbv1alpha1.ClusterObjectSet
-	deleted      []*orbv1alpha1.ClusterObjectSet
-}
-
-func buildChain(members []orbv1alpha1.ClusterObjectSet) revisionChain {
-	slices.SortFunc(members, func(a, b orbv1alpha1.ClusterObjectSet) int {
-		return cmp.Compare(b.Spec.Revision, a.Spec.Revision)
-	})
-
-	var ch revisionChain
-	for i := range members {
-		m := &members[i]
-		switch {
-		case !m.DeletionTimestamp.IsZero():
-			ch.deleted = append(ch.deleted, m)
-		case m.Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived:
-			ch.archived = append(ch.archived, m)
-		case ch.latestActive == nil:
-			ch.latestActive = m
-		default:
-			ch.predecessors = append(ch.predecessors, m)
-		}
-	}
-	return ch
-}
-
-func (ch revisionChain) siblingsOf(cos *orbv1alpha1.ClusterObjectSet) []*orbv1alpha1.ClusterObjectSet {
-	var siblings []*orbv1alpha1.ClusterObjectSet
-	if ch.latestActive != nil && ch.latestActive.Name != cos.Name {
-		siblings = append(siblings, ch.latestActive)
-	}
-	for _, p := range ch.predecessors {
-		if p.Name != cos.Name {
-			siblings = append(siblings, p)
-		}
-	}
-	return siblings
-}
 
 func (r *COSReconciler) ensureFinalizer(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet) (bool, error) {
 	applied, err := applyCOS(ctx, r.client, cos, cosFieldOwner,
@@ -252,11 +209,11 @@ func (r *COSReconciler) doReconcileActive(ctx context.Context, cos *orbv1alpha1.
 		return err
 	}
 
-	rev := r.buildRevisionFromResolved(cos, resolved, siblings)
+	rev := revision.Build(cos, resolved, siblings, r.ownerStrategy)
 	result, err := engine.Reconcile(ctx, rev, types.WithAggregatePhaseReconcileErrors())
 	existingPhases := cos.Status.ObservedPhases
-	cos.Status.ObservedPhases = observedPhasesFromReconcileResult(cos.Spec.Phases, result)
-	preservePhaseCompletionTimes(existingPhases, cos.Status.ObservedPhases, time.Now())
+	cos.Status.ObservedPhases = cosstatus.ObservedPhasesFromReconcileResult(cos.Spec.Phases, result)
+	cosstatus.PreserveCompletionTimes(existingPhases, cos.Status.ObservedPhases, time.Now())
 	if err != nil {
 		setCondition(cos, metav1.ConditionUnknown, orbv1alpha1.ReasonReconcileError, fmt.Sprintf("reconcile failed: %v", err))
 		return fmt.Errorf("reconciling: %w", err)
@@ -335,11 +292,11 @@ func (r *COSReconciler) doTeardownCOS(ctx context.Context, cos *orbv1alpha1.Clus
 		return false, fmt.Errorf("engine setup: %w", err)
 	}
 
-	rev := r.buildRevisionFromResolved(cos, resolved, nil)
+	rev := revision.Build(cos, resolved, nil, r.ownerStrategy)
 	result, teardownErr := engine.Teardown(ctx, rev, types.WithAggregatePhaseTeardownErrors())
 	existingPhases := cos.Status.ObservedPhases
 	setTeardownStatus(cos, result, teardownErr)
-	preservePhaseCompletionTimes(existingPhases, cos.Status.ObservedPhases, time.Now())
+	cosstatus.PreserveCompletionTimes(existingPhases, cos.Status.ObservedPhases, time.Now())
 
 	if teardownErr != nil {
 		return false, fmt.Errorf("teardown: %w", teardownErr)
@@ -351,7 +308,7 @@ func (r *COSReconciler) doTeardownCOS(ctx context.Context, cos *orbv1alpha1.Clus
 }
 
 func setTeardownStatus(cos *orbv1alpha1.ClusterObjectSet, result machinery.RevisionTeardownResult, teardownErr error) {
-	cos.Status.ObservedPhases = observedPhasesFromTeardownResult(cos.Spec.Phases, result)
+	cos.Status.ObservedPhases = cosstatus.ObservedPhasesFromTeardownResult(cos.Spec.Phases, result)
 	switch {
 	case teardownErr != nil:
 		setCondition(cos, metav1.ConditionUnknown, orbv1alpha1.ReasonTeardownError,
@@ -381,13 +338,13 @@ func (r *COSReconciler) releaseCOS(ctx context.Context, cos *orbv1alpha1.Cluster
 	return nil
 }
 
-func (r *COSReconciler) engineForCOS(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, resolved *object.Result) (*revisionEngine, error) {
+func (r *COSReconciler) engineForCOS(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, resolved *object.Result) (*revision.Engine, error) {
 	usedFor := resolved.ManagedObjects()
 	accessor, err := r.accessManager.GetWithUser(ctx, cos, cos, usedFor)
 	if err != nil {
 		return nil, fmt.Errorf("getting accessor: %w", err)
 	}
-	engine, err := newRevisionEngine(boxcutter.RevisionEngineOptions{
+	engine, err := revision.NewEngine(boxcutter.RevisionEngineOptions{
 		Scheme:           r.scheme,
 		FieldOwner:       "cos-group/" + cos.Spec.Group,
 		SystemPrefix:     systemPrefix,
@@ -405,82 +362,6 @@ func (r *COSReconciler) engineForCOS(ctx context.Context, cos *orbv1alpha1.Clust
 }
 
 
-func (r *COSReconciler) buildRevisionFromResolved(
-	cos *orbv1alpha1.ClusterObjectSet,
-	resolved *object.Result,
-	siblings []*orbv1alpha1.ClusterObjectSet,
-) boxcutter.Revision {
-	phases := make([]boxcutter.Phase, 0, len(resolved.Phases))
-
-	for _, rp := range resolved.Phases {
-		objects := make([]client.Object, 0, len(rp.Objects))
-		var phaseReconcileOpts []boxcutter.PhaseReconcileOption
-
-		if rp.CollisionProtection != nil {
-			phaseReconcileOpts = append(phaseReconcileOpts, mapCollisionProtection(*rp.CollisionProtection))
-		}
-
-		for _, ro := range rp.Objects {
-			objects = append(objects, ro.Obj)
-
-			var objOpts []boxcutter.ObjectReconcileOption
-
-			probe, err := assertions.ProbeForAssertions(ro.Assertions)
-			if err != nil {
-				probe = boxcutter.ProbeFunc(func(_ client.Object) probing.Result {
-					return probing.FalseResult(fmt.Sprintf("invalid assertion: %v", err))
-				})
-			}
-			if probe != nil {
-				objOpts = append(objOpts, boxcutter.WithProbe(boxcutter.ProgressProbeType, probe))
-			}
-
-			if ro.CollisionProtection != nil {
-				objOpts = append(objOpts, mapCollisionProtection(*ro.CollisionProtection))
-			}
-
-			if len(objOpts) > 0 {
-				phaseReconcileOpts = append(phaseReconcileOpts,
-					boxcutter.WithObjectReconcileOptions(ro.Obj, objOpts...),
-				)
-			}
-		}
-
-		phase := boxcutter.NewPhaseWithOwner(rp.Name, objects, cos, r.ownerStrategy)
-		if len(phaseReconcileOpts) > 0 {
-			phase.WithReconcileOptions(phaseReconcileOpts...)
-		}
-		phases = append(phases, phase)
-	}
-
-	var reconcileOpts []boxcutter.RevisionReconcileOption
-
-	if cos.Spec.CollisionProtection != nil {
-		reconcileOpts = append(reconcileOpts, mapCollisionProtection(*cos.Spec.CollisionProtection))
-	} else {
-		reconcileOpts = append(reconcileOpts, mapCollisionProtection(orbv1alpha1.CollisionProtectionPrevent))
-	}
-
-	if len(siblings) > 0 {
-		siblingObjs := make([]client.Object, 0, len(siblings))
-		for _, s := range siblings {
-			siblingObjs = append(siblingObjs, s)
-		}
-		reconcileOpts = append(reconcileOpts, boxcutter.WithSiblingOwners(siblingObjs))
-	}
-
-	rev := boxcutter.NewRevisionWithOwner(
-		cos.Name,
-		int64(cos.Spec.Revision),
-		phases,
-		cos,
-		r.ownerStrategy,
-	)
-	if len(reconcileOpts) > 0 {
-		rev.WithReconcileOptions(reconcileOpts...)
-	}
-	return rev
-}
 
 func (r *COSReconciler) listGroupMembers(ctx context.Context, group string) ([]orbv1alpha1.ClusterObjectSet, error) {
 	var list orbv1alpha1.ClusterObjectSetList
@@ -493,28 +374,6 @@ func (r *COSReconciler) listGroupMembers(ctx context.Context, group string) ([]o
 	return list.Items, nil
 }
 
-type controllerOwnerKey struct {
-	Kind string
-	Name string
-}
-
-func controllerOwnerKeyOf(cos *orbv1alpha1.ClusterObjectSet) controllerOwnerKey {
-	ref := metav1.GetControllerOf(cos)
-	if ref == nil {
-		return controllerOwnerKey{}
-	}
-	return controllerOwnerKey{Kind: ref.Kind, Name: ref.Name}
-}
-
-func filterByControllerOwner(members []orbv1alpha1.ClusterObjectSet, key controllerOwnerKey) []orbv1alpha1.ClusterObjectSet {
-	var result []orbv1alpha1.ClusterObjectSet
-	for _, m := range members {
-		if controllerOwnerKeyOf(&m) == key {
-			result = append(result, m)
-		}
-	}
-	return result
-}
 
 
 func (r *COSReconciler) handleResolutionError(cos *orbv1alpha1.ClusterObjectSet, err error) error {
@@ -595,25 +454,3 @@ func clearFinalizerFieldOwnership(managedFields []metav1.ManagedFieldsEntry, man
 	}
 }
 
-func mapCollisionProtection(cp orbv1alpha1.CollisionProtection) boxcutter.WithCollisionProtection {
-	switch cp {
-	case orbv1alpha1.CollisionProtectionIfNoController:
-		return boxcutter.WithCollisionProtection(boxcutter.CollisionProtectionIfNoController)
-	case orbv1alpha1.CollisionProtectionNone:
-		return boxcutter.WithCollisionProtection(boxcutter.CollisionProtectionNone)
-	default:
-		return boxcutter.WithCollisionProtection(boxcutter.CollisionProtectionPrevent)
-	}
-}
-
-func observedPhasesFromReconcileResult(specPhases []orbv1alpha1.Phase, result machinery.RevisionResult) []orbv1alpha1.ObservedPhase {
-	return cosstatus.ObservedPhasesFromReconcileResult(specPhases, result)
-}
-
-func observedPhasesFromTeardownResult(specPhases []orbv1alpha1.Phase, result machinery.RevisionTeardownResult) []orbv1alpha1.ObservedPhase {
-	return cosstatus.ObservedPhasesFromTeardownResult(specPhases, result)
-}
-
-func preservePhaseCompletionTimes(existing, current []orbv1alpha1.ObservedPhase, now time.Time) {
-	cosstatus.PreserveCompletionTimes(existing, current, now)
-}

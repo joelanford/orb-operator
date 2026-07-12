@@ -1,4 +1,4 @@
-package controller
+package revision
 
 import (
 	"context"
@@ -11,13 +11,13 @@ import (
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 )
 
-type revisionEngine struct {
+type Engine struct {
 	revision    *boxcutter.RevisionEngine
 	phase       *machinery.PhaseEngine
 	existingOPs []orbv1alpha1.ObservedPhase
 }
 
-func newRevisionEngine(opts boxcutter.RevisionEngineOptions, existingOPs []orbv1alpha1.ObservedPhase) (*revisionEngine, error) {
+func NewEngine(opts boxcutter.RevisionEngineOptions, existingOPs []orbv1alpha1.ObservedPhase) (*Engine, error) {
 	re, err := boxcutter.NewRevisionEngine(opts)
 	if err != nil {
 		return nil, err
@@ -26,27 +26,27 @@ func newRevisionEngine(opts boxcutter.RevisionEngineOptions, existingOPs []orbv1
 	if err != nil {
 		return nil, err
 	}
-	return &revisionEngine{
+	return &Engine{
 		revision:    re,
 		phase:       pe,
 		existingOPs: existingOPs,
 	}, nil
 }
 
-type revisionResult struct {
+type Result struct {
 	gated        machinery.RevisionResult
 	driftResults []machinery.PhaseResult
 }
 
-func (r *revisionResult) GetValidationError() *validation.RevisionValidationError {
+func (r *Result) GetValidationError() *validation.RevisionValidationError {
 	return r.gated.GetValidationError()
 }
 
-func (r *revisionResult) GetPhases() []machinery.PhaseResult {
+func (r *Result) GetPhases() []machinery.PhaseResult {
 	return append(r.gated.GetPhases(), r.driftResults...)
 }
 
-func (r *revisionResult) InTransition() bool {
+func (r *Result) InTransition() bool {
 	if r.gated.InTransition() {
 		return true
 	}
@@ -58,7 +58,7 @@ func (r *revisionResult) InTransition() bool {
 	return false
 }
 
-func (r *revisionResult) IsComplete() bool {
+func (r *Result) IsComplete() bool {
 	if !r.gated.IsComplete() {
 		return false
 	}
@@ -70,20 +70,20 @@ func (r *revisionResult) IsComplete() bool {
 	return true
 }
 
-func (r *revisionResult) HasProgressed() bool {
+func (r *Result) HasProgressed() bool {
 	return r.gated.HasProgressed()
 }
 
-func (r *revisionResult) String() string {
+func (r *Result) String() string {
 	return r.gated.String()
 }
 
-func (re *revisionEngine) Teardown(ctx context.Context, rev types.Revision, opts ...types.RevisionTeardownOption) (machinery.RevisionTeardownResult, error) {
-	return re.revision.Teardown(ctx, rev, opts...)
+func (e *Engine) Teardown(ctx context.Context, rev types.Revision, opts ...types.RevisionTeardownOption) (machinery.RevisionTeardownResult, error) {
+	return e.revision.Teardown(ctx, rev, opts...)
 }
 
-func (re *revisionEngine) Reconcile(ctx context.Context, rev types.Revision, opts ...types.RevisionReconcileOption) (machinery.RevisionResult, error) {
-	gatedResult, err := re.revision.Reconcile(ctx, rev, opts...)
+func (e *Engine) Reconcile(ctx context.Context, rev types.Revision, opts ...types.RevisionReconcileOption) (machinery.RevisionResult, error) {
+	gatedResult, err := e.revision.Reconcile(ctx, rev, opts...)
 	if err != nil {
 		return gatedResult, err
 	}
@@ -91,7 +91,7 @@ func (re *revisionEngine) Reconcile(ctx context.Context, rev types.Revision, opt
 		return gatedResult, nil
 	}
 
-	completedPhases := re.completedPhaseNames()
+	completedPhases := e.completedPhaseNames()
 	gatedPhaseNames := make(map[string]struct{}, len(gatedResult.GetPhases()))
 	for _, pr := range gatedResult.GetPhases() {
 		gatedPhaseNames[pr.GetName()] = struct{}{}
@@ -117,7 +117,7 @@ func (re *revisionEngine) Reconcile(ctx context.Context, rev types.Revision, opt
 			sawCompleted = true
 		}
 		phaseOpts := revOpts.ForPhase(phase.GetName())
-		pr, pErr := re.phase.Reconcile(ctx, rev.GetRevisionNumber(), phase, phaseOpts...)
+		pr, pErr := e.phase.Reconcile(ctx, rev.GetRevisionNumber(), phase, phaseOpts...)
 		if pr != nil {
 			driftResults = append(driftResults, pr)
 		}
@@ -130,15 +130,15 @@ func (re *revisionEngine) Reconcile(ctx context.Context, rev types.Revision, opt
 		}
 	}
 
-	return &revisionResult{
+	return &Result{
 		gated:        gatedResult,
 		driftResults: driftResults,
 	}, driftErr
 }
 
-func (re *revisionEngine) completedPhaseNames() map[string]bool {
-	m := make(map[string]bool, len(re.existingOPs))
-	for _, op := range re.existingOPs {
+func (e *Engine) completedPhaseNames() map[string]bool {
+	m := make(map[string]bool, len(e.existingOPs))
+	for _, op := range e.existingOPs {
 		if op.CompletedAt != nil {
 			m[op.Name] = true
 		}
