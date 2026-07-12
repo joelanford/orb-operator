@@ -2,6 +2,7 @@ package revision
 
 import (
 	"context"
+	"iter"
 
 	"pkg.package-operator.run/boxcutter"
 	"pkg.package-operator.run/boxcutter/machinery"
@@ -91,7 +92,6 @@ func (e *Engine) Reconcile(ctx context.Context, rev types.Revision, opts ...type
 		return gatedResult, nil
 	}
 
-	completedPhases := e.completedPhaseNames()
 	gatedPhaseNames := make(map[string]struct{}, len(gatedResult.GetPhases()))
 	for _, pr := range gatedResult.GetPhases() {
 		gatedPhaseNames[pr.GetName()] = struct{}{}
@@ -104,18 +104,7 @@ func (e *Engine) Reconcile(ctx context.Context, rev types.Revision, opts ...type
 
 	var driftResults []machinery.PhaseResult
 	var driftErr error
-	sawCompleted := false
-	for _, phase := range rev.GetPhases() {
-		if _, inGated := gatedPhaseNames[phase.GetName()]; inGated {
-			continue
-		}
-		isCompleted := completedPhases[phase.GetName()]
-		if !isCompleted && !sawCompleted {
-			break
-		}
-		if isCompleted {
-			sawCompleted = true
-		}
+	for phase := range driftPhases(rev, gatedPhaseNames, e.completedPhaseNames()) {
 		phaseOpts := revOpts.ForPhase(phase.GetName())
 		pr, pErr := e.phase.Reconcile(ctx, rev.GetRevisionNumber(), phase, phaseOpts...)
 		if pr != nil {
@@ -125,15 +114,31 @@ func (e *Engine) Reconcile(ctx context.Context, rev types.Revision, opts ...type
 			driftErr = pErr
 			break
 		}
-		if !isCompleted {
-			break
-		}
 	}
 
 	return &Result{
 		gated:        gatedResult,
 		driftResults: driftResults,
 	}, driftErr
+}
+
+func driftPhases(rev types.Revision, gatedPhaseNames map[string]struct{}, completedPhases map[string]bool) iter.Seq[types.Phase] {
+	return func(yield func(types.Phase) bool) {
+		sawCompleted := false
+		for _, phase := range rev.GetPhases() {
+			if _, inGated := gatedPhaseNames[phase.GetName()]; inGated {
+				continue
+			}
+			isCompleted := completedPhases[phase.GetName()]
+			if !isCompleted && !sawCompleted {
+				break
+			}
+			sawCompleted = true
+			if !yield(phase) || !isCompleted {
+				return
+			}
+		}
+	}
 }
 
 func (e *Engine) completedPhaseNames() map[string]bool {
