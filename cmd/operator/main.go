@@ -24,7 +24,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
-	"github.com/joelanford/orb-operator/internal/controller"
+	codctrl "github.com/joelanford/orb-operator/internal/controller/cod"
 	cosctrl "github.com/joelanford/orb-operator/internal/controller/cos"
 	"github.com/joelanford/orb-operator/internal/object"
 )
@@ -132,7 +132,7 @@ func run(cmd *cobra.Command, _ []string) error {
 		deadlineUnit = d
 	}
 
-	codReconciler := controller.NewCODReconciler(mgr.GetClient(), mgr.GetScheme(), deadlineUnit)
+	codReconciler := codctrl.NewReconciler(mgr.GetClient(), mgr.GetScheme(), deadlineUnit)
 	if err := codReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("setting up COD controller: %w", err)
 	}
