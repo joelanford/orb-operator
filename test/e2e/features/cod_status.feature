@@ -43,7 +43,7 @@ Feature: COD status is derived from its COSs
     And the COD "status-stuck" should have active revision 1
     And the COD "status-stuck" should have active revision 2
 
-  Scenario: COD remains Available when latest revision is manually archived
+  Scenario: COD recreates revision when latest is manually archived
     Given a COD named "status-archive-latest"
     And a phase "install" with a ConfigMap "cm-sal-1"
     When the COD is created
@@ -52,6 +52,7 @@ Feature: COD status is derived from its COSs
     When the COD template spec is updated with a gated ConfigMap "cm-sal-2" in phase "install"
     Then a COS should exist with group "status-archive-latest" and revision 2
     And the COD "status-archive-latest" should have condition "Available" with status "Unknown" and reason "Progressing"
-    # Manually archive rev 2 — rev 1 is still Active and Available
+    # Manually archive rev 2 — COD creates rev 3 with the same template
     When the COS with group "status-archive-latest" and revision 2 lifecycleState is set to "Archived"
-    Then the COD "status-archive-latest" should be Available
+    Then a COS should exist with group "status-archive-latest" and revision 3
+    And the COD "status-archive-latest" should have condition "Available" with status "Unknown" and reason "Progressing"

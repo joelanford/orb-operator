@@ -167,16 +167,20 @@ func (r *Reconciler) syncRevision(ctx context.Context, cod *orbv1alpha1.ClusterO
 		return fmt.Errorf("computing template hash: %w", err)
 	}
 
-	var latestOwned *orbv1alpha1.ClusterObjectSet
-	if len(*ownedCOSs) > 0 {
-		latestOwned = &(*ownedCOSs)[len(*ownedCOSs)-1]
+	var latestActive *orbv1alpha1.ClusterObjectSet
+	for i := len(*ownedCOSs) - 1; i >= 0; i-- {
+		cos := &(*ownedCOSs)[i]
+		if cos.DeletionTimestamp.IsZero() && cos.Spec.LifecycleState != orbv1alpha1.LifecycleStateArchived {
+			latestActive = cos
+			break
+		}
 	}
 
-	if latestOwned == nil || latestOwned.Labels[template.LabelTemplateHash] != currentHash {
+	if latestActive == nil || latestActive.Labels[template.LabelTemplateHash] != currentHash {
 		return r.createRevision(ctx, cod, allCOSs, currentHash)
 	}
 
-	return r.ensureFieldOwnership(ctx, cod, latestOwned, currentHash)
+	return r.ensureFieldOwnership(ctx, cod, latestActive, currentHash)
 }
 
 func (r *Reconciler) createRevision(ctx context.Context, cod *orbv1alpha1.ClusterObjectDeployment, allCOSs []orbv1alpha1.ClusterObjectSet, hash string) error {
