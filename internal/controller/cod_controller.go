@@ -25,6 +25,7 @@ import (
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 	cosac "github.com/joelanford/orb-operator/applyconfigurations/api/v1alpha1"
+	"github.com/joelanford/orb-operator/internal/cosutil"
 	codstatus "github.com/joelanford/orb-operator/internal/status/cod"
 )
 
@@ -185,7 +186,7 @@ func (r *CODReconciler) adoptAndFilterOwned(ctx context.Context, cod *orbv1alpha
 }
 
 func (r *CODReconciler) adoptCOS(ctx context.Context, cod *orbv1alpha1.ClusterObjectDeployment, cos *orbv1alpha1.ClusterObjectSet) error {
-	_, err := applyCOS(ctx, r.client, cos, codFieldOwner,
+	_, err := cosutil.Apply(ctx, r.client, cos, codFieldOwner,
 		func(cos *orbv1alpha1.ClusterObjectSet) bool {
 			return true
 		},
@@ -221,7 +222,7 @@ func (r *CODReconciler) archiveOlderRevisions(ctx context.Context, _ *orbv1alpha
 
 	for i := range ownedCOSs[:len(ownedCOSs)-1] {
 		cos := &ownedCOSs[i]
-		if _, err := applyCOS(ctx, r.client, cos, codFieldOwner,
+		if _, err := cosutil.Apply(ctx, r.client, cos, codFieldOwner,
 			func(cos *orbv1alpha1.ClusterObjectSet) bool {
 				return cos.Spec.LifecycleState != orbv1alpha1.LifecycleStateArchived
 			},

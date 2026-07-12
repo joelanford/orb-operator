@@ -3,7 +3,6 @@ package controller
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -11,11 +10,9 @@ import (
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/equality"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/discovery"
 	"pkg.package-operator.run/boxcutter"
 	"pkg.package-operator.run/boxcutter/machinery"
@@ -30,6 +27,7 @@ import (
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 	cosac "github.com/joelanford/orb-operator/applyconfigurations/api/v1alpha1"
+	"github.com/joelanford/orb-operator/internal/cosutil"
 	"github.com/joelanford/orb-operator/internal/object"
 	"github.com/joelanford/orb-operator/internal/revision"
 	cosstatus "github.com/joelanford/orb-operator/internal/status/cos"
@@ -163,7 +161,7 @@ func (r *COSReconciler) reconcile(ctx context.Context, log logr.Logger, cos *orb
 
 
 func (r *COSReconciler) ensureFinalizer(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet) (bool, error) {
-	applied, err := applyCOS(ctx, r.client, cos, cosFieldOwner,
+	applied, err := cosutil.Apply(ctx, r.client, cos, cosFieldOwner,
 		func(cos *orbv1alpha1.ClusterObjectSet) bool {
 			return !controllerutil.ContainsFinalizer(cos, finalizerKey)
 		},
@@ -324,7 +322,7 @@ func (r *COSReconciler) releaseCOS(ctx context.Context, cos *orbv1alpha1.Cluster
 	if err := r.accessManager.FreeWithUser(ctx, cos, cos); err != nil {
 		return fmt.Errorf("freeing access manager: %w", err)
 	}
-	if err := removeFinalizer(ctx, r.client, cos, finalizerKey); err != nil {
+	if err := cosutil.RemoveFinalizer(ctx, r.client, cos, cosFieldOwner, finalizerKey); err != nil {
 		return fmt.Errorf("removing finalizer: %w", err)
 	}
 	// Wait for the informer cache to reflect the finalizer removal (or
@@ -332,7 +330,7 @@ func (r *COSReconciler) releaseCOS(ctx context.Context, cos *orbv1alpha1.Cluster
 	// per key, so blocking here ensures the next queued reconcile reads the
 	// updated state and exits early at the ContainsFinalizer check instead
 	// of re-acquiring the cache for a doomed COS.
-	if err := waitForFinalizerRemoval(ctx, r.client, client.ObjectKeyFromObject(cos)); err != nil {
+	if err := cosutil.WaitForFinalizerRemoval(ctx, r.client, client.ObjectKeyFromObject(cos), finalizerKey); err != nil {
 		return fmt.Errorf("waiting for cache to sync finalizer removal: %w", err)
 	}
 	return nil
@@ -400,57 +398,4 @@ func setCondition(cos *orbv1alpha1.ClusterObjectSet, status metav1.ConditionStat
 	})
 }
 
-func removeFinalizer(ctx context.Context, c client.Client, cos *orbv1alpha1.ClusterObjectSet, finalizer string) error {
-	if !controllerutil.ContainsFinalizer(cos, finalizer) {
-		return nil
-	}
-	patch := client.MergeFromWithOptions(cos.DeepCopy(), client.MergeFromWithOptimisticLock{})
-	controllerutil.RemoveFinalizer(cos, finalizer)
-	clearFinalizerFieldOwnership(cos.ManagedFields, cosFieldOwner, finalizer)
-	return c.Patch(ctx, cos, patch)
-}
-
-func waitForFinalizerRemoval(ctx context.Context, c client.Client, key client.ObjectKey) error {
-	return wait.PollUntilContextTimeout(ctx, 50*time.Millisecond, 5*time.Second, true, func(ctx context.Context) (bool, error) {
-		var cos orbv1alpha1.ClusterObjectSet
-		if err := c.Get(ctx, key, &cos); err != nil {
-			return apierrors.IsNotFound(err), client.IgnoreNotFound(err)
-		}
-		return !controllerutil.ContainsFinalizer(&cos, finalizerKey), nil
-	})
-}
-
-func clearFinalizerFieldOwnership(managedFields []metav1.ManagedFieldsEntry, manager, finalizer string) {
-	key := "v:" + finalizer
-	for i := range managedFields {
-		e := &managedFields[i]
-		if e.Manager != manager || e.FieldsV1 == nil {
-			continue
-		}
-		var fields map[string]any
-		if err := json.Unmarshal(e.FieldsV1.GetRawBytes(), &fields); err != nil {
-			continue
-		}
-		fMeta, _ := fields["f:metadata"].(map[string]any)
-		if fMeta == nil {
-			continue
-		}
-		fFinalizers, _ := fMeta["f:finalizers"].(map[string]any)
-		if fFinalizers == nil {
-			continue
-		}
-		delete(fFinalizers, key)
-		if len(fFinalizers) == 0 {
-			delete(fMeta, "f:finalizers")
-		}
-		if len(fMeta) == 0 {
-			delete(fields, "f:metadata")
-		}
-		raw, err := json.Marshal(fields)
-		if err != nil {
-			continue
-		}
-		e.FieldsV1.SetRawBytes(raw)
-	}
-}
 
