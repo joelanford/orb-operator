@@ -25,6 +25,7 @@ import (
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 	"github.com/joelanford/orb-operator/internal/controller"
+	cosctrl "github.com/joelanford/orb-operator/internal/controller/cos"
 	"github.com/joelanford/orb-operator/internal/object"
 )
 
@@ -107,11 +108,11 @@ func run(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("adding access manager: %w", err)
 	}
 
-	if err := controller.SetupIndexes(mgr); err != nil {
+	if err := cosctrl.SetupIndexes(mgr); err != nil {
 		return fmt.Errorf("setting up indexes: %w", err)
 	}
 
-	cosReconciler := controller.NewCOSReconciler(
+	cosReconciler := cosctrl.NewReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		mgr.GetRESTMapper(),

@@ -30,6 +30,7 @@ import (
 const (
 	codFieldOwner                     = "cod-controller"
 	defaultRevisionHistoryLimit int32 = 5
+	groupIndex                        = ".spec.group"
 )
 
 type CODReconciler struct {
