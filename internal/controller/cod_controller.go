@@ -3,10 +3,8 @@ package controller
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 	"time"
 
@@ -16,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	metav1ac "k8s.io/client-go/applyconfigurations/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -27,13 +24,12 @@ import (
 	cosac "github.com/joelanford/orb-operator/applyconfigurations/api/v1alpha1"
 	"github.com/joelanford/orb-operator/internal/cosutil"
 	codstatus "github.com/joelanford/orb-operator/internal/status/cod"
+	"github.com/joelanford/orb-operator/internal/template"
 )
 
 const (
 	codFieldOwner                     = "cod-controller"
 	defaultRevisionHistoryLimit int32 = 5
-
-	labelTemplateHash = "orb.operatorframework.io/template-hash"
 )
 
 type CODReconciler struct {
@@ -111,14 +107,14 @@ func (r *CODReconciler) reconcile(ctx context.Context, cod *orbv1alpha1.ClusterO
 		latestOwned = &ownedCOSs[len(ownedCOSs)-1]
 	}
 
-	currentHash, err := templateHash(cod.Spec.Template)
+	currentHash, err := template.Hash(cod.Spec.Template)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("computing template hash: %w", err)
 	}
-	if latestOwned == nil || latestOwned.Labels[labelTemplateHash] != currentHash {
+	if latestOwned == nil || latestOwned.Labels[template.LabelTemplateHash] != currentHash {
 		nextRevision := r.nextRevision(cosList.Items)
 
-		cos, err := buildCOSFromTemplate(cod, nextRevision, currentHash)
+		cos, err := template.BuildCOS(cod, nextRevision, currentHash)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("building COS from template: %w", err)
 		}
@@ -138,7 +134,7 @@ func (r *CODReconciler) reconcile(ctx context.Context, cod *orbv1alpha1.ClusterO
 		return ctrl.Result{}, nil
 	}
 
-	desired, err := buildCOSFromTemplate(cod, latestOwned.Spec.Revision, currentHash)
+	desired, err := template.BuildCOS(cod, latestOwned.Spec.Revision, currentHash)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("building desired COS apply config: %w", err)
 	}
@@ -191,7 +187,7 @@ func (r *CODReconciler) adoptCOS(ctx context.Context, cod *orbv1alpha1.ClusterOb
 			return true
 		},
 		func(ac *cosac.ClusterObjectSetApplyConfiguration) {
-			setCODControllerReference(cod, ac)
+			template.SetControllerReference(cod, ac)
 		},
 	)
 	if err != nil {
@@ -237,48 +233,6 @@ func (r *CODReconciler) archiveOlderRevisions(ctx context.Context, _ *orbv1alpha
 	return nil
 }
 
-func buildCOSFromTemplate(cod *orbv1alpha1.ClusterObjectDeployment, revision uint32, hash string) (*cosac.ClusterObjectSetApplyConfiguration, error) {
-	labels := maps.Clone(cod.Spec.Template.Metadata.Labels)
-	if labels == nil {
-		labels = map[string]string{}
-	}
-	labels[labelTemplateHash] = hash
-
-	tmplSpecJSON, err := json.Marshal(cod.Spec.Template.Spec)
-	if err != nil {
-		return nil, err
-	}
-
-	var cosSpec cosac.ClusterObjectSetSpecApplyConfiguration
-	if err := json.Unmarshal(tmplSpecJSON, &cosSpec); err != nil {
-		return nil, err
-	}
-
-	cosSpec.WithGroup(cod.Name).
-		WithRevision(revision).
-		WithLifecycleState(orbv1alpha1.LifecycleStateActive)
-
-	name := fmt.Sprintf("%s-%d", cod.Name, revision)
-	cos := cosac.ClusterObjectSet(name).
-		WithLabels(labels).
-		WithAnnotations(maps.Clone(cod.Spec.Template.Metadata.Annotations)).
-		WithSpec(&cosSpec)
-
-	setCODControllerReference(cod, cos)
-	return cos, nil
-}
-
-func setCODControllerReference(cod *orbv1alpha1.ClusterObjectDeployment, cos *cosac.ClusterObjectSetApplyConfiguration) {
-	gvk := orbv1alpha1.GroupVersion.WithKind("ClusterObjectDeployment")
-	cos.WithOwnerReferences(metav1ac.OwnerReference().
-		WithAPIVersion(gvk.GroupVersion().String()).
-		WithKind(gvk.Kind).
-		WithName(cod.Name).
-		WithUID(cod.UID).
-		WithController(true).
-		WithBlockOwnerDeletion(true),
-	)
-}
 
 func (r *CODReconciler) pruneArchivedCOSs(ctx context.Context, cod *orbv1alpha1.ClusterObjectDeployment, coss []orbv1alpha1.ClusterObjectSet) error {
 	limit := defaultRevisionHistoryLimit
