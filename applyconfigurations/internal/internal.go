@@ -96,6 +96,9 @@ var schemaYAML = typed.YAMLObject(`types:
           elementRelationship: associative
           keys:
           - type
+    - name: objectCounts
+      type:
+        namedType: com.github.joelanford.orb-operator.api.v1alpha1.ObjectCounts
 - name: com.github.joelanford.orb-operator.api.v1alpha1.ClusterObjectDeploymentTemplate
   map:
     fields:
@@ -183,6 +186,9 @@ var schemaYAML = typed.YAMLObject(`types:
           elementRelationship: associative
           keys:
           - type
+    - name: objectCounts
+      type:
+        namedType: com.github.joelanford.orb-operator.api.v1alpha1.ObjectCounts
     - name: observedPhases
       type:
         list:

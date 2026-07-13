@@ -79,6 +79,7 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 			Name:   "install",
 			Status: orbv1alpha1.PhaseStatusReconciling,
 		}}
+		cos.Status.ObjectCounts = &orbv1alpha1.ObjectCounts{}
 		require.NoError(t, k8sClient.Status().Update(ctx, cos))
 	})
 
@@ -90,6 +91,7 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 			Name:   "",
 			Status: orbv1alpha1.PhaseStatusUnknown,
 		}}
+		cos.Status.ObjectCounts = &orbv1alpha1.ObjectCounts{}
 		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
 			"status.observedPhases[0].name", "should be at least 1 chars long")
 	})
@@ -102,6 +104,7 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 			Name:   strings.Repeat("a", 64),
 			Status: orbv1alpha1.PhaseStatusUnknown,
 		}}
+		cos.Status.ObjectCounts = &orbv1alpha1.ObjectCounts{}
 		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
 			"status.observedPhases[0].name", "may not be more than 63")
 	})
@@ -125,6 +128,7 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 				Name:   "install",
 				Status: status,
 			}}
+			cos.Status.ObjectCounts = &orbv1alpha1.ObjectCounts{}
 			require.NoError(t, k8sClient.Status().Update(ctx, cos))
 		})
 	}
@@ -137,6 +141,7 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 			Name:   "install",
 			Status: orbv1alpha1.PhaseStatus("Bogus"),
 		}}
+		cos.Status.ObjectCounts = &orbv1alpha1.ObjectCounts{}
 		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
 			"status.observedPhases[0].status", "Unsupported value")
 	})
@@ -150,6 +155,7 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 			Status:  orbv1alpha1.PhaseStatusReconciling,
 			Message: strings.Repeat("e", 1024),
 		}}
+		cos.Status.ObjectCounts = &orbv1alpha1.ObjectCounts{}
 		require.NoError(t, k8sClient.Status().Update(ctx, cos))
 	})
 
@@ -162,6 +168,7 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 			Status:  orbv1alpha1.PhaseStatusReconciling,
 			Message: strings.Repeat("e", 1025),
 		}}
+		cos.Status.ObjectCounts = &orbv1alpha1.ObjectCounts{}
 		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
 			"status.observedPhases[0].message", "may not be more than 1024")
 	})
@@ -178,6 +185,7 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 			}
 		}
 		cos.Status.ObservedPhases = phases
+		cos.Status.ObjectCounts = &orbv1alpha1.ObjectCounts{}
 		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
 			"status.observedPhases", "must have at most 20 items")
 	})
@@ -199,6 +207,7 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 			Status:        orbv1alpha1.PhaseStatusReconciling,
 			ObjectDetails: objects,
 		}}
+		cos.Status.ObjectCounts = &orbv1alpha1.ObjectCounts{}
 		require.NoError(t, k8sClient.Status().Update(ctx, cos))
 	})
 
@@ -219,6 +228,7 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 			Status:        orbv1alpha1.PhaseStatusReconciling,
 			ObjectDetails: objects,
 		}}
+		cos.Status.ObjectCounts = &orbv1alpha1.ObjectCounts{}
 		requireStatusError(t, k8sClient.Status().Update(ctx, cos),
 			"status.observedPhases[0].objectDetails", "must have at most 50 items")
 	})
@@ -233,6 +243,7 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 			Status:      orbv1alpha1.PhaseStatusAvailable,
 			CompletedAt: &now,
 		}}
+		cos.Status.ObjectCounts = &orbv1alpha1.ObjectCounts{}
 		require.NoError(t, k8sClient.Status().Update(ctx, cos))
 	})
 
@@ -246,6 +257,7 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 			Status:      orbv1alpha1.PhaseStatusAvailable,
 			CompletedAt: &now,
 		}}
+		cos.Status.ObjectCounts = &orbv1alpha1.ObjectCounts{}
 		require.NoError(t, k8sClient.Status().Update(ctx, cos))
 
 		cos.Status.ObservedPhases[0].CompletedAt = nil
@@ -263,6 +275,7 @@ func TestCOS_Status_ObservedPhase_Validation(t *testing.T) {
 			Status:      orbv1alpha1.PhaseStatusAvailable,
 			CompletedAt: &now,
 		}}
+		cos.Status.ObjectCounts = &orbv1alpha1.ObjectCounts{}
 		require.NoError(t, k8sClient.Status().Update(ctx, cos))
 
 		later := metav1.NewTime(now.Add(time.Hour))
@@ -284,6 +297,7 @@ func TestCOS_Status_ObjectStatus_Validation(t *testing.T) {
 			Status:        orbv1alpha1.PhaseStatusReconciling,
 			ObjectDetails: []orbv1alpha1.ObjectStatus{os},
 		}}
+		cos.Status.ObjectCounts = &orbv1alpha1.ObjectCounts{}
 		return k8sClient.Status().Update(ctx, cos)
 	}
 

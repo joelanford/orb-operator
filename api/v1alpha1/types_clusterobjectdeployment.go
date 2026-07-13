@@ -10,8 +10,9 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=cod
-// +kubebuilder:printcolumn:name="Availability",type=string,JSONPath=`.status.conditions[?(@.type=="Available")].reason`
-// +kubebuilder:printcolumn:name="Progressing",type=string,JSONPath=`.status.conditions[?(@.type=="Progressing")].reason`
+// +kubebuilder:printcolumn:name="Available",type=integer,JSONPath=`.status.objectCounts.available`
+// +kubebuilder:printcolumn:name="Synced",type=integer,JSONPath=`.status.objectCounts.synced`
+// +kubebuilder:printcolumn:name="Total",type=integer,JSONPath=`.status.objectCounts.total`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 type ClusterObjectDeployment struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -101,6 +102,11 @@ type ClusterObjectDeploymentStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// objectCounts reports aggregate object counts from the latest active
+	// revision. Nil when no active revision exists.
+	// +optional
+	ObjectCounts *ObjectCounts `json:"objectCounts,omitempty"`
 
 	// activeRevisions holds the currently active (non-archived)
 	// ClusterObjectSet resources, including any revision just created

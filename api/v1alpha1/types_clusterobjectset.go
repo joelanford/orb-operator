@@ -23,8 +23,10 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=cos
 // +kubebuilder:printcolumn:name="Group",type=string,JSONPath=`.spec.group`
-// +kubebuilder:printcolumn:name="Revision",type=integer,JSONPath=`.spec.revision`
-// +kubebuilder:printcolumn:name="Available",type=string,JSONPath=`.status.conditions[?(@.type=="Available")].status`
+// +kubebuilder:printcolumn:name="Rev",type=integer,JSONPath=`.spec.revision`
+// +kubebuilder:printcolumn:name="Available",type=integer,JSONPath=`.status.objectCounts.available`
+// +kubebuilder:printcolumn:name="Synced",type=integer,JSONPath=`.status.objectCounts.synced`
+// +kubebuilder:printcolumn:name="Total",type=integer,JSONPath=`.status.objectCounts.total`
 // +kubebuilder:printcolumn:name="Lifecycle",type=string,JSONPath=`.spec.lifecycleState`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 type ClusterObjectSet struct {
@@ -97,6 +99,10 @@ type ClusterObjectSetSpec struct {
 //
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.completedAt) || (has(self.completedAt) && self.completedAt == oldSelf.completedAt)",message="completedAt is immutable once set"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.resolvedContentHash) || (has(self.resolvedContentHash) && self.resolvedContentHash == oldSelf.resolvedContentHash)",message="resolvedContentHash is immutable once set"
+// +kubebuilder:validation:XValidation:rule="has(self.observedPhases) == has(self.objectCounts)",message="observedPhases and objectCounts must both be present or both be absent"
+// +kubebuilder:validation:XValidation:rule="!has(self.observedPhases) || self.objectCounts.total == self.observedPhases.map(p, p.objectCounts.total).sum()",message="objectCounts.total must equal sum of per-phase totals"
+// +kubebuilder:validation:XValidation:rule="!has(self.observedPhases) || self.objectCounts.synced == self.observedPhases.map(p, p.objectCounts.synced).sum()",message="objectCounts.synced must equal sum of per-phase synced"
+// +kubebuilder:validation:XValidation:rule="!has(self.observedPhases) || self.objectCounts.available == self.observedPhases.map(p, p.objectCounts.available).sum()",message="objectCounts.available must equal sum of per-phase available"
 type ClusterObjectSetStatus struct {
 	// conditions represent the latest available observations of the revision's
 	// state. The "Available" condition indicates whether all managed objects in
@@ -120,6 +126,11 @@ type ClusterObjectSetStatus struct {
 	// the revision has regressed after a successful rollout.
 	// +optional
 	CompletedAt *metav1.Time `json:"completedAt,omitempty"`
+
+	// objectCounts reports aggregate object counts across all phases.
+	// Values are sums of the per-phase counts in observedPhases.
+	// +optional
+	ObjectCounts *ObjectCounts `json:"objectCounts,omitempty"`
 
 	// observedPhases reports the observed state of each phase in the
 	// revision. All phases from the spec are always listed, in spec

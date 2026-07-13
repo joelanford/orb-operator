@@ -43,6 +43,7 @@ func registerAssertSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the COS should have (\d+) observed phases$`, tc.theCOSShouldHaveObservedPhaseCount)
 	sc.Step(`^observed phase "([^"]*)" should have object counts total:(\d+)/synced:(\d+)/available:(\d+)$`, tc.observedPhaseShouldHaveObjectCounts)
 	sc.Step(`^observed phase "([^"]*)" should have object details for "([^"]*)"$`, tc.observedPhaseShouldHaveObjectDetailsFor)
+	sc.Step(`^the COS should have object counts total:(\d+)/synced:(\d+)/available:(\d+)$`, tc.theCOSShouldHaveObjectCounts)
 	sc.Step(`^the COS should have no observed phases$`, tc.theCOSShouldHaveNoObservedPhases)
 	sc.Step(`^the COS should have completedAt set$`, tc.theCOSShouldHaveCompletedAt)
 	sc.Step(`^the COS should not have completedAt set$`, tc.theCOSShouldNotHaveCompletedAt)
@@ -64,6 +65,7 @@ func registerAssertSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the COS count for COD "([^"]*)" should be (\d+)$`, tc.cosCountForCODShouldBe)
 	sc.Step(`^the COD "([^"]*)" should be Available$`, tc.theCODShouldBeAvailable)
 	sc.Step(`^the COD "([^"]*)" should have condition "([^"]*)" with status "([^"]*)" and reason "([^"]*)"$`, tc.theCODShouldHaveConditionWithReason)
+	sc.Step(`^the COD "([^"]*)" should have object counts total:(\d+)/synced:(\d+)/available:(\d+)$`, tc.theCODShouldHaveObjectCounts)
 	sc.Step(`^the COD "([^"]*)" should become available without becoming unavailable$`, tc.theCODShouldBecomeAvailableWithoutBecomingUnavailable)
 	sc.Step(`^the COD "([^"]*)" should have active revision (\d+)$`, tc.theCODShouldHaveActiveRevision)
 	sc.Step(`^the stamped COS spec for "([^"]*)" revision (\d+) should match the COD template spec$`, tc.stampedCOSSpecShouldMatchTemplate)
@@ -480,6 +482,27 @@ func (tc *testContext) observedPhaseShouldHaveObjectCounts(phaseName string, tot
 			}
 		}
 		return false
+	})
+}
+
+func (tc *testContext) theCOSShouldHaveObjectCounts(total, synced, available int) error {
+	name := tc.lastCreatedCOSName()
+	cos := &orbv1alpha1.ClusterObjectSet{}
+	return pollForObjectMatching(tc, cos, types.NamespacedName{Name: name}, func() bool {
+		return cos.Status.ObjectCounts != nil &&
+			cos.Status.ObjectCounts.Total == int64(total) &&
+			cos.Status.ObjectCounts.Synced == int64(synced) &&
+			cos.Status.ObjectCounts.Available == int64(available)
+	})
+}
+
+func (tc *testContext) theCODShouldHaveObjectCounts(codName string, total, synced, available int) error {
+	cod := &orbv1alpha1.ClusterObjectDeployment{}
+	return pollForObjectMatching(tc, cod, types.NamespacedName{Name: tc.codFullName(codName)}, func() bool {
+		return cod.Status.ObjectCounts != nil &&
+			cod.Status.ObjectCounts.Total == int64(total) &&
+			cod.Status.ObjectCounts.Synced == int64(synced) &&
+			cod.Status.ObjectCounts.Available == int64(available)
 	})
 }
 

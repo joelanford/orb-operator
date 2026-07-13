@@ -21,11 +21,17 @@ spec:
       name: Group
       type: string
     - jsonPath: .spec.revision
-      name: Revision
+      name: Rev
       type: integer
-    - jsonPath: .status.conditions[?(@.type=="Available")].status
+    - jsonPath: .status.objectCounts.available
       name: Available
-      type: string
+      type: integer
+    - jsonPath: .status.objectCounts.synced
+      name: Synced
+      type: integer
+    - jsonPath: .status.objectCounts.total
+      name: Total
+      type: integer
     - jsonPath: .spec.lifecycleState
       name: Lifecycle
       type: string
@@ -468,6 +474,32 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              objectCounts:
+                description: |-
+                  objectCounts reports aggregate object counts across all phases.
+                  Values are sums of the per-phase counts in observedPhases.
+                properties:
+                  available:
+                    description: |-
+                      available is the number of objects in this phase that are synced
+                      and pass their assertions.
+                    format: int64
+                    type: integer
+                  synced:
+                    description: |-
+                      synced is the number of objects in this phase whose cluster state
+                      matches the desired state.
+                    format: int64
+                    type: integer
+                  total:
+                    description: total is the number of objects in this phase.
+                    format: int64
+                    type: integer
+                required:
+                - available
+                - synced
+                - total
+                type: object
               observedPhases:
                 description: |-
                   observedPhases reports the observed state of each phase in the
@@ -643,6 +675,18 @@ spec:
             - message: resolvedContentHash is immutable once set
               rule: '!has(oldSelf.resolvedContentHash) || (has(self.resolvedContentHash)
                 && self.resolvedContentHash == oldSelf.resolvedContentHash)'
+            - message: observedPhases and objectCounts must both be present or both
+                be absent
+              rule: has(self.observedPhases) == has(self.objectCounts)
+            - message: objectCounts.total must equal sum of per-phase totals
+              rule: '!has(self.observedPhases) || self.objectCounts.total == self.observedPhases.map(p,
+                p.objectCounts.total).sum()'
+            - message: objectCounts.synced must equal sum of per-phase synced
+              rule: '!has(self.observedPhases) || self.objectCounts.synced == self.observedPhases.map(p,
+                p.objectCounts.synced).sum()'
+            - message: objectCounts.available must equal sum of per-phase available
+              rule: '!has(self.observedPhases) || self.objectCounts.available == self.observedPhases.map(p,
+                p.objectCounts.available).sum()'
         required:
         - spec
         type: object

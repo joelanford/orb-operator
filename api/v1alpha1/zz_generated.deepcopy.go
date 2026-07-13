@@ -154,6 +154,11 @@ func (in *ClusterObjectDeploymentStatus) DeepCopyInto(out *ClusterObjectDeployme
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.ObjectCounts != nil {
+		in, out := &in.ObjectCounts, &out.ObjectCounts
+		*out = new(ObjectCounts)
+		**out = **in
+	}
 	if in.ActiveRevisions != nil {
 		in, out := &in.ActiveRevisions, &out.ActiveRevisions
 		*out = make([]ClusterObjectSetStatusSummary, len(*in))
@@ -334,6 +339,11 @@ func (in *ClusterObjectSetStatus) DeepCopyInto(out *ClusterObjectSetStatus) {
 	if in.CompletedAt != nil {
 		in, out := &in.CompletedAt, &out.CompletedAt
 		*out = (*in).DeepCopy()
+	}
+	if in.ObjectCounts != nil {
+		in, out := &in.ObjectCounts, &out.ObjectCounts
+		*out = new(ObjectCounts)
+		**out = **in
 	}
 	if in.ObservedPhases != nil {
 		in, out := &in.ObservedPhases, &out.ObservedPhases

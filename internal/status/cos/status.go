@@ -31,9 +31,23 @@ func Apply(cos *orbv1alpha1.ClusterObjectSet, u Update) {
 	if u.ObservedPhases != nil {
 		cos.Status.ObservedPhases = *u.ObservedPhases
 	}
+	cos.Status.ObjectCounts = sumObjectCounts(cos.Status.ObservedPhases)
 	if u.CompletedAt != nil && cos.Status.CompletedAt == nil {
 		cos.Status.CompletedAt = u.CompletedAt
 	}
+}
+
+func sumObjectCounts(phases []orbv1alpha1.ObservedPhase) *orbv1alpha1.ObjectCounts {
+	if len(phases) == 0 {
+		return nil
+	}
+	var counts orbv1alpha1.ObjectCounts
+	for i := range phases {
+		counts.Total += phases[i].ObjectCounts.Total
+		counts.Synced += phases[i].ObjectCounts.Synced
+		counts.Available += phases[i].ObjectCounts.Available
+	}
+	return &counts
 }
 
 func FromReconcile(cos *orbv1alpha1.ClusterObjectSet, result machinery.RevisionResult, err error, now time.Time) Update {

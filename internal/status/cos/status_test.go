@@ -78,6 +78,33 @@ func TestApply(t *testing.T) {
 		Apply(cos, u)
 		assert.Equal(t, &earlier, cos.Status.CompletedAt)
 	})
+
+	t.Run("computes objectCounts from observed phases", func(t *testing.T) {
+		cos := &orbv1alpha1.ClusterObjectSet{}
+		phases := []orbv1alpha1.ObservedPhase{
+			{Name: "p1", ObjectCounts: orbv1alpha1.ObjectCounts{Total: 5, Synced: 4, Available: 3}},
+			{Name: "p2", ObjectCounts: orbv1alpha1.ObjectCounts{Total: 10, Synced: 8, Available: 6}},
+		}
+		u := Update{
+			Condition:      newCondition(metav1.ConditionTrue, "Available", "ok"),
+			ObservedPhases: &phases,
+		}
+		Apply(cos, u)
+		require.NotNil(t, cos.Status.ObjectCounts)
+		assert.Equal(t, int64(15), cos.Status.ObjectCounts.Total)
+		assert.Equal(t, int64(12), cos.Status.ObjectCounts.Synced)
+		assert.Equal(t, int64(9), cos.Status.ObjectCounts.Available)
+	})
+
+	t.Run("objectCounts is nil when no observed phases", func(t *testing.T) {
+		cos := &orbv1alpha1.ClusterObjectSet{}
+		cos.Status.ObjectCounts = &orbv1alpha1.ObjectCounts{Total: 5, Synced: 3, Available: 1}
+		u := Update{
+			Condition: newCondition(metav1.ConditionTrue, "Available", "ok"),
+		}
+		Apply(cos, u)
+		assert.Nil(t, cos.Status.ObjectCounts)
+	})
 }
 
 func TestFromReconcile(t *testing.T) {

@@ -28,6 +28,9 @@ type ClusterObjectSetStatusApplyConfiguration struct {
 	// has never been fully available. When set and Available is False,
 	// the revision has regressed after a successful rollout.
 	CompletedAt *metav1.Time `json:"completedAt,omitempty"`
+	// objectCounts reports aggregate object counts across all phases.
+	// Values are sums of the per-phase counts in observedPhases.
+	ObjectCounts *ObjectCountsApplyConfiguration `json:"objectCounts,omitempty"`
 	// observedPhases reports the observed state of each phase in the
 	// revision. All phases from the spec are always listed, in spec
 	// order. Each phase's status indicates whether the controller has
@@ -68,6 +71,14 @@ func (b *ClusterObjectSetStatusApplyConfiguration) WithResolvedContentHash(value
 // If called multiple times, the CompletedAt field is set to the value of the last call.
 func (b *ClusterObjectSetStatusApplyConfiguration) WithCompletedAt(value metav1.Time) *ClusterObjectSetStatusApplyConfiguration {
 	b.CompletedAt = &value
+	return b
+}
+
+// WithObjectCounts sets the ObjectCounts field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ObjectCounts field is set to the value of the last call.
+func (b *ClusterObjectSetStatusApplyConfiguration) WithObjectCounts(value *ObjectCountsApplyConfiguration) *ClusterObjectSetStatusApplyConfiguration {
+	b.ObjectCounts = value
 	return b
 }
 

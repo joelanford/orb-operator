@@ -44,7 +44,7 @@ func IsAvailable(cos *orbv1alpha1.ClusterObjectSet) bool {
 func ActiveRevisionSummaries(ownedCOSs []orbv1alpha1.ClusterObjectSet) []orbv1alpha1.ClusterObjectSetStatusSummary {
 	var active []orbv1alpha1.ClusterObjectSetStatusSummary
 	for i := range ownedCOSs {
-		if ownedCOSs[i].Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived {
+		if ownedCOSs[i].Spec.LifecycleState == orbv1alpha1.LifecycleStateArchived || !ownedCOSs[i].DeletionTimestamp.IsZero() {
 			continue
 		}
 		active = append(active, orbv1alpha1.ClusterObjectSetStatusSummary{
@@ -53,4 +53,12 @@ func ActiveRevisionSummaries(ownedCOSs []orbv1alpha1.ClusterObjectSet) []orbv1al
 		})
 	}
 	return active
+}
+
+func ObjectCountsFromCOS(latestCOS *orbv1alpha1.ClusterObjectSet) *orbv1alpha1.ObjectCounts {
+	if latestCOS == nil || latestCOS.Status.ObjectCounts == nil {
+		return nil
+	}
+	counts := *latestCOS.Status.ObjectCounts
+	return &counts
 }

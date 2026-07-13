@@ -13,6 +13,7 @@ Feature: COS phase status reports per-phase rollout state
     And observed phase "operators" should have object counts total:1/synced:0/available:0
     And the COS should have observed phase "config" with status "Pending" and message "Waiting for earlier phases to complete"
     And observed phase "config" should have object counts total:1/synced:0/available:0
+    And the COS should have object counts total:3/synced:1/available:0
     And the COS should not have completedAt set
     When the gate on ConfigMap "cm-crds" is opened
     Then the COS should have observed phase "crds" with status "Available"
@@ -21,6 +22,7 @@ Feature: COS phase status reports per-phase rollout state
     And observed phase "operators" should have object counts total:1/synced:1/available:0
     And the COS should have observed phase "config" with status "Pending" and message "Waiting for earlier phases to complete"
     And observed phase "config" should have object counts total:1/synced:0/available:0
+    And the COS should have object counts total:3/synced:2/available:1
     When the gate on ConfigMap "cm-operators" is opened
     And the gate on ConfigMap "cm-config" is opened
     Then the COS should have condition "Available" with status "True"
@@ -30,6 +32,7 @@ Feature: COS phase status reports per-phase rollout state
     And observed phase "operators" should have object counts total:1/synced:1/available:1
     And the COS should have observed phase "config" with status "Available"
     And observed phase "config" should have object counts total:1/synced:1/available:1
+    And the COS should have object counts total:3/synced:3/available:3
     And the COS should have completedAt set
 
   Scenario: Object details listed in WaitingForAssertions phases

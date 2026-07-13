@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
@@ -91,5 +92,26 @@ func TestActiveRevisionSummaries(t *testing.T) {
 
 	t.Run("empty list", func(t *testing.T) {
 		assert.Nil(t, ActiveRevisionSummaries(nil))
+	})
+}
+
+func TestObjectCountsFromCOS(t *testing.T) {
+	t.Run("nil COS returns nil", func(t *testing.T) {
+		assert.Nil(t, ObjectCountsFromCOS(nil))
+	})
+
+	t.Run("COS with nil objectCounts returns nil", func(t *testing.T) {
+		cos := &orbv1alpha1.ClusterObjectSet{}
+		assert.Nil(t, ObjectCountsFromCOS(cos))
+	})
+
+	t.Run("returns copy of COS objectCounts", func(t *testing.T) {
+		cos := &orbv1alpha1.ClusterObjectSet{}
+		cos.Status.ObjectCounts = &orbv1alpha1.ObjectCounts{Total: 10, Synced: 8, Available: 6}
+		result := ObjectCountsFromCOS(cos)
+		require.NotNil(t, result)
+		assert.Equal(t, int64(10), result.Total)
+		assert.Equal(t, int64(8), result.Synced)
+		assert.Equal(t, int64(6), result.Available)
 	})
 }

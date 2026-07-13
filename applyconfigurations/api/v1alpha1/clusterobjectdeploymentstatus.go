@@ -15,6 +15,9 @@ type ClusterObjectDeploymentStatusApplyConfiguration struct {
 	// ClusterObjectDeployment's state. The "Available" condition indicates whether the
 	// active revision's managed objects satisfy their assertions.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
+	// objectCounts reports aggregate object counts from the latest active
+	// revision. Nil when no active revision exists.
+	ObjectCounts *ObjectCountsApplyConfiguration `json:"objectCounts,omitempty"`
 	// activeRevisions holds the currently active (non-archived)
 	// ClusterObjectSet resources, including any revision just created
 	// but not yet visible in the informer cache.
@@ -37,6 +40,14 @@ func (b *ClusterObjectDeploymentStatusApplyConfiguration) WithConditions(values 
 		}
 		b.Conditions = append(b.Conditions, *values[i])
 	}
+	return b
+}
+
+// WithObjectCounts sets the ObjectCounts field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ObjectCounts field is set to the value of the last call.
+func (b *ClusterObjectDeploymentStatusApplyConfiguration) WithObjectCounts(value *ObjectCountsApplyConfiguration) *ClusterObjectDeploymentStatusApplyConfiguration {
+	b.ObjectCounts = value
 	return b
 }
 

@@ -240,7 +240,7 @@ func (r *Reconciler) updateStatus(cod *orbv1alpha1.ClusterObjectDeployment, owne
 
 	var activeCOSs []orbv1alpha1.ClusterObjectSet
 	for i := range ownedCOSs {
-		if ownedCOSs[i].Spec.LifecycleState != orbv1alpha1.LifecycleStateArchived {
+		if ownedCOSs[i].Spec.LifecycleState != orbv1alpha1.LifecycleStateArchived && ownedCOSs[i].DeletionTimestamp.IsZero() {
 			activeCOSs = append(activeCOSs, ownedCOSs[i])
 		}
 	}
@@ -251,6 +251,9 @@ func (r *Reconciler) updateStatus(cod *orbv1alpha1.ClusterObjectDeployment, owne
 	if len(activeCOSs) > 0 {
 		latestCOS = &activeCOSs[len(activeCOSs)-1]
 	}
+
+	cod.Status.ObjectCounts = codstatus.ObjectCountsFromCOS(latestCOS)
+
 	progressingCondition, requeueAfter := codstatus.EvaluateDeadline(cod, latestCOS, time.Now(), r.deadlineUnit)
 	meta.SetStatusCondition(&cod.Status.Conditions, progressingCondition)
 
