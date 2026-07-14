@@ -1,38 +1,34 @@
 ---
-status: idea
+status: in-progress
 ---
 # Printer Column Improvements
 
 ## Summary
 
-Improve COD, COS, and COSL printer columns to provide useful at-a-glance
+Improve COD and COS printer columns to provide useful at-a-glance
 information, mirroring Deployment and ReplicaSet column patterns where
 the analogy fits. All count columns use the same noun (objects) with
 different adjectives, matching how Deployment columns all count pods.
 
-New integer status fields on COD and COS, and an `objectCount` field on
-COSL, back the printer columns via JSONPath. The COSL field is populated
-by a MutatingAdmissionPolicy.
-
-A future UP-TO-DATE column on COD depends on the COS three-pass
-reconcile work item (`specs/2026-07-12-cos-three-pass-reconcile/`).
+New integer status fields on COD and COS back the printer columns via
+JSONPath. The per-phase `ObjectCounts` added by the three-pass reconcile
+work item provide the source data — the new top-level fields are sums.
 
 ## Design
 
 ### COD Columns
 
 ```
-NAME           OBJECTS   AVAILABLE   AGE
-my-extension   15        15          5m
+NAME           AVAILABLE   SYNCED   TOTAL   AGE
+my-extension   15          15       15      5m
 ```
 
-New fields on `ClusterObjectDeploymentStatus`:
-- `totalObjects int32` — total objects across all phases of the current
-  (latest active) revision.
-- `availableObjects int32` — objects in the current revision whose
-  assertions pass.
+New field on `ClusterObjectDeploymentStatus`:
+- `objectCounts ObjectCounts` — reuses the existing `ObjectCounts`
+  struct (total, synced, available as int64). Values are copied from
+  the latest active revision's status.
 
-The invariant `totalObjects >= availableObjects` always holds.
+The invariant `total >= synced >= available` holds.
 
 These replace the existing `Availability` (reason) and `Progressing`
 (reason) printer columns. The Available and Progressing conditions
@@ -41,57 +37,47 @@ remain on the status — they just stop being printer columns.
 ### COS Columns
 
 ```
-NAME              GROUP    REV   OBJECTS   AVAILABLE   LIFECYCLE   AGE
-my-ext-abc-1      my-ext   1     12        12          Active      5m
+NAME              GROUP    REV   AVAILABLE   SYNCED   TOTAL   LIFECYCLE   AGE
+my-ext-abc-1      my-ext   1     12          12       12      Active      5m
 ```
 
-New fields on `ClusterObjectSetStatus`:
-- `totalObjects int32` — total objects across all phases.
-- `availableObjects int32` — objects whose assertions pass (phases with
-  status Available have all their objects available; phases with status
-  Reconciling contribute their non-incomplete objects).
+New field on `ClusterObjectSetStatus`:
+- `objectCounts ObjectCounts` — reuses the existing `ObjectCounts`
+  struct. Values are sums across all observed phases.
 
-GROUP, REV, LIFECYCLE, and AGE are existing columns (REV was previously
-named "Revision"). The existing `Available` (True/False from condition
-status) column is replaced by the `availableObjects` integer.
-
-### COSL Columns
-
-```
-NAME              OBJECTS   AGE
-my-ext-abc-1-0    42        5m
-```
-
-New top-level field on `ClusterObjectSlice`:
-- `objectCount int32` — number of entries in the `objects` list.
-
-Populated by a MutatingAdmissionPolicy on create. Since COSL is
-immutable, the policy only needs to run once.
+The existing `Available` (True/False from condition status) column is
+replaced by the `availableObjects` integer. GROUP, REV, LIFECYCLE, and
+AGE remain.
 
 ### Computing COD counts
 
 The COD controller already has access to all owned COS resources in
-`updateStatus`. The new counts are derived from the COS status fields:
+`updateStatus`. The new counts are derived from the latest active COS
+status fields:
 
-- `totalObjects`: `totalObjects` from the latest active COS that matches
-  the current template hash.
-- `availableObjects`: `availableObjects` from the latest active COS that
-  matches the current template hash.
+- `objectCounts`: copied from the latest active COS's `objectCounts`.
+
+"Latest active" means the non-archived, non-deleting COS with the
+highest revision number.
 
 ### Computing COS counts
 
-The COS controller already builds `observedPhases` from the boxcutter
-reconcile result. The new counts are derived in the same place:
+The COS controller already builds `observedPhases` with per-phase
+`ObjectCounts` from the three-pass reconcile. The new top-level fields
+are computed by summing across all observed phases:
 
-- `totalObjects`: sum of object counts across all spec phases (counting
-  inline objects and objectRefs).
-- `availableObjects`: for each observed phase, count objects that are
-  complete (total objects in that phase minus `len(incompleteObjects)`).
+- `objectCounts.total`: `sum(observedPhases[*].objectCounts.total)`
+- `objectCounts.synced`: `sum(observedPhases[*].objectCounts.synced)`
+- `objectCounts.available`: `sum(observedPhases[*].objectCounts.available)`
 
-### Future: UP-TO-DATE column
+These are computed in `internal/status/cos/status.go` alongside the
+existing `ObservedPhases` construction.
 
-An UP-TO-DATE column on COD requires the COS three-pass reconcile
-(`specs/2026-07-12-cos-three-pass-reconcile/`), which adds up-to-date
-detection via a paused boxcutter pass over unevaluated phases. Once
-that lands, the COS can report `upToDateObjects` and the COD can
-expose it as a printer column.
+### Known limitation: SYNCED during revision transitions
+
+During a revision transition, objects that are unchanged in content
+will still show as "not synced" because their ownership metadata
+(owner references, revision annotations) needs to change. This means
+SYNCED may temporarily undercount during upgrades. A future
+improvement could filter out ownership-related diffs to show a
+content-only synced count.
