@@ -16,8 +16,9 @@ type ObjectKeyApplyConfiguration struct {
 	// kind is the kind of the object (e.g. "ConfigMap", "Deployment").
 	// Must be a DNS-1035 label with mixed case allowed.
 	Kind *string `json:"kind,omitempty"`
-	// name is the metadata.name of the object. Must be a valid DNS-1123
-	// subdomain (lowercase alphanumeric, '-', or '.').
+	// name is the metadata.name of the object. Must start and end with
+	// a lowercase alphanumeric character, with lowercase alphanumeric
+	// characters, '-', or '.' in between.
 	Name *string `json:"name,omitempty"`
 	// namespace is the metadata.namespace of the object. Defaults to empty
 	// string for cluster-scoped resources. Must be a valid DNS-1123 label

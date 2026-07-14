@@ -56,11 +56,12 @@ type ObjectKey struct {
 	// +required
 	Kind string `json:"kind"`
 
-	// name is the metadata.name of the object. Must be a valid DNS-1123
-	// subdomain (lowercase alphanumeric, '-', or '.').
+	// name is the metadata.name of the object. Must start and end with
+	// a lowercase alphanumeric character, with lowercase alphanumeric
+	// characters, '-', or '.' in between.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
-	// +kubebuilder:validation:XValidation:rule="self.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$')",message="must be a valid DNS-1123 subdomain"
+	// +kubebuilder:validation:XValidation:rule="self.matches('^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$')",message="must start and end with a lowercase alphanumeric character, with lowercase alphanumeric characters, '-', or '.' in between"
 	// +required
 	Name string `json:"name"`
 

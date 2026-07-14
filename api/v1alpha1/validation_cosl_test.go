@@ -279,14 +279,13 @@ func TestCOSL_ObjectKey_Name_Pattern(t *testing.T) {
 		{"with dots", "my.cm.name"},
 		{"single char", "a"},
 		{"digits", "cm1"},
+		{"double dots", "my..cm"},
+		{"dot-hyphen", "my.-cm"},
+		{"hyphen-dot", "my-.cm"},
 	} {
 		t.Run(tc.name+" is accepted", func(t *testing.T) {
-			cosName := "cosl-n-ok-" + tc.objName
-			if len(cosName) > 63 {
-				cosName = cosName[:63]
-			}
 			key := orbv1alpha1.ObjectKey{APIVersion: "v1", Kind: "ConfigMap", Name: tc.objName}
-			require.NoError(t, createSliceWithKey(t, ctx, cosName, key))
+			require.NoError(t, createSliceWithKey(t, ctx, "cosl-n-ok", key))
 		})
 	}
 
@@ -296,16 +295,16 @@ func TestCOSL_ObjectKey_Name_Pattern(t *testing.T) {
 		objName string
 	}{
 		{"starts with hyphen", "cosl-n-hyp", "-cm"},
+		{"starts with dot", "cosl-n-dot", ".cm"},
 		{"ends with hyphen", "cosl-n-endhyp", "cm-"},
 		{"ends with dot", "cosl-n-enddot", "cm."},
 		{"uppercase", "cosl-n-upper", "MyCm"},
 		{"contains underscore", "cosl-n-uscore", "my_cm"},
-		{"double dots", "cosl-n-ddots", "my..cm"},
 	} {
 		t.Run(tc.name+" is rejected", func(t *testing.T) {
 			key := orbv1alpha1.ObjectKey{APIVersion: "v1", Kind: "ConfigMap", Name: tc.objName}
 			requireStatusError(t, createSliceWithKey(t, ctx, tc.cosName, key),
-				"objects[0].name", "must be a valid DNS-1123 subdomain")
+				"objects[0].name", "must start and end with a lowercase alphanumeric character")
 		})
 	}
 }
