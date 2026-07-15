@@ -72,7 +72,7 @@ type ObjectKey struct {
 	// +kubebuilder:default=""
 	// +kubebuilder:validation:XValidation:rule="self == '' || self.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')",message="must be empty or a valid DNS-1123 label"
 	// +optional
-	Namespace string `json:"namespace,omitempty"`
+	Namespace string `json:"namespace"`
 }
 
 // SliceObject holds a single Kubernetes object manifest with explicit identity

@@ -52,3 +52,18 @@ Feature: COD creates new revisions on template changes
     And the COS with group "rev-cleanup" and revision 1 should have lifecycleState "Archived"
     And the ConfigMap "cm-cleanup-old" should not exist
     And the ConfigMap "cm-cleanup-new" should exist
+
+  Scenario: Revision transition archives old objectRef-based revision
+    Given a ClusterObjectSlice "rev-ref-s1" with a ConfigMap "cm-rev-ref-old"
+    And a ClusterObjectSlice "rev-ref-ns" with a Namespace "ns-rev-ref"
+    And a COD named "rev-ref-cleanup"
+    And a phase "cluster" with an objectRef to slice "rev-ref-ns" for Namespace "ns-rev-ref"
+    And a phase "install" with an objectRef to slice "rev-ref-s1" for ConfigMap "cm-rev-ref-old"
+    When the COD is created
+    Then the COD "rev-ref-cleanup" should be Available
+    And the ConfigMap "cm-rev-ref-old" should exist
+    When the COD template spec is updated with a ConfigMap "cm-rev-ref-new" in phase "install"
+    Then the COD "rev-ref-cleanup" should be Available
+    And the COS with group "rev-ref-cleanup" and revision 1 should have lifecycleState "Archived"
+    And the ConfigMap "cm-rev-ref-old" should not exist
+    And the ConfigMap "cm-rev-ref-new" should exist

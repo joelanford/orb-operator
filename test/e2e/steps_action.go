@@ -53,6 +53,7 @@ func registerActionSteps(sc *godog.ScenarioContext, tc *testContext) {
 	sc.Step(`^the COD is created$`, tc.theCODIsCreated)
 	sc.Step(`^the COD template spec is updated with a ConfigMap "([^"]*)" in phase "([^"]*)"$`, tc.theCODTemplateSpecIsUpdated)
 	sc.Step(`^the COD template spec is updated with a gated ConfigMap "([^"]*)" in phase "([^"]*)"$`, tc.theCODTemplateSpecIsUpdatedWithGatedConfigMap)
+	sc.Step(`^the COD template spec is updated with an objectRef to slice "([^"]*)" for ConfigMap "([^"]*)" in phase "([^"]*)"$`, tc.theCODTemplateSpecIsUpdatedWithObjectRef)
 	sc.Step(`^the COD template label "([^"]*)" is updated to "([^"]*)"$`, tc.theCODTemplateLabelIsUpdated)
 	sc.Step(`^the COD "([^"]*)" is deleted$`, tc.theCODIsDeleted)
 	sc.Step(`^the COD "([^"]*)" is deleted with cascade (orphan)$`, tc.theCODIsDeletedWithCascade)
@@ -300,6 +301,28 @@ func (tc *testContext) theCODTemplateSpecIsUpdated(cmName, phaseName string) err
 			Phases: []orbv1alpha1.Phase{{
 				Name:    phaseName,
 				Objects: []orbv1alpha1.PhaseObject{newGatedConfigMapPhaseObject(cmName, tc.namespace, false)},
+			}},
+		}
+	})
+}
+
+func (tc *testContext) theCODTemplateSpecIsUpdatedWithObjectRef(sliceName, cmName, phaseName string) error {
+	fullSliceName := tc.namespace + "-" + sliceName
+	return pollMutateUpdate[orbv1alpha1.ClusterObjectDeployment](tc, types.NamespacedName{Name: tc.lastCreatedCODName()}, func(cod *orbv1alpha1.ClusterObjectDeployment) {
+		cod.Spec.Template.Spec = orbv1alpha1.ClusterObjectDeploymentTemplateSpec{
+			Phases: []orbv1alpha1.Phase{{
+				Name: phaseName,
+				Objects: []orbv1alpha1.PhaseObject{{
+					ObjectRef: &orbv1alpha1.ObjectRef{
+						SliceName: fullSliceName,
+						ObjectKey: orbv1alpha1.ObjectKey{
+							APIVersion: "v1",
+							Kind:       "ConfigMap",
+							Name:       cmName,
+							Namespace:  tc.namespace,
+						},
+					},
+				}},
 			}},
 		}
 	})

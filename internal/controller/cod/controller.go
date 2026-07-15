@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -197,7 +198,7 @@ func (r *Reconciler) createRevision(ctx context.Context, cod *orbv1alpha1.Cluste
 	}
 
 	u := &unstructured.Unstructured{Object: cosUnstructuredObj}
-	if err := r.client.Create(ctx, u); err != nil {
+	if err := r.client.Create(ctx, u, client.FieldOwner(fieldOwner)); err != nil {
 		return fmt.Errorf("creating COS: %w", err)
 	}
 	if err := r.client.Apply(ctx, cos, client.FieldOwner(fieldOwner), client.ForceOwnership); err != nil {
@@ -277,8 +278,10 @@ func (r *Reconciler) archiveSuperseded(ctx context.Context, ownedCOSs []orbv1alp
 				return cos.Spec.LifecycleState != orbv1alpha1.LifecycleStateArchived
 			},
 			func(ac *cosac.ClusterObjectSetApplyConfiguration) {
-				ac.WithSpec(cosac.ClusterObjectSetSpec().
-					WithLifecycleState(orbv1alpha1.LifecycleStateArchived))
+				if ac.Spec == nil {
+					ac.Spec = &cosac.ClusterObjectSetSpecApplyConfiguration{}
+				}
+				ac.Spec.LifecycleState = ptr.To(orbv1alpha1.LifecycleStateArchived)
 			},
 		); err != nil {
 			return fmt.Errorf("archiving COS %s: %w", cos.Name, err)

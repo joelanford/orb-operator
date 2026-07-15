@@ -49,7 +49,9 @@ func registerSetupSteps(sc *godog.ScenarioContext, tc *testContext) {
 	// ClusterObjectSlice setup steps
 	sc.Step(`^a ClusterObjectSlice "([^"]*)" with a ConfigMap "([^"]*)"$`, tc.aSliceWithConfigMap)
 	sc.Step(`^a ClusterObjectSlice "([^"]*)" with a gzip-compressed ConfigMap "([^"]*)"$`, tc.aSliceWithGzipConfigMap)
+	sc.Step(`^a ClusterObjectSlice "([^"]*)" with a Namespace "([^"]*)"$`, tc.aSliceWithNamespace)
 	sc.Step(`^(?:a|the) phase "([^"]*)" (?:with|has) an objectRef to slice "([^"]*)" for ConfigMap "([^"]*)"$`, tc.aPhaseWithObjectRefConfigMap)
+	sc.Step(`^(?:a|the) phase "([^"]*)" (?:with|has) an objectRef to slice "([^"]*)" for Namespace "([^"]*)"$`, tc.aPhaseWithObjectRefNamespace)
 	sc.Step(`^the phase "([^"]*)" also has an objectRef to slice "([^"]*)" for ConfigMap "([^"]*)"$`, tc.phaseAlsoHasObjectRefConfigMap)
 	sc.Step(`^ConfigMap(?:\s+"([^"]*)")? operations are blocked$`, tc.configMapOpsAreBlocked)
 
@@ -433,6 +435,31 @@ func gzipBytes(data []byte) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+func (tc *testContext) aSliceWithNamespace(sliceName, nsName string) error {
+	ns := &corev1.Namespace{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "Namespace"},
+		ObjectMeta: metav1.ObjectMeta{Name: nsName},
+	}
+	raw, err := json.Marshal(ns)
+	if err != nil {
+		return fmt.Errorf("marshalling Namespace: %w", err)
+	}
+	fullSliceName := tc.namespace + "-" + sliceName
+	return tc.createSlice(context.Background(), fullSliceName, []orbv1alpha1.SliceObject{{
+		ObjectKey: orbv1alpha1.ObjectKey{
+			APIVersion: "v1",
+			Kind:       "Namespace",
+			Name:       nsName,
+		},
+		Content: raw,
+	}})
+}
+
+func (tc *testContext) aPhaseWithObjectRefNamespace(phaseName, sliceName, nsName string) {
+	tc.addPhase(phaseName)
+	tc.addObjectRefToPhase(tc.namespace+"-"+sliceName, "v1", "Namespace", nsName, "")
 }
 
 func (tc *testContext) aPhaseWithObjectRefConfigMap(phaseName, sliceName, cmName string) {
