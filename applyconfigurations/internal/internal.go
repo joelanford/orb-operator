@@ -274,6 +274,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: available
       type:
         scalar: numeric
+    - name: present
+      type:
+        scalar: numeric
     - name: synced
       type:
         scalar: numeric

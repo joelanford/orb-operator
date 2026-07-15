@@ -26,6 +26,7 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // +kubebuilder:printcolumn:name="Rev",type=integer,JSONPath=`.spec.revision`
 // +kubebuilder:printcolumn:name="Available",type=integer,JSONPath=`.status.objectCounts.available`
 // +kubebuilder:printcolumn:name="Synced",type=integer,JSONPath=`.status.objectCounts.synced`
+// +kubebuilder:printcolumn:name="Present",type=integer,JSONPath=`.status.objectCounts.present`
 // +kubebuilder:printcolumn:name="Total",type=integer,JSONPath=`.status.objectCounts.total`
 // +kubebuilder:printcolumn:name="Lifecycle",type=string,JSONPath=`.spec.lifecycleState`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
@@ -102,6 +103,7 @@ type ClusterObjectSetSpec struct {
 // +kubebuilder:validation:XValidation:rule="has(self.observedPhases) == has(self.objectCounts)",message="observedPhases and objectCounts must both be present or both be absent"
 // +kubebuilder:validation:XValidation:rule="!has(self.observedPhases) || self.objectCounts.total == self.observedPhases.map(p, p.objectCounts.total).sum()",message="objectCounts.total must equal sum of per-phase totals"
 // +kubebuilder:validation:XValidation:rule="!has(self.observedPhases) || self.objectCounts.synced == self.observedPhases.map(p, p.objectCounts.synced).sum()",message="objectCounts.synced must equal sum of per-phase synced"
+// +kubebuilder:validation:XValidation:rule="!has(self.observedPhases) || self.objectCounts.present == self.observedPhases.map(p, p.objectCounts.present).sum()",message="objectCounts.present must equal sum of per-phase present"
 // +kubebuilder:validation:XValidation:rule="!has(self.observedPhases) || self.objectCounts.available == self.observedPhases.map(p, p.objectCounts.available).sum()",message="objectCounts.available must equal sum of per-phase available"
 type ClusterObjectSetStatus struct {
 	// conditions represent the latest available observations of the revision's
@@ -248,6 +250,12 @@ type ObservedPhase struct {
 type ObjectCounts struct {
 	// total is the number of objects in this phase.
 	Total int64 `json:"total"`
+
+	// present is the number of objects in this phase that exist on the
+	// cluster. During reconcile, this counts objects that the controller
+	// has found or created. During teardown, this decrements toward zero
+	// as objects are deleted.
+	Present int64 `json:"present"`
 
 	// synced is the number of objects in this phase whose cluster state
 	// matches the desired state.

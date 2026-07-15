@@ -9,6 +9,11 @@ package v1alpha1
 type ObjectCountsApplyConfiguration struct {
 	// total is the number of objects in this phase.
 	Total *int64 `json:"total,omitempty"`
+	// present is the number of objects in this phase that exist on the
+	// cluster. During reconcile, this counts objects that the controller
+	// has found or created. During teardown, this decrements toward zero
+	// as objects are deleted.
+	Present *int64 `json:"present,omitempty"`
 	// synced is the number of objects in this phase whose cluster state
 	// matches the desired state.
 	Synced *int64 `json:"synced,omitempty"`
@@ -28,6 +33,14 @@ func ObjectCounts() *ObjectCountsApplyConfiguration {
 // If called multiple times, the Total field is set to the value of the last call.
 func (b *ObjectCountsApplyConfiguration) WithTotal(value int64) *ObjectCountsApplyConfiguration {
 	b.Total = &value
+	return b
+}
+
+// WithPresent sets the Present field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Present field is set to the value of the last call.
+func (b *ObjectCountsApplyConfiguration) WithPresent(value int64) *ObjectCountsApplyConfiguration {
+	b.Present = &value
 	return b
 }
 

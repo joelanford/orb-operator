@@ -567,6 +567,14 @@ spec:
                       and pass their assertions.
                     format: int64
                     type: integer
+                  present:
+                    description: |-
+                      present is the number of objects in this phase that exist on the
+                      cluster. During reconcile, this counts objects that the controller
+                      has found or created. During teardown, this decrements toward zero
+                      as objects are deleted.
+                    format: int64
+                    type: integer
                   synced:
                     description: |-
                       synced is the number of objects in this phase whose cluster state
@@ -579,6 +587,7 @@ spec:
                     type: integer
                 required:
                 - available
+                - present
                 - synced
                 - total
                 type: object

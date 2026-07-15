@@ -29,6 +29,9 @@ spec:
     - jsonPath: .status.objectCounts.synced
       name: Synced
       type: integer
+    - jsonPath: .status.objectCounts.present
+      name: Present
+      type: integer
     - jsonPath: .status.objectCounts.total
       name: Total
       type: integer
@@ -488,6 +491,14 @@ spec:
                       and pass their assertions.
                     format: int64
                     type: integer
+                  present:
+                    description: |-
+                      present is the number of objects in this phase that exist on the
+                      cluster. During reconcile, this counts objects that the controller
+                      has found or created. During teardown, this decrements toward zero
+                      as objects are deleted.
+                    format: int64
+                    type: integer
                   synced:
                     description: |-
                       synced is the number of objects in this phase whose cluster state
@@ -500,6 +511,7 @@ spec:
                     type: integer
                 required:
                 - available
+                - present
                 - synced
                 - total
                 type: object
@@ -552,6 +564,14 @@ spec:
                             and pass their assertions.
                           format: int64
                           type: integer
+                        present:
+                          description: |-
+                            present is the number of objects in this phase that exist on the
+                            cluster. During reconcile, this counts objects that the controller
+                            has found or created. During teardown, this decrements toward zero
+                            as objects are deleted.
+                          format: int64
+                          type: integer
                         synced:
                           description: |-
                             synced is the number of objects in this phase whose cluster state
@@ -564,6 +584,7 @@ spec:
                           type: integer
                       required:
                       - available
+                      - present
                       - synced
                       - total
                       type: object
@@ -687,6 +708,9 @@ spec:
             - message: objectCounts.synced must equal sum of per-phase synced
               rule: '!has(self.observedPhases) || self.objectCounts.synced == self.observedPhases.map(p,
                 p.objectCounts.synced).sum()'
+            - message: objectCounts.present must equal sum of per-phase present
+              rule: '!has(self.observedPhases) || self.objectCounts.present == self.observedPhases.map(p,
+                p.objectCounts.present).sum()'
             - message: objectCounts.available must equal sum of per-phase available
               rule: '!has(self.observedPhases) || self.objectCounts.available == self.observedPhases.map(p,
                 p.objectCounts.available).sum()'
