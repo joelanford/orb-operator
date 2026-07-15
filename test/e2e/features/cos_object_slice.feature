@@ -39,6 +39,16 @@ Feature: COS resolves objects from ClusterObjectSlice via objectRef
     Then the COS should have condition "Available" with status "True"
     And the ConfigMap "cm-compressed" should exist
 
+  Scenario: Teardown succeeds after referenced ClusterObjectSlice is deleted
+    Given a ClusterObjectSlice "slice-td" with a ConfigMap "cm-teardown-slice"
+    And a COS with group "cosl-td" and revision 1
+    And a phase "install" with an objectRef to slice "slice-td" for ConfigMap "cm-teardown-slice"
+    And the COS is created and becomes Available
+    When the ClusterObjectSlice "slice-td" is deleted
+    And the COS lifecycleState is set to "Archived"
+    Then the ConfigMap "cm-teardown-slice" should not exist
+    And the COS should have condition "Available" with status "False" and reason "Archived"
+
   Scenario: COS detects content hash mismatch after slice delete and recreate
     Given a ClusterObjectSlice "slice-hash" with a ConfigMap "cm-hash"
     And a COS with group "cosl-hash" and revision 1

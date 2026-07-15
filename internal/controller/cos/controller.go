@@ -170,7 +170,20 @@ func (r *Reconciler) reconcileActive(ctx context.Context, log logr.Logger, cos *
 }
 
 func (r *Reconciler) doReconcile(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, siblings []*orbv1alpha1.ClusterObjectSet) (machinery.RevisionResult, error) {
-	engine, rev, err := r.resolveAndPrepare(ctx, cos, siblings)
+	resolve := func() (*object.Result, error) {
+		resolved, err := r.resolver.Resolve(ctx, cos.Spec.Phases)
+		if err != nil {
+			return nil, err
+		}
+		if err := resolved.VerifyHash(cos.Status.ResolvedContentHash); err != nil {
+			return nil, err
+		}
+		if cos.Status.ResolvedContentHash == "" {
+			cos.Status.ResolvedContentHash = resolved.Hash
+		}
+		return resolved, nil
+	}
+	engine, rev, err := r.resolveAndPrepare(ctx, cos, resolve, siblings)
 	if err != nil {
 		return nil, err
 	}
@@ -207,23 +220,20 @@ func (r *Reconciler) teardown(ctx context.Context, log logr.Logger, cos *orbv1al
 }
 
 func (r *Reconciler) doTeardown(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet) (machinery.RevisionTeardownResult, error) {
-	engine, rev, err := r.resolveAndPrepare(ctx, cos, nil)
+	resolve := func() (*object.Result, error) {
+		return object.ResolveIdentities(cos.Spec.Phases)
+	}
+	engine, rev, err := r.resolveAndPrepare(ctx, cos, resolve, nil)
 	if err != nil {
 		return nil, err
 	}
 	return engine.Teardown(ctx, rev, types.WithAggregatePhaseTeardownErrors())
 }
 
-func (r *Reconciler) resolveAndPrepare(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, siblings []*orbv1alpha1.ClusterObjectSet) (*revision.Engine, boxcutter.Revision, error) {
-	resolved, err := r.resolver.Resolve(ctx, cos.Spec.Phases)
+func (r *Reconciler) resolveAndPrepare(ctx context.Context, cos *orbv1alpha1.ClusterObjectSet, resolve func() (*object.Result, error), siblings []*orbv1alpha1.ClusterObjectSet) (*revision.Engine, boxcutter.Revision, error) {
+	resolved, err := resolve()
 	if err != nil {
 		return nil, nil, &orberrors.ObjectResolutionError{Err: err}
-	}
-	if err := resolved.VerifyHash(cos.Status.ResolvedContentHash); err != nil {
-		return nil, nil, &orberrors.ObjectResolutionError{Err: err}
-	}
-	if cos.Status.ResolvedContentHash == "" {
-		cos.Status.ResolvedContentHash = resolved.Hash
 	}
 
 	engine, err := r.newEngine(ctx, cos, resolved)
