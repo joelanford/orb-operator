@@ -56,9 +56,11 @@ orb-operator/
 │   │   └── cos/            # COS declarative status updater
 │   └── template/           # COD template hashing + COS construction
 ├── deploy/
-│   ├── lib/                # shared jsonnet libraries
-│   ├── operator.jsonnet    # main deployment manifest (Deployment, RBAC, etc.)
-│   └── crds/               # controller-gen CRD output
+│   ├── lib/
+│   │   ├── api.libsonnet       # API-surface objects (VAPs, VAPBs, CRDs)
+│   │   └── controller.libsonnet # workload objects (NS, SA, CRB, Deployment, Service)
+│   ├── main.jsonnet            # orchestrator, imports lib/ and concatenates api + controller
+│   └── crds/                   # controller-gen CRD output
 ├── test/
 │   └── e2e/                # godog BDD tests
 ├── hack/
