@@ -438,9 +438,10 @@ func gzipBytes(data []byte) ([]byte, error) {
 }
 
 func (tc *testContext) aSliceWithNamespace(sliceName, nsName string) error {
+	fullNsName := tc.namespace + "-" + nsName
 	ns := &corev1.Namespace{
 		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "Namespace"},
-		ObjectMeta: metav1.ObjectMeta{Name: nsName},
+		ObjectMeta: metav1.ObjectMeta{Name: fullNsName},
 	}
 	raw, err := json.Marshal(ns)
 	if err != nil {
@@ -451,7 +452,7 @@ func (tc *testContext) aSliceWithNamespace(sliceName, nsName string) error {
 		ObjectKey: orbv1alpha1.ObjectKey{
 			APIVersion: "v1",
 			Kind:       "Namespace",
-			Name:       nsName,
+			Name:       fullNsName,
 		},
 		Content: raw,
 	}})
@@ -459,7 +460,7 @@ func (tc *testContext) aSliceWithNamespace(sliceName, nsName string) error {
 
 func (tc *testContext) aPhaseWithObjectRefNamespace(phaseName, sliceName, nsName string) {
 	tc.addPhase(phaseName)
-	tc.addObjectRefToPhase(tc.namespace+"-"+sliceName, "v1", "Namespace", nsName, "")
+	tc.addObjectRefToPhase(tc.namespace+"-"+sliceName, "v1", "Namespace", tc.namespace+"-"+nsName, "")
 }
 
 func (tc *testContext) aPhaseWithObjectRefConfigMap(phaseName, sliceName, cmName string) {
