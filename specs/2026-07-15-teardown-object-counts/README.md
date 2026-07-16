@@ -8,7 +8,7 @@ status: in-progress
 An archived COS with 14 objects shows `14/14/14` (available/synced/total) even
 though all objects have been deleted. This work item adds a `present` field to
 `ObjectCounts`, fixes teardown count semantics, and adds read-only presence
-checks for gated teardown phases so counts are always accurate.
+checks for read-only teardown phases so counts are always accurate.
 
 ## Problem
 
@@ -22,7 +22,7 @@ the final state, but exposes deeper problems:
 
 - **Tearing-down phases** report 0/0/0: `tearingDownPhase` never sets
   `ObjectCounts` at all (not even `Total`).
-- **Gated phases** (not yet reached by teardown) are marked Unknown with
+- **Read-only phases** (not yet reached by teardown) are marked Unknown with
   0/0/total. No object-level evaluation happens for these phases.
 
 ## Design
@@ -59,7 +59,7 @@ Each lifecycle populates only the fields that are meaningful for it.
 | Phase state | present | synced | available | total |
 |---|---|---|---|---|
 | TearingDown | objects waiting for deletion | 0 | 0 | total |
-| Gated (not yet reached) | objects found in cache | 0 | 0 | total |
+| Read-only (not yet reached) | objects found in cache | 0 | 0 | total |
 
 **Teardown complete** - all four fields are explicitly set:
 
@@ -69,21 +69,21 @@ Each lifecycle populates only the fields that are meaningful for it.
 
 This applies at both the per-phase and aggregate COS levels.
 
-### Read-only presence check for gated teardown phases
+### Read-only presence check for read-only teardown phases
 
 During reconcile, phases that can't be actively reconciled still get a read-only
 evaluation pass. Teardown needs the same pattern: phases that teardown hasn't
-reached yet (gated on a later phase still tearing down) should do a read-only
+reached yet (read-only on a later phase still tearing down) should do a read-only
 presence check against the cache rather than being left as Unknown.
 
 This means teardown never produces Unknown/unevaluated phases. Every phase is
-either TeardownComplete, TearingDown, or gated with an accurate `present` count
+either TeardownComplete, TearingDown, or read-only with an accurate `present` count
 derived from the cache.
 
 Boxcutter has no dry-run teardown mode (`WithPaused` is reconcile-only), so the
-presence check is done directly: for each object identity in a gated phase, do a
+presence check is done directly: for each object identity in a read-only phase, do a
 cache lookup (Get by GVK + namespace + name) and count how many exist. This
-bypasses boxcutter entirely for gated phases.
+bypasses boxcutter entirely for read-only phases.
 
 ### Differentiating complete-phase counts in mapSpecPhases
 

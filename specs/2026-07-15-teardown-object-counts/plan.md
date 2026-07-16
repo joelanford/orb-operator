@@ -22,24 +22,24 @@
 - `buildTeardownObservedPhases` passes a callback that returns `ObjectCounts{Total: total, Present: 0, Synced: 0, Available: 0}` for complete phases
 - In `tearingDownPhase`, use the `Phase` argument (currently `_`) to set `Total = len(sp.Objects)`, and set `Present = len(pr.Waiting())`, `Synced = 0`, `Available = 0`
 
-## 5. Gated teardown phases: read-only presence check
+## 5. Read-only teardown phases: read-only presence check
 
-This is the most significant change. Currently, gated phases (waiting phases from boxcutter's `RevisionTeardownResult`) appear as "unevaluated" with Unknown status and no object-level data. We need to:
+This is the most significant change. Currently, read-only phases (waiting phases from boxcutter's `RevisionTeardownResult`) appear as "unevaluated" with Unknown status and no object-level data. We need to:
 
 - In the controller (`doTeardown` or a post-processing step), after `engine.Teardown` returns:
   - Get the waiting phase names from the `RevisionTeardownResult`
   - For each waiting phase name, find the matching spec phase
   - For each object identity in that spec phase, do a cache Get to check existence
   - Build a result carrying {phaseName, presentCount, total}
-- Create a type (e.g., `gatedTeardownPhaseResult`) that satisfies the `mapSpecPhases` type constraint (`GetName() string`, `IsComplete() bool` returning false)
-- Include these results alongside the boxcutter `PhaseTeardownResult` results when calling `buildTeardownObservedPhases`, so gated phases go through the `buildIncomplete` path instead of the "unevaluated" path
-- In `tearingDownPhase`, handle both active tearing-down results (from boxcutter) and gated results (from our cache check) - distinguish by type assertion or by a marker on the result
+- Create a type (e.g., `read-onlyTeardownPhaseResult`) that satisfies the `mapSpecPhases` type constraint (`GetName() string`, `IsComplete() bool` returning false)
+- Include these results alongside the boxcutter `PhaseTeardownResult` results when calling `buildTeardownObservedPhases`, so read-only phases go through the `buildIncomplete` path instead of the "unevaluated" path
+- In `tearingDownPhase`, handle both active tearing-down results (from boxcutter) and read-only results (from our cache check) - distinguish by type assertion or by a marker on the result
 
 ## 6. Unit tests
 
-- Update `TestFromTeardown` in `internal/status/cos/status_test.go` to assert on object counts for all phase states (complete, tearing-down, gated)
+- Update `TestFromTeardown` in `internal/status/cos/status_test.go` to assert on object counts for all phase states (complete, tearing-down, read-only)
 - Add tests for `incompletePhase` verifying present counts during reconcile
-- Add tests for the gated-phase presence computation
+- Add tests for the read-only-phase presence computation
 
 ## 7. E2e step definitions: add present to count assertions
 
@@ -69,5 +69,5 @@ assert on phase status and object deletion but have zero count assertions. Add:
   TearingDown, and Unknown during teardown"), assert intermediate counts:
   - TeardownComplete phases: present=0
   - TearingDown phase: present = objects still waiting for deletion
-  - Gated phases (previously Unknown): present = objects found in cache (should
+  - Read-only phases (previously Unknown): present = objects found in cache (should
     equal total since teardown hasn't reached them yet)

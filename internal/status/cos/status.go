@@ -44,6 +44,7 @@ func sumObjectCounts(phases []orbv1alpha1.ObservedPhase) *orbv1alpha1.ObjectCoun
 	var counts orbv1alpha1.ObjectCounts
 	for i := range phases {
 		counts.Total += phases[i].ObjectCounts.Total
+		counts.Present += phases[i].ObjectCounts.Present
 		counts.Synced += phases[i].ObjectCounts.Synced
 		counts.Available += phases[i].ObjectCounts.Available
 	}
@@ -197,7 +198,12 @@ func allPhasesWithStatus(specPhases []orbv1alpha1.Phase, status orbv1alpha1.Phas
 }
 
 func buildObservedPhases(specPhases []orbv1alpha1.Phase, phaseResults []machinery.PhaseResult) []orbv1alpha1.ObservedPhase {
-	return mapSpecPhases(specPhases, phaseResults, orbv1alpha1.PhaseStatusAvailable, "Phase was not evaluated", incompletePhase)
+	return mapSpecPhases(specPhases, phaseResults, orbv1alpha1.PhaseStatusAvailable, "Phase was not evaluated",
+		func(total int64) orbv1alpha1.ObjectCounts {
+			return orbv1alpha1.ObjectCounts{Total: total, Present: total, Synced: total, Available: total}
+		},
+		incompletePhase,
+	)
 }
 
 func incompletePhase(sp orbv1alpha1.Phase, pr machinery.PhaseResult) orbv1alpha1.ObservedPhase {
@@ -213,6 +219,9 @@ func incompletePhase(sp orbv1alpha1.Phase, pr machinery.PhaseResult) orbv1alpha1
 
 	paused := false
 	for _, obj := range pr.GetObjects() {
+		if !obj.IsPaused() || obj.Action() != machinery.ActionCreated {
+			op.ObjectCounts.Present++
+		}
 		if obj.IsPaused() {
 			paused = true
 			if obj.Action() == machinery.ActionIdle {
@@ -265,17 +274,34 @@ func ObservedPhasesFromTeardownResult(specPhases []orbv1alpha1.Phase, result mac
 	if result == nil {
 		return nil
 	}
-	return buildTeardownObservedPhases(specPhases, result.GetPhases())
+	activeName, _ := result.GetActivePhaseName()
+	return buildTeardownObservedPhases(specPhases, result.GetPhases(), activeName)
 }
 
-func buildTeardownObservedPhases(specPhases []orbv1alpha1.Phase, phaseResults []machinery.PhaseTeardownResult) []orbv1alpha1.ObservedPhase {
-	return mapSpecPhases(specPhases, phaseResults, orbv1alpha1.PhaseStatusTeardownComplete, "", tearingDownPhase)
+func buildTeardownObservedPhases(specPhases []orbv1alpha1.Phase, phaseResults []machinery.PhaseTeardownResult, activePhaseName string) []orbv1alpha1.ObservedPhase {
+	return mapSpecPhases(specPhases, phaseResults, orbv1alpha1.PhaseStatusTeardownComplete, "",
+		func(total int64) orbv1alpha1.ObjectCounts {
+			return orbv1alpha1.ObjectCounts{Total: total}
+		},
+		func(sp orbv1alpha1.Phase, pr machinery.PhaseTeardownResult) orbv1alpha1.ObservedPhase {
+			return tearingDownPhase(sp, pr, pr.GetName() == activePhaseName)
+		},
+	)
 }
 
-func tearingDownPhase(_ orbv1alpha1.Phase, pr machinery.PhaseTeardownResult) orbv1alpha1.ObservedPhase {
+func tearingDownPhase(sp orbv1alpha1.Phase, pr machinery.PhaseTeardownResult, active bool) orbv1alpha1.ObservedPhase {
 	op := orbv1alpha1.ObservedPhase{
-		Name:   pr.GetName(),
-		Status: orbv1alpha1.PhaseStatusTearingDown,
+		Name: pr.GetName(),
+		ObjectCounts: orbv1alpha1.ObjectCounts{
+			Total:   int64(len(sp.Objects)),
+			Present: int64(len(pr.Waiting())),
+		},
+	}
+	if active {
+		op.Status = orbv1alpha1.PhaseStatusTearingDown
+	} else {
+		op.Status = orbv1alpha1.PhaseStatusPending
+		op.Message = "Waiting for later phases to complete teardown"
 	}
 	for _, ref := range pr.Waiting() {
 		os := objectStatusFromRef(ref)
@@ -293,6 +319,7 @@ func mapSpecPhases[T interface {
 	results []T,
 	completeStatus orbv1alpha1.PhaseStatus,
 	unevaluatedMessage string,
+	completeObjectCounts func(total int64) orbv1alpha1.ObjectCounts,
 	buildIncomplete func(orbv1alpha1.Phase, T) orbv1alpha1.ObservedPhase,
 ) []orbv1alpha1.ObservedPhase {
 	resultsByName := make(map[string]T, len(results))
@@ -317,7 +344,7 @@ func mapSpecPhases[T interface {
 			observed = append(observed, orbv1alpha1.ObservedPhase{
 				Name:         sp.Name,
 				Status:       completeStatus,
-				ObjectCounts: orbv1alpha1.ObjectCounts{Total: total, Synced: total, Available: total},
+				ObjectCounts: completeObjectCounts(total),
 			})
 			continue
 		}

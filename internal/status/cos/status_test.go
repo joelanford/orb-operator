@@ -82,8 +82,8 @@ func TestApply(t *testing.T) {
 	t.Run("computes objectCounts from observed phases", func(t *testing.T) {
 		cos := &orbv1alpha1.ClusterObjectSet{}
 		phases := []orbv1alpha1.ObservedPhase{
-			{Name: "p1", ObjectCounts: orbv1alpha1.ObjectCounts{Total: 5, Synced: 4, Available: 3}},
-			{Name: "p2", ObjectCounts: orbv1alpha1.ObjectCounts{Total: 10, Synced: 8, Available: 6}},
+			{Name: "p1", ObjectCounts: orbv1alpha1.ObjectCounts{Total: 5, Present: 5, Synced: 4, Available: 3}},
+			{Name: "p2", ObjectCounts: orbv1alpha1.ObjectCounts{Total: 10, Present: 10, Synced: 8, Available: 6}},
 		}
 		u := Update{
 			Condition:      newCondition(metav1.ConditionTrue, "Available", "ok"),
@@ -92,6 +92,7 @@ func TestApply(t *testing.T) {
 		Apply(cos, u)
 		require.NotNil(t, cos.Status.ObjectCounts)
 		assert.Equal(t, int64(15), cos.Status.ObjectCounts.Total)
+		assert.Equal(t, int64(15), cos.Status.ObjectCounts.Present)
 		assert.Equal(t, int64(12), cos.Status.ObjectCounts.Synced)
 		assert.Equal(t, int64(9), cos.Status.ObjectCounts.Available)
 	})
@@ -252,23 +253,35 @@ func TestFromTeardown(t *testing.T) {
 
 	t.Run("teardown in progress", func(t *testing.T) {
 		cos := &orbv1alpha1.ClusterObjectSet{
-			Spec: cosSpecWithPhases("p1"),
+			Spec: cosSpecWithPhaseObjects(
+				struct {
+					name    string
+					objects int
+				}{"p1", 3},
+			),
 		}
 		result := &fakeTeardownResult{
 			complete: false,
 			phases: []machinery.PhaseTeardownResult{
-				&fakePhaseTeardownResult{name: "p1", complete: false},
+				&fakePhaseTeardownResult{name: "p1", complete: false, waiting: []boxcuttertypes.ObjectRef{{}, {}}},
 			},
 		}
 		u := FromTeardown(cos, result, nil, now)
 		assert.Equal(t, metav1.ConditionFalse, u.Condition.Status)
 		assert.Equal(t, orbv1alpha1.ReasonArchived, u.Condition.Reason)
 		assert.Contains(t, u.Condition.Message, "in progress")
+		require.NotNil(t, u.ObservedPhases)
+		assert.Equal(t, orbv1alpha1.ObjectCounts{Total: 3, Present: 2}, (*u.ObservedPhases)[0].ObjectCounts)
 	})
 
-	t.Run("teardown complete", func(t *testing.T) {
+	t.Run("teardown complete sets all counts to zero except total", func(t *testing.T) {
 		cos := &orbv1alpha1.ClusterObjectSet{
-			Spec: cosSpecWithPhases("p1"),
+			Spec: cosSpecWithPhaseObjects(
+				struct {
+					name    string
+					objects int
+				}{"p1", 5},
+			),
 		}
 		result := &fakeTeardownResult{
 			complete: true,
@@ -280,6 +293,49 @@ func TestFromTeardown(t *testing.T) {
 		assert.Equal(t, metav1.ConditionFalse, u.Condition.Status)
 		assert.Equal(t, orbv1alpha1.ReasonArchived, u.Condition.Reason)
 		assert.Contains(t, u.Condition.Message, "teardown complete")
+		require.NotNil(t, u.ObservedPhases)
+		assert.Equal(t, orbv1alpha1.ObjectCounts{Total: 5}, (*u.ObservedPhases)[0].ObjectCounts)
+	})
+
+	t.Run("read-only teardown phases included in GetPhases", func(t *testing.T) {
+		cos := &orbv1alpha1.ClusterObjectSet{
+			Spec: cosSpecWithPhaseObjects(
+				struct {
+					name    string
+					objects int
+				}{"p1", 2},
+				struct {
+					name    string
+					objects int
+				}{"p2", 3},
+				struct {
+					name    string
+					objects int
+				}{"p3", 4},
+			),
+		}
+		result := &fakeTeardownResult{
+			complete: false,
+			active:   "p2",
+			phases: []machinery.PhaseTeardownResult{
+				&fakePhaseTeardownResult{name: "p3", complete: true},
+				&fakePhaseTeardownResult{name: "p2", complete: false, waiting: []boxcuttertypes.ObjectRef{{}, {}}},
+				&fakePhaseTeardownResult{name: "p1", complete: false, waiting: []boxcuttertypes.ObjectRef{{}, {}}},
+			},
+		}
+		u := FromTeardown(cos, result, nil, now)
+		require.NotNil(t, u.ObservedPhases)
+		phases := *u.ObservedPhases
+
+		assert.Equal(t, orbv1alpha1.PhaseStatusPending, phases[0].Status)
+		assert.Equal(t, "Waiting for later phases to complete teardown", phases[0].Message)
+		assert.Equal(t, orbv1alpha1.ObjectCounts{Total: 2, Present: 2}, phases[0].ObjectCounts)
+
+		assert.Equal(t, orbv1alpha1.PhaseStatusTearingDown, phases[1].Status)
+		assert.Equal(t, orbv1alpha1.ObjectCounts{Total: 3, Present: 2}, phases[1].ObjectCounts)
+
+		assert.Equal(t, orbv1alpha1.PhaseStatusTeardownComplete, phases[2].Status)
+		assert.Equal(t, orbv1alpha1.ObjectCounts{Total: 4}, phases[2].ObjectCounts)
 	})
 }
 
@@ -467,13 +523,15 @@ func (f *fakeCollisionResult) Action() machinery.Action { return machinery.Actio
 
 type fakeTeardownResult struct {
 	complete bool
+	active   string
 	phases   []machinery.PhaseTeardownResult
+	waiting  []string
 }
 
 func (f *fakeTeardownResult) IsComplete() bool                           { return f.complete }
 func (f *fakeTeardownResult) GetPhases() []machinery.PhaseTeardownResult { return f.phases }
-func (f *fakeTeardownResult) GetActivePhaseName() (string, bool)         { return "", false }
-func (f *fakeTeardownResult) GetWaitingPhaseNames() []string             { return nil }
+func (f *fakeTeardownResult) GetActivePhaseName() (string, bool)         { return f.active, f.active != "" }
+func (f *fakeTeardownResult) GetWaitingPhaseNames() []string             { return f.waiting }
 func (f *fakeTeardownResult) GetGonePhaseNames() []string                { return nil }
 func (f *fakeTeardownResult) String() string                             { return "" }
 
@@ -537,9 +595,7 @@ func TestBuildObservedPhases_ReadOnly(t *testing.T) {
 		observed := buildObservedPhases(spec.Phases, results)
 		require.Len(t, observed, 2)
 		assert.Equal(t, orbv1alpha1.PhaseStatusAvailable, observed[1].Status)
-		assert.Equal(t, int64(3), observed[1].ObjectCounts.Total)
-		assert.Equal(t, int64(3), observed[1].ObjectCounts.Synced)
-		assert.Equal(t, int64(3), observed[1].ObjectCounts.Available)
+		assert.Equal(t, orbv1alpha1.ObjectCounts{Total: 3, Present: 3, Synced: 3, Available: 3}, observed[1].ObjectCounts)
 	})
 
 	t.Run("read-only phase with objects needing updates", func(t *testing.T) {
@@ -558,9 +614,7 @@ func TestBuildObservedPhases_ReadOnly(t *testing.T) {
 		observed := buildObservedPhases(spec.Phases, results)
 		require.Len(t, observed, 2)
 		assert.Equal(t, orbv1alpha1.PhaseStatusPending, observed[1].Status)
-		assert.Equal(t, int64(3), observed[1].ObjectCounts.Total)
-		assert.Equal(t, int64(1), observed[1].ObjectCounts.Synced)
-		assert.Equal(t, int64(1), observed[1].ObjectCounts.Available)
+		assert.Equal(t, orbv1alpha1.ObjectCounts{Total: 3, Present: 2, Synced: 1, Available: 1}, observed[1].ObjectCounts)
 		assert.Len(t, observed[1].ObjectDetails, 2)
 	})
 
@@ -577,9 +631,7 @@ func TestBuildObservedPhases_ReadOnly(t *testing.T) {
 		}
 		observed := buildObservedPhases(spec.Phases, results)
 		assert.Equal(t, orbv1alpha1.PhaseStatusWaitingForAssertions, observed[0].Status)
-		assert.Equal(t, int64(2), observed[0].ObjectCounts.Total)
-		assert.Equal(t, int64(2), observed[0].ObjectCounts.Synced)
-		assert.Equal(t, int64(1), observed[0].ObjectCounts.Available)
+		assert.Equal(t, orbv1alpha1.ObjectCounts{Total: 2, Present: 2, Synced: 2, Available: 1}, observed[0].ObjectCounts)
 	})
 
 	t.Run("active phase fully synced but probes failing", func(t *testing.T) {
@@ -595,9 +647,7 @@ func TestBuildObservedPhases_ReadOnly(t *testing.T) {
 		}
 		observed := buildObservedPhases(spec.Phases, results)
 		assert.Equal(t, orbv1alpha1.PhaseStatusWaitingForAssertions, observed[0].Status)
-		assert.Equal(t, int64(2), observed[0].ObjectCounts.Total)
-		assert.Equal(t, int64(2), observed[0].ObjectCounts.Synced)
-		assert.Equal(t, int64(1), observed[0].ObjectCounts.Available)
+		assert.Equal(t, orbv1alpha1.ObjectCounts{Total: 2, Present: 2, Synced: 2, Available: 1}, observed[0].ObjectCounts)
 	})
 
 	t.Run("complete phase has all counts equal to total", func(t *testing.T) {
@@ -606,17 +656,13 @@ func TestBuildObservedPhases_ReadOnly(t *testing.T) {
 		}
 		observed := buildObservedPhases(spec.Phases, results)
 		assert.Equal(t, orbv1alpha1.PhaseStatusAvailable, observed[0].Status)
-		assert.Equal(t, int64(2), observed[0].ObjectCounts.Total)
-		assert.Equal(t, int64(2), observed[0].ObjectCounts.Synced)
-		assert.Equal(t, int64(2), observed[0].ObjectCounts.Available)
+		assert.Equal(t, orbv1alpha1.ObjectCounts{Total: 2, Present: 2, Synced: 2, Available: 2}, observed[0].ObjectCounts)
 	})
 
-	t.Run("unknown phase has total but zero synced and available", func(t *testing.T) {
+	t.Run("unknown phase has total but zero synced available and present", func(t *testing.T) {
 		observed := buildObservedPhases(spec.Phases, nil)
 		assert.Equal(t, orbv1alpha1.PhaseStatusUnknown, observed[0].Status)
-		assert.Equal(t, int64(2), observed[0].ObjectCounts.Total)
-		assert.Equal(t, int64(0), observed[0].ObjectCounts.Synced)
-		assert.Equal(t, int64(0), observed[0].ObjectCounts.Available)
+		assert.Equal(t, orbv1alpha1.ObjectCounts{Total: 2}, observed[0].ObjectCounts)
 	})
 }
 

@@ -7,6 +7,7 @@ import (
 	"pkg.package-operator.run/boxcutter/machinery"
 	"pkg.package-operator.run/boxcutter/machinery/types"
 	"pkg.package-operator.run/boxcutter/validation"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 )
@@ -14,6 +15,7 @@ import (
 type Engine struct {
 	revision    *boxcutter.RevisionEngine
 	phase       *machinery.PhaseEngine
+	reader      client.Reader
 	existingOPs []orbv1alpha1.ObservedPhase
 }
 
@@ -29,6 +31,7 @@ func NewEngine(opts boxcutter.RevisionEngineOptions, existingOPs []orbv1alpha1.O
 	return &Engine{
 		revision:    re,
 		phase:       pe,
+		reader:      opts.Reader,
 		existingOPs: existingOPs,
 	}, nil
 }
@@ -81,8 +84,63 @@ func (r *Result) String() string {
 }
 
 func (e *Engine) Teardown(ctx context.Context, rev types.Revision, opts ...types.RevisionTeardownOption) (machinery.RevisionTeardownResult, error) {
-	return e.revision.Teardown(ctx, rev, opts...)
+	result, err := e.revision.Teardown(ctx, rev, opts...)
+	if err != nil || result == nil || len(result.GetWaitingPhaseNames()) == 0 {
+		return result, err
+	}
+
+	waitingNames := make(map[string]struct{}, len(result.GetWaitingPhaseNames()))
+	for _, name := range result.GetWaitingPhaseNames() {
+		waitingNames[name] = struct{}{}
+	}
+
+	var readOnlyPhases []machinery.PhaseTeardownResult
+	for _, phase := range rev.GetPhases() {
+		if _, ok := waitingNames[phase.GetName()]; !ok {
+			continue
+		}
+		var present []types.ObjectRef
+		for _, obj := range phase.GetObjects() {
+			actual := obj.DeepCopyObject().(client.Object)
+			if getErr := e.reader.Get(ctx, client.ObjectKeyFromObject(actual), actual); getErr == nil {
+				present = append(present, types.ToObjectRef(actual))
+			}
+		}
+		readOnlyPhases = append(readOnlyPhases, &readOnlyPhaseTeardownResult{
+			name:    phase.GetName(),
+			waiting: present,
+		})
+	}
+
+	return &teardownResultWithReadOnly{
+		RevisionTeardownResult: result,
+		readOnlyPhases:         readOnlyPhases,
+	}, nil
 }
+
+type teardownResultWithReadOnly struct {
+	machinery.RevisionTeardownResult
+	readOnlyPhases []machinery.PhaseTeardownResult
+}
+
+func (r *teardownResultWithReadOnly) GetPhases() []machinery.PhaseTeardownResult {
+	return append(r.RevisionTeardownResult.GetPhases(), r.readOnlyPhases...)
+}
+
+func (r *teardownResultWithReadOnly) GetWaitingPhaseNames() []string {
+	return nil
+}
+
+type readOnlyPhaseTeardownResult struct {
+	name    string
+	waiting []types.ObjectRef
+}
+
+func (r *readOnlyPhaseTeardownResult) GetName() string            { return r.name }
+func (r *readOnlyPhaseTeardownResult) IsComplete() bool           { return false }
+func (r *readOnlyPhaseTeardownResult) Gone() []types.ObjectRef    { return nil }
+func (r *readOnlyPhaseTeardownResult) Waiting() []types.ObjectRef { return r.waiting }
+func (r *readOnlyPhaseTeardownResult) String() string             { return r.name }
 
 func (e *Engine) Reconcile(ctx context.Context, rev types.Revision, opts ...types.RevisionReconcileOption) (machinery.RevisionResult, error) {
 	gatedResult, err := e.revision.Reconcile(ctx, rev, opts...)

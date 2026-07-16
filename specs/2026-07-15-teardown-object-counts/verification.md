@@ -9,8 +9,8 @@
 - [ ] Reconcile incomplete phases: present=count of processed objects
 - [ ] Teardown complete phases: present=0, synced=0, available=0, total=total
 - [ ] Tearing-down phases: present=len(waitingForDeletion), synced=0, available=0, total=total
-- [ ] Gated teardown phases: cache-checked present count, synced=0, available=0, total=total
-- [ ] Gated teardown phases are NOT marked Unknown - they have a definite status with real counts
+- [ ] Read-only teardown phases: cache-checked present count, synced=0, available=0, total=total
+- [ ] Read-only teardown phases are NOT marked Unknown - they have a definite status with real counts
 - [ ] Printer columns: AVAILABLE, SYNCED, PRESENT, TOTAL (in that order)
 - [ ] Existing e2e count step definitions updated to include `present`
 - [ ] All ~30 existing e2e count assertions updated with correct `present` values

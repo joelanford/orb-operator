@@ -48,12 +48,12 @@ Feature: COD status is derived from its COSs
     And a phase "crds" with a gated ConfigMap "cm-counts-crds"
     And a phase "operators" with a gated ConfigMap "cm-counts-ops"
     When the COD is created
-    Then the COD "status-counts" should have object counts total:2/synced:1/available:0
+    Then the COD "status-counts" should have object counts total:2/present:1/synced:1/available:0
     When the gate on ConfigMap "cm-counts-crds" is opened
-    Then the COD "status-counts" should have object counts total:2/synced:2/available:1
+    Then the COD "status-counts" should have object counts total:2/present:2/synced:2/available:1
     When the gate on ConfigMap "cm-counts-ops" is opened
     Then the COD "status-counts" should be Available
-    And the COD "status-counts" should have object counts total:2/synced:2/available:2
+    And the COD "status-counts" should have object counts total:2/present:2/synced:2/available:2
 
   Scenario: COD recreates revision when latest is manually archived
     Given a COD named "status-archive-latest"
