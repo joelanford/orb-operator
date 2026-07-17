@@ -5,7 +5,6 @@ import (
 	stderrors "errors"
 	"log"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,10 +13,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
+	"github.com/joelanford/orb-operator/internal/testutil"
 )
 
 var (
@@ -31,13 +32,8 @@ func TestMain(m *testing.M) {
 		log.Fatalf("%v", err)
 	}
 
-	crdPaths := []string{filepath.Join("..", "..", "deploy", "crds")}
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths: crdPaths,
-		Scheme:            scheme,
-		CRDInstallOptions: envtest.CRDInstallOptions{
-			Scheme: scheme,
-		},
+		Scheme: scheme,
 	}
 
 	var err error
@@ -46,10 +42,24 @@ func TestMain(m *testing.M) {
 		log.Fatalf("%v", err)
 	}
 
+	httpClient, err := rest.HTTPClientFor(cfg)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	mapper, err := apiutil.NewDynamicRESTMapper(cfg, httpClient)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+
 	k8sClient, err = client.New(cfg, client.Options{
 		Scheme: scheme,
+		Mapper: mapper,
 	})
 	if err != nil {
+		log.Fatalf("%v", err)
+	}
+
+	if err := testutil.InstallAPI(context.Background(), k8sClient); err != nil {
 		log.Fatalf("%v", err)
 	}
 
