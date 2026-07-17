@@ -13,8 +13,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
-	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
@@ -70,20 +70,20 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func newCOS(name string) *orbv1alpha1.ClusterObjectSet {
+func newCOS(group string) *orbv1alpha1.ClusterObjectSet {
 	return &orbv1alpha1.ClusterObjectSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name: group + "-1",
 		},
 		Spec: orbv1alpha1.ClusterObjectSetSpec{
-			Group:          "test",
+			Group:          group,
 			Revision:       1,
 			LifecycleState: orbv1alpha1.LifecycleStateActive,
 			ClusterObjectDeploymentTemplateSpec: orbv1alpha1.ClusterObjectDeploymentTemplateSpec{
 				Phases: []orbv1alpha1.Phase{{
 					Name: "default",
 					Objects: []orbv1alpha1.PhaseObject{{
-						Object: runtime.RawExtension{Raw: []byte(`{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"` + name + `","namespace":"default"}}`)},
+						Object: runtime.RawExtension{Raw: []byte(`{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"` + group + `","namespace":"default"}}`)},
 					}},
 				}},
 			},

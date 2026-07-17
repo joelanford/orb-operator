@@ -473,15 +473,14 @@ func TestCOS_Status_ObjectStatus_Validation(t *testing.T) {
 func TestCOS_Spec_Group_Validation(t *testing.T) {
 	ctx := context.Background()
 
-	createWithGroup := func(cosName, group string) error {
-		cos := newCOS(cosName)
-		cos.Spec.Group = group
+	createWithGroup := func(group string) error {
+		cos := newCOS(group)
 		return k8sClient.Create(ctx, cos)
 	}
-	cleanup := func(t *testing.T, cosName string) {
+	cleanup := func(t *testing.T, group string) {
 		t.Helper()
 		t.Cleanup(func() {
-			cos := newCOS(cosName)
+			cos := newCOS(group)
 			require.NoError(t, k8sClient.Delete(ctx, cos))
 		})
 	}
@@ -498,29 +497,27 @@ func TestCOS_Spec_Group_Validation(t *testing.T) {
 		{"max 52 chars", "a" + strings.Repeat("b", 50) + "c"},
 	} {
 		t.Run(tc.name+" is accepted", func(t *testing.T) {
-			cosName := fmt.Sprintf("grp-ok-%s", tc.group)
-			cleanup(t, cosName)
-			require.NoError(t, createWithGroup(cosName, tc.group))
+			cleanup(t, tc.group)
+			require.NoError(t, createWithGroup(tc.group))
 		})
 	}
 
 	for _, tc := range []struct {
-		name    string
-		cosName string
-		group   string
-		msgSub  string
+		name   string
+		group  string
+		msgSub string
 	}{
-		{"empty", "grp-bad-empty", "", "should be at least 1"},
-		{"exceeds 52 chars", "grp-bad-long", strings.Repeat("a", 53), "may not be more than 52"},
-		{"starts with digit", "grp-bad-digit", "1group", "lowercase alphanumeric"},
-		{"starts with hyphen", "grp-bad-hyphen", "-group", "lowercase alphanumeric"},
-		{"ends with hyphen", "grp-bad-end", "group-", "lowercase alphanumeric"},
-		{"uppercase", "grp-bad-upper", "Group", "lowercase alphanumeric"},
-		{"contains underscore", "grp-bad-uscore", "my_group", "lowercase alphanumeric"},
-		{"contains dot", "grp-bad-dot", "my.group", "lowercase alphanumeric"},
+		{"empty", "", "should be at least 1"},
+		{"exceeds 52 chars", strings.Repeat("a", 53), "may not be more than 52"},
+		{"starts with digit", "1group", "lowercase alphanumeric"},
+		{"starts with hyphen", "-group", "lowercase alphanumeric"},
+		{"ends with hyphen", "group-", "lowercase alphanumeric"},
+		{"uppercase", "Group", "lowercase alphanumeric"},
+		{"contains underscore", "my_group", "lowercase alphanumeric"},
+		{"contains dot", "my.group", "lowercase alphanumeric"},
 	} {
 		t.Run(tc.name+" is rejected", func(t *testing.T) {
-			requireStatusError(t, createWithGroup(tc.cosName, tc.group),
+			requireStatusError(t, createWithGroup(tc.group),
 				"spec.group", tc.msgSub)
 		})
 	}
@@ -529,43 +526,40 @@ func TestCOS_Spec_Group_Validation(t *testing.T) {
 func TestCOS_Spec_PhaseName_DNS1035Validation(t *testing.T) {
 	ctx := context.Background()
 
-	createWithPhaseName := func(cosName, phaseName string) error {
-		cos := newCOS(cosName)
+	createWithPhaseName := func(group, phaseName string) error {
+		cos := newCOS(group)
 		cos.Spec.Phases[0].Name = phaseName
 		return k8sClient.Create(ctx, cos)
 	}
-	cleanup := func(t *testing.T, cosName string) {
+	cleanupPN := func(t *testing.T, group string) {
 		t.Helper()
 		t.Cleanup(func() {
-			cos := newCOS(cosName)
+			cos := newCOS(group)
 			require.NoError(t, k8sClient.Delete(ctx, cos))
 		})
 	}
 
 	for _, tc := range []struct {
 		name      string
+		group     string
 		phaseName string
 	}{
-		{"simple lowercase", "install"},
-		{"with hyphens", "my-phase"},
-		{"with digits", "phase1"},
-		{"single char", "a"},
-		{"letter then digit", "a1"},
-		{"max 63 chars", "a" + strings.Repeat("b", 61) + "c"},
+		{"simple lowercase", "pn-ok-install", "install"},
+		{"with hyphens", "pn-ok-my-phase", "my-phase"},
+		{"with digits", "pn-ok-phase1", "phase1"},
+		{"single char", "pn-ok-a", "a"},
+		{"letter then digit", "pn-ok-a1", "a1"},
+		{"max 63 chars", "pn-ok-max", "a" + strings.Repeat("b", 61) + "c"},
 	} {
 		t.Run(tc.name+" is accepted", func(t *testing.T) {
-			cosName := fmt.Sprintf("pn-ok-%s", tc.phaseName)
-			if len(cosName) > 63 {
-				cosName = cosName[:63]
-			}
-			cleanup(t, cosName)
-			require.NoError(t, createWithPhaseName(cosName, tc.phaseName))
+			cleanupPN(t, tc.group)
+			require.NoError(t, createWithPhaseName(tc.group, tc.phaseName))
 		})
 	}
 
 	for _, tc := range []struct {
 		name      string
-		cosName   string
+		group     string
 		phaseName string
 	}{
 		{"starts with digit", "pn-bad-digit", "1phase"},
@@ -576,7 +570,7 @@ func TestCOS_Spec_PhaseName_DNS1035Validation(t *testing.T) {
 		{"contains dot", "pn-bad-dot", "my.phase"},
 	} {
 		t.Run(tc.name+" is rejected", func(t *testing.T) {
-			err := createWithPhaseName(tc.cosName, tc.phaseName)
+			err := createWithPhaseName(tc.group, tc.phaseName)
 			requireStatusError(t, err,
 				"spec.phases[0].name", "must be a valid DNS-1035 label")
 		})

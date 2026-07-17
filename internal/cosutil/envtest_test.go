@@ -115,19 +115,19 @@ func TestWaitForFinalizerRemoval_ReturnsWhenAbsent(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func createCOS(t *testing.T, ctx context.Context, name string) *orbv1alpha1.ClusterObjectSet {
+func createCOS(t *testing.T, ctx context.Context, group string) *orbv1alpha1.ClusterObjectSet {
 	t.Helper()
 	cos := &orbv1alpha1.ClusterObjectSet{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
+		ObjectMeta: metav1.ObjectMeta{Name: group + "-1"},
 		Spec: orbv1alpha1.ClusterObjectSetSpec{
-			Group:          "test-group",
+			Group:          group,
 			Revision:       1,
 			LifecycleState: orbv1alpha1.LifecycleStateActive,
 			ClusterObjectDeploymentTemplateSpec: orbv1alpha1.ClusterObjectDeploymentTemplateSpec{
 				Phases: []orbv1alpha1.Phase{{
 					Name: "phase-1",
 					Objects: []orbv1alpha1.PhaseObject{{
-						Object: runtime.RawExtension{Raw: []byte(`{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"cm-` + name + `","namespace":"default"}}`)},
+						Object: runtime.RawExtension{Raw: []byte(`{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"cm-` + group + `","namespace":"default"}}`)},
 					}},
 				}},
 			},
