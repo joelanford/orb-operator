@@ -220,6 +220,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: apiVersion
       type:
         scalar: string
+    - name: count
+      type:
+        scalar: numeric
     - name: kind
       type:
         scalar: string

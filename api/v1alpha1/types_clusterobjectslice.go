@@ -9,10 +9,18 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster,shortName=cosl
+// +kubebuilder:printcolumn:name="Objects",type=integer,JSONPath=`.count`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 // +kubebuilder:validation:XValidation:rule="self.objects == oldSelf.objects",message="objects is immutable"
+// +kubebuilder:validation:XValidation:rule="self.count == self.objects.size()",message="count must equal the number of objects"
 type ClusterObjectSlice struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	// count is the number of entries in the objects list. It is set
+	// automatically by a MutatingAdmissionPolicy on creation.
+	// +required
+	Count int32 `json:"count"`
 
 	// objects is the list of Kubernetes object manifests stored in this slice.
 	// Each entry is keyed by its Kubernetes identity (apiVersion, kind, name,

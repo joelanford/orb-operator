@@ -16,7 +16,14 @@ spec:
     singular: clusterobjectslice
   scope: Cluster
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .count
+      name: Objects
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-
@@ -32,6 +39,12 @@ spec:
               may reject unrecognized values.
               More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
+          count:
+            description: |-
+              count is the number of entries in the objects list. It is set
+              automatically by a MutatingAdmissionPolicy on creation.
+            format: int32
+            type: integer
           kind:
             description: |-
               Kind is a string value representing the REST resource this object represents.
@@ -126,10 +139,14 @@ spec:
             - namespace
             x-kubernetes-list-type: map
         required:
+        - count
         - objects
         type: object
         x-kubernetes-validations:
         - message: objects is immutable
           rule: self.objects == oldSelf.objects
+        - message: count must equal the number of objects
+          rule: self.count == self.objects.size()
     served: true
     storage: true
+    subresources: {}

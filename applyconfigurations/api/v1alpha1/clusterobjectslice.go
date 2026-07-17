@@ -21,6 +21,9 @@ import (
 type ClusterObjectSliceApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
+	// count is the number of entries in the objects list. It is set
+	// automatically by a MutatingAdmissionPolicy on creation.
+	Count *int32 `json:"count,omitempty"`
 	// objects is the list of Kubernetes object manifests stored in this slice.
 	// Each entry is keyed by its Kubernetes identity (apiVersion, kind, name,
 	// namespace). The list must contain between 1 and 256 entries. Duplicate
@@ -230,6 +233,14 @@ func (b *ClusterObjectSliceApplyConfiguration) ensureObjectMetaApplyConfiguratio
 	if b.ObjectMetaApplyConfiguration == nil {
 		b.ObjectMetaApplyConfiguration = &v1.ObjectMetaApplyConfiguration{}
 	}
+}
+
+// WithCount sets the Count field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Count field is set to the value of the last call.
+func (b *ClusterObjectSliceApplyConfiguration) WithCount(value int32) *ClusterObjectSliceApplyConfiguration {
+	b.Count = &value
+	return b
 }
 
 // WithObjects adds the given value to the Objects field in the declarative configuration

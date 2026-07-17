@@ -95,6 +95,38 @@ local vapCODNameLengthBinding = {
   },
 };
 
+local mapCOSLCount = {
+  apiVersion: 'admissionregistration.k8s.io/v1',
+  kind: 'MutatingAdmissionPolicy',
+  metadata: { name: 'cosl-set-count' },
+  spec: {
+    matchConstraints: {
+      resourceRules: [{
+        apiGroups: ['orb.operatorframework.io'],
+        apiVersions: ['v1alpha1'],
+        resources: ['clusterobjectslices'],
+        operations: ['CREATE'],
+      }],
+    },
+    reinvocationPolicy: 'IfNeeded',
+    mutations: [{
+      patchType: 'JSONPatch',
+      jsonPatch: {
+        expression: '[JSONPatch{op: "add", path: "/count", value: object.objects.size()}]',
+      },
+    }],
+  },
+};
+
+local mapCOSLCountBinding = {
+  apiVersion: 'admissionregistration.k8s.io/v1',
+  kind: 'MutatingAdmissionPolicyBinding',
+  metadata: { name: 'cosl-set-count' },
+  spec: {
+    policyName: mapCOSLCount.metadata.name,
+  },
+};
+
 local crds = [
   std.parseYaml(importstr '../crds/orb.operatorframework.io_clusterobjectdeployments.yaml')[0],
   std.parseYaml(importstr '../crds/orb.operatorframework.io_clusterobjectsets.yaml')[0],
@@ -103,5 +135,5 @@ local crds = [
 
 {
   generate()::
-    [vapCOSName, vapCOSNameBinding, vapCOSOrphanFinalizer, vapCOSOrphanFinalizerBinding, vapCODNameLength, vapCODNameLengthBinding] + crds,
+    [vapCOSName, vapCOSNameBinding, vapCOSOrphanFinalizer, vapCOSOrphanFinalizerBinding, vapCODNameLength, vapCODNameLengthBinding, mapCOSLCount, mapCOSLCountBinding] + crds,
 }

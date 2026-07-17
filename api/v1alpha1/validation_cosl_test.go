@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	orbv1alpha1 "github.com/joelanford/orb-operator/api/v1alpha1"
 )
@@ -37,6 +38,29 @@ func createSlice(t *testing.T, ctx context.Context, slice *orbv1alpha1.ClusterOb
 	require.NoError(t, k8sClient.Create(ctx, slice))
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, slice)
+	})
+}
+
+func TestCOSL_Count(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("MAP sets count when not provided", func(t *testing.T) {
+		slice := newSlice("cosl-count-auto")
+		createSlice(t, ctx, slice)
+
+		got := &orbv1alpha1.ClusterObjectSlice{}
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(slice), got))
+		require.Equal(t, int32(1), got.Count)
+	})
+
+	t.Run("MAP overwrites incorrect count", func(t *testing.T) {
+		slice := newSlice("cosl-count-wrong")
+		slice.Count = 99
+		createSlice(t, ctx, slice)
+
+		got := &orbv1alpha1.ClusterObjectSlice{}
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(slice), got))
+		require.Equal(t, int32(1), got.Count)
 	})
 }
 
