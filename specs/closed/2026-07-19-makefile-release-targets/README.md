@@ -1,5 +1,5 @@
 ---
-status: ready
+status: done
 ---
 # Makefile: split out release and manifest targets
 

@@ -3,9 +3,11 @@ NAMESPACE ?= orb-operator-system
 KIND_CLUSTER ?= orb-operator
 PROFILES ?= []
 GO_BUILD_FLAGS ?=
+GORELEASER_ARGS ?= --snapshot --clean
+MANIFEST ?= _output/install.json
 
 .PHONY: lint lint-fix test-unit test-e2e test-coverage test-all build tidy generate verify
-.PHONY: run
+.PHONY: release manifest run
 
 lint:
 	go tool golangci-lint run ./...
@@ -49,10 +51,17 @@ verify: lint
 	go tool goreleaser check
 	go build ./...
 
-run: generate
-	GO_BUILD_FLAGS="$(GO_BUILD_FLAGS)" go tool goreleaser release --snapshot --clean
+release: generate
+	GO_BUILD_FLAGS="$(GO_BUILD_FLAGS)" go tool goreleaser release $(GORELEASER_ARGS)
+
+manifest: generate
+	@mkdir -p $(dir $(MANIFEST))
+	go tool jsonnet --ext-str image=$(IMAGE) --ext-str namespace=$(NAMESPACE) --ext-code profiles='$(PROFILES)' deploy/main.jsonnet -o $(MANIFEST)
+
+run: IMAGE := $(IMAGE)-$(shell go env GOARCH)
+run: release manifest
 	go tool kind delete cluster --name $(KIND_CLUSTER) || true
 	go tool kind create cluster --name $(KIND_CLUSTER)
-	go tool kind load docker-image $(IMAGE)-$$(go env GOARCH) --name $(KIND_CLUSTER)
-	go tool jsonnet --ext-str image=$(IMAGE)-$$(go env GOARCH) --ext-str namespace=$(NAMESPACE) --ext-code profiles='$(PROFILES)' deploy/main.jsonnet | kubectl apply -f -
+	go tool kind load docker-image $(IMAGE) --name $(KIND_CLUSTER)
+	kubectl apply -f $(MANIFEST)
 	kubectl -n $(NAMESPACE) rollout status deployment/orb-operator --timeout=60s

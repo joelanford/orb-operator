@@ -89,6 +89,8 @@ orb-operator/
 | `make test-e2e` | Build coverage-instrumented binary, run godog BDD e2e tests, collect coverage (`_output/e2e/coverage.out`) |
 | `make test-coverage` | Run test-unit + test-e2e, merge profiles (`_output/merged/coverage.out`), print summary |
 | `make test-all` | Alias for test-coverage |
+| `make release` | `go tool goreleaser release $(GORELEASER_ARGS)` (default: `--snapshot --clean`) |
+| `make manifest` | Render `deploy/main.jsonnet` to `$(MANIFEST)` (default: `_output/install.json`) |
 | `make build` | `go build ./...` (also called by `make verify`) |
 | `make tidy` | `go mod tidy` |
 | `make generate` | `go generate ./...` (controller-gen: CRDs, deepcopy) |
@@ -109,4 +111,4 @@ Separate GitHub Actions workflows per concern:
 | `unit.yml` | PR, push to main | `make test-unit` |
 | `e2e.yml` | PR, push to main | `make test-e2e` |
 | `verify.yml` | PR, push to main | `make verify` |
-| `image.yml` | push to main | `go tool goreleaser release --snapshot` |
+| `image.yml` | push to main | `make release` (goreleaser snapshot) |
