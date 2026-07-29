@@ -13,7 +13,7 @@ management.
 ## Install
 
 ```bash
-kubectl apply -f https://github.com/joelanford/orb-operator/releases/latest/download/operator.yaml
+kubectl apply -f https://github.com/joelanford/orb-operator/releases/latest/download/install.json
 ```
 
 Requires Kubernetes 1.30+ (ValidatingAdmissionPolicy support).
