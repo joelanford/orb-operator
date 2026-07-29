@@ -111,4 +111,4 @@ Separate GitHub Actions workflows per concern:
 | `unit.yml` | PR, push to main | `make test-unit` |
 | `e2e.yml` | PR, push to main | `make test-e2e` |
 | `verify.yml` | PR, push to main | `make verify` |
-| `image.yml` | push to main | `make release` (goreleaser snapshot) |
+| `release.yml` | PR, push to main, `v*` tags | `make manifest release` (snapshot on PRs, push on main/tags, GitHub release on tags) |

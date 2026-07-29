@@ -1,35 +1,63 @@
 ---
-status: idea
+status: done
 ---
 # GHCR Image Push and GitHub Releases
 
-Push container images to GHCR and create GitHub releases on version tags. Split into separate work items:
+## Summary
 
-1. **[Makefile refactor](../2026-07-19-makefile-release-targets/)** - add `manifest` and `release` targets, update `run` to use them.
-2. **Push images** - `release.yml` workflow + goreleaser config to push multi-arch images on main and tag pushes.
-3. **Release artifacts** - render and attach install manifest to GitHub release, release notes with `kubectl apply` command.
+Replace the current `image.yml` workflow with a single `release.yml` workflow that handles all ref types: PRs (snapshot build), main branch pushes (push `main`-tagged image), and version tag pushes (push versioned image + create GitHub release with install manifest).
 
-## Design notes
+## Design
+
+### Makefile variable changes
+
+Split `IMAGE` into derived components:
+
+```makefile
+IMAGE_REPO ?= ghcr.io/joelanford/orb-operator
+IMAGE_TAG ?= dev
+IMAGE = $(IMAGE_REPO):$(IMAGE_TAG)
+```
+
+Pass `IMAGE_REPO` and `IMAGE_TAG` to goreleaser so it can reference them in its config. CI sets `IMAGE_TAG` and everything else flows.
+
+### Goreleaser configuration changes
+
+- `dockers_v2.images`: use `{{ .Env.IMAGE_REPO }}` instead of hardcoded `ghcr.io/joelanford/orb-operator`.
+- `dockers_v2.tags`: use `{{ .Env.IMAGE_TAG }}` instead of `{{ .Version }}`.
+- `release.disable`: `'{{ ne .Env.ENABLE_RELEASE_PIPELINE "true" }}'` instead of `true`.
+- `changelog.disable`: `'{{ ne .Env.ENABLE_RELEASE_PIPELINE "true" }}'` instead of `true`.
+- Add `extra_files` to attach `_output/install.json` to the GitHub release.
+- Add a release header template with a copy/pasteable `kubectl apply -f` command using the full GitHub release download URL.
 
 ### Single workflow, env-var-driven
 
-Following the pattern from [operator-controller](https://github.com/operator-framework/operator-controller/blob/main/.github/workflows/release.yaml), a single workflow handles all ref types. A setup step sets env vars based on the ref:
+A single `release.yml` workflow replaces `image.yml`. Triggered on PRs, pushes to `main`, and `vX.Y.Z` tag pushes.
 
-- `IMAGE_TAG`: `main` for main branch, the tag name for `vX.Y.Z` tags.
-- `GORELEASER_ARGS`: controls flags passed to goreleaser.
-- `ENABLE_RELEASE_PIPELINE`: `true` only for tag pushes, used in goreleaser config to conditionally enable GitHub release creation and changelog.
+Permissions: `packages: write` + `contents: write`. GitHub automatically downgrades fork PR tokens to read-only.
 
-### Goreleaser configuration
+A setup step sets env vars based on the ref type:
 
-The existing `.goreleaser.yml` uses `dockers_v2`, which natively builds and pushes multi-arch images via `docker buildx build --push` during a non-snapshot release. Stop using `--snapshot` for main and tag pushes so goreleaser pushes the image.
+| Ref | `IMAGE_TAG` | `GORELEASER_ARGS` | `ENABLE_RELEASE_PIPELINE` |
+|-----|-------------|-------------------|--------------------------|
+| PR | `pr-<number>` | `--snapshot --clean` | (unset) |
+| `main` | `main` | `--clean --skip=validate` | (unset) |
+| `vX.Y.Z` tag | `<tag>` | `--clean` | `true` |
 
-- Make `release.disable` and `changelog.disable` conditional on an env var instead of hardcoded `true`.
-- Use `--skip=validate` for main branch pushes (no git tag to validate against).
-- The image tag comes from an `IMAGE_TAG` env var referenced in the `dockers_v2.tags` config.
+Steps:
+1. Checkout (with `fetch-depth: 0`)
+2. Setup Go
+3. Docker login to GHCR (skip on PRs)
+4. Set env vars based on ref
+5. Run `make manifest release` (manifest renders the install artifact, release runs goreleaser)
 
 ### Release manifest
 
-A plain Kubernetes List rendered from `deploy/main.jsonnet`. ~16 objects totaling under 100KB (CRDs are ~80KB), so no COSLs are needed. Attached to the GitHub release via goreleaser `extra_files`.
+For tag pushes, `make manifest` renders `deploy/main.jsonnet` with the tagged image, producing `_output/install.json`. Goreleaser attaches it to the GitHub release via `extra_files`. The manifest is a plain Kubernetes List (~16 objects, under 100KB).
+
+### Local dev
+
+`make run` is unaffected. Default `IMAGE_TAG=dev` + `GORELEASER_ARGS=--snapshot --clean` = same behavior as before. The `run` target's `IMAGE := $(IMAGE)-$(shell go env GOARCH)` appends the arch suffix that goreleaser snapshot adds.
 
 ### Nice to have (future)
 

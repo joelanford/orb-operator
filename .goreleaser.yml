@@ -14,19 +14,24 @@ builds:
 
 dockers_v2:
   - images:
-      - ghcr.io/joelanford/orb-operator
+      - "{{ .Env.IMAGE_REPO }}"
     tags:
-      - "{{ .Version }}"
+      - "{{ .Env.IMAGE_TAG }}"
     platforms:
       - linux/amd64
       - linux/arm64
     dockerfile: Dockerfile
 
 release:
-  disable: true
+  disable: '{{ ne .Env.ENABLE_RELEASE_PIPELINE "true" }}'
+  extra_files:
+    - glob: _output/install.json
+  header: |
+    ## Install
 
-snapshot:
-  version_template: dev
+    ```bash
+    kubectl apply -f https://github.com/joelanford/orb-operator/releases/download/{{ .Tag }}/install.json
+    ```
 
 changelog:
-  disable: true
+  disable: '{{ ne .Env.ENABLE_RELEASE_PIPELINE "true" }}'

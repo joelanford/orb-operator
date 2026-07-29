@@ -1,8 +1,12 @@
-IMAGE ?= ghcr.io/joelanford/orb-operator:dev
+export IMAGE_REPO ?= ghcr.io/joelanford/orb-operator
+export IMAGE_TAG ?= dev
+export ENABLE_RELEASE_PIPELINE ?= false
+export GO_BUILD_FLAGS ?=
+
+IMAGE = $(IMAGE_REPO):$(IMAGE_TAG)
 NAMESPACE ?= orb-operator-system
 KIND_CLUSTER ?= orb-operator
 PROFILES ?= []
-GO_BUILD_FLAGS ?=
 GORELEASER_ARGS ?= --snapshot --clean
 MANIFEST ?= _output/install.json
 
@@ -52,7 +56,7 @@ verify: lint
 	go build ./...
 
 release: generate
-	GO_BUILD_FLAGS="$(GO_BUILD_FLAGS)" go tool goreleaser release $(GORELEASER_ARGS)
+	go tool goreleaser release $(GORELEASER_ARGS)
 
 manifest: generate
 	@mkdir -p $(dir $(MANIFEST))
