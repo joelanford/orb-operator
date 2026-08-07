@@ -18,7 +18,9 @@ func TestProbeForAssertions_ConditionEqual(t *testing.T) {
 		},
 	}})
 	require.NoError(t, err)
-	cp, ok := p.(*probing.ConditionProbe)
+	ogp, ok := p.(*probing.ObservedGenerationProbe)
+	require.True(t, ok)
+	cp, ok := ogp.Prober.(*probing.ConditionProbe)
 	require.True(t, ok)
 	assert.Equal(t, "Ready", cp.Type)
 	assert.Equal(t, "True", cp.Status)
@@ -32,7 +34,9 @@ func TestProbeForAssertions_FieldsEqual(t *testing.T) {
 		},
 	}})
 	require.NoError(t, err)
-	fe, ok := p.(*probing.FieldsEqualProbe)
+	ogp, ok := p.(*probing.ObservedGenerationProbe)
+	require.True(t, ok)
+	fe, ok := ogp.Prober.(*probing.FieldsEqualProbe)
 	require.True(t, ok)
 	assert.Equal(t, ".data.a", fe.FieldA)
 	assert.Equal(t, ".data.b", fe.FieldB)
@@ -46,7 +50,9 @@ func TestProbeForAssertions_FieldValue(t *testing.T) {
 		},
 	}})
 	require.NoError(t, err)
-	fv, ok := p.(*probing.FieldValueProbe)
+	ogp, ok := p.(*probing.ObservedGenerationProbe)
+	require.True(t, ok)
+	fv, ok := ogp.Prober.(*probing.FieldValueProbe)
 	require.True(t, ok)
 	assert.Equal(t, ".status.phase", fv.FieldPath)
 	assert.Equal(t, "Running", fv.Value)
@@ -60,7 +66,9 @@ func TestProbeForAssertions_CELExpression(t *testing.T) {
 		},
 	}})
 	require.NoError(t, err)
-	cp, ok := p.(*probing.CELProbe)
+	ogp, ok := p.(*probing.ObservedGenerationProbe)
+	require.True(t, ok)
+	cp, ok := ogp.Prober.(*probing.CELProbe)
 	require.True(t, ok)
 	assert.Equal(t, "name must be test", cp.Message)
 }
@@ -72,7 +80,9 @@ func TestProbeForAssertions_CELExpression_DefaultMessage(t *testing.T) {
 		},
 	}})
 	require.NoError(t, err)
-	cp, ok := p.(*probing.CELProbe)
+	ogp, ok := p.(*probing.ObservedGenerationProbe)
+	require.True(t, ok)
+	cp, ok := ogp.Prober.(*probing.CELProbe)
 	require.True(t, ok)
 	assert.Equal(t, "waiting for CEL expression to pass: self.metadata.name == 'test'", cp.Message)
 }
@@ -83,7 +93,9 @@ func TestProbeForAssertions_Multiple(t *testing.T) {
 		{FieldValue: &orbv1alpha1.FieldValueAssertion{FieldPath: ".data.x", Value: "y"}},
 	})
 	require.NoError(t, err)
-	and, ok := p.(probing.And)
+	ogp, ok := p.(*probing.ObservedGenerationProbe)
+	require.True(t, ok)
+	and, ok := ogp.Prober.(probing.And)
 	require.True(t, ok)
 	assert.Len(t, and, 2)
 }

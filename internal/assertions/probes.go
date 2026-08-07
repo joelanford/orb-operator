@@ -20,10 +20,13 @@ func ProbeForAssertions(assertions []orbv1alpha1.Assertion) (probing.Prober, err
 	if len(probers) == 0 {
 		return nil, nil
 	}
+	var prober probing.Prober
 	if len(probers) == 1 {
-		return probers[0], nil
+		prober = probers[0]
+	} else {
+		prober = probers
 	}
-	return probers, nil
+	return &probing.ObservedGenerationProbe{Prober: prober}, nil
 }
 
 func probeForAssertion(a orbv1alpha1.Assertion) (probing.Prober, error) {
